@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPLv3
+# Copyright © 2025 pygaindalf Rui Pinheiro
+
+import pytest
+import logging
+
+from app.util.logging.levels import LoggingLevel
+
+@pytest.mark.logging
+class TestLoggingLevel:
+    @pytest.mark.parametrize("input,expected", [
+        (10, 10),
+        (logging.INFO, logging.INFO),
+        ("DEBUG", logging.DEBUG),
+        ("INFO", logging.INFO),
+        ("warning", logging.WARNING),
+        ("ERROR", logging.ERROR),
+        ("critical", logging.CRITICAL),
+        ("5", 5),
+        ("20", 20),
+        ("0", 0),
+        ("-1", -1),
+    ])
+    def test_accepts_int_and_str(self, input, expected):
+        model = LoggingLevel(input)
+        assert model.value == expected
+
+    @pytest.mark.parametrize("input", [
+        "notalevel",
+        3.14,
+        None,
+        [],
+        {},
+    ])
+    def test_rejects_invalid(self, input):
+        with pytest.raises((ValueError, TypeError)):
+            LoggingLevel(input)
+
+    @pytest.mark.parametrize("input,expected_name,expected_str", [
+        ("DEBUG", "DEBUG", "LoggingLevel.DEBUG"),
+        (logging.INFO, "INFO", "LoggingLevel.INFO"),
+        ("warning", "WARNING", "LoggingLevel.WARNING"),
+        (42, "42", "LoggingLevel(42)"),
+        (592, "592", "LoggingLevel(592)"),
+        ("5", "5", "LoggingLevel(5)"),
+        ("-1", "-1", "LoggingLevel(-1)"),
+    ])
+    def test_str_output(self, input, expected_name, expected_str):
+        model = LoggingLevel(input)
+        assert model.name == expected_name
+        assert str(model) == expected_str

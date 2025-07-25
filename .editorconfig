@@ -1,0 +1,11 @@
+# See https://editorconfig.org/
+
+# top-most EditorConfig file
+root = true
+
+
+[*]
+# use unix-style line endings for all files
+end_of_line = lf
+# trims trailing whitespace for all files
+trim_trailing_whitespace = true
