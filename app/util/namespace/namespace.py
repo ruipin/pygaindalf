@@ -6,7 +6,7 @@ from collections.abc import ItemsView, Iterable, KeysView, ValuesView
 from dataclasses import is_dataclass, asdict as dataclass_asdict
 
 from .. import LoggableMixin, HierarchicalMixin, NamedMixin
-from ..enter_exit_call import EnterExitCall
+from ..helpers import EnterExitCall
 
 
 class Namespace[T = Any]:

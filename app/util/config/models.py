@@ -4,10 +4,10 @@
 import logging
 
 from pathlib import Path
-from pydantic import BaseModel, DirectoryPath, Field
+from .pydantic_lib import ForbidExtraBaseModel
 
 from ..logging.config import LoggingConfig
 
 
-class AppConfig(BaseModel):
+class AppConfig(ForbidExtraBaseModel):
     logging: LoggingConfig

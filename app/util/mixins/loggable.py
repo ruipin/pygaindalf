@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import re
-from logging import Logger
+import logging
+
 from typing import override
 
 from . import shorten_name
@@ -71,21 +71,18 @@ class LoggableMixin(object):
 
     # MARK: Logging
     @property
-    def log(self) -> Logger:
+    def log(self) -> logging.Logger:
         """
         Returns a logger for the current object. If self.name is 'None', uses the class name.
 
         Returns:
             logging.Logger: The logger instance for the object.
         """
-        log : Logger|None = getattr(self, '__log', None)
+        log : logging.Logger|None = getattr(self, '__log', None)
         if log is None:
-            # TODO: Fix this once getLogger implemented
-            import logging
-            #from ..init import getLogger
+            from ..logging import getLogger
             parent : HierarchicalMixin|None = self.instance_parent if isinstance(self, HierarchicalMixin) else None
-            #log = getLogger(self.__log_name__, parent=parent)
-            log = logging.getLogger(f"{parent.__class__.__name__}.{self.__log_name__}" if parent is not None else self.__log_name__)
+            log = getLogger(self.__log_name__, parent=parent)
             setattr(self, '__log', log)
         return log
 

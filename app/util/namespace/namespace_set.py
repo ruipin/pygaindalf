@@ -5,11 +5,11 @@ from abc import ABCMeta
 from collections.abc import MutableSet
 from ordered_set import OrderedSet
 from dataclasses import is_dataclass, asdict as dataclass_asdict
-from typing import Iterator, override, Any, runtime_checkable, Protocol
+from typing import Iterable, override, runtime_checkable, Protocol
 
 from .namespace import Namespace
-from ..mixins import *
-from ..enter_exit_call import EnterExitCall, Iterable
+
+from .. import LoggableMixin, HierarchicalMixin, EnterExitCall
 
 
 class NamespaceSet[T](Namespace, MutableSet[T], metaclass=ABCMeta):

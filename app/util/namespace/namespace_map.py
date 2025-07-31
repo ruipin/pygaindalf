@@ -7,8 +7,7 @@ from dataclasses import is_dataclass, asdict as dataclass_asdict
 from typing import Any, Self, override, Iterable, runtime_checkable, Protocol
 
 from . import Namespace
-from .. import LoggableMixin, HierarchicalMixin, NamedMixin
-from ..enter_exit_call import EnterExitCall
+from .. import HierarchicalMixin, NamedMixin, EnterExitCall
 
 
 class NamespaceMap[K = str, V = Any](Namespace, MutableMapping[K,V], metaclass=ABCMeta):

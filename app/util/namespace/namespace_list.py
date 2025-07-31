@@ -7,8 +7,7 @@ from dataclasses import is_dataclass, asdict as dataclass_asdict
 from typing import Any, Protocol, runtime_checkable
 
 from .namespace import Iterable, Namespace, override
-from ..mixins import *
-from ..enter_exit_call import EnterExitCall
+from .. import HierarchicalMixin, NamedMixin, EnterExitCall
 
 
 class NamespaceList[T = Any](Namespace, MutableSequence[T], metaclass=ABCMeta):

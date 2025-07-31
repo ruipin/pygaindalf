@@ -43,7 +43,7 @@ class TestLoggingLevel:
         (42, "42", "LoggingLevel(42)"),
         (592, "592", "LoggingLevel(592)"),
         ("5", "5", "LoggingLevel(5)"),
-        ("-1", "-1", "LoggingLevel(-1)"),
+        ("-1", "OFF", "LoggingLevel.OFF"),
     ])
     def test_str_output(self, input, expected_name, expected_str):
         model = LoggingLevel(input)
