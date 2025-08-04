@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import logging
-
 from typing import override
 
 from . import shorten_name
 from .named import NamedMixin
 from .hierarchical import HierarchicalMixin
 
-class LoggableMixin(object):
+from ..logging import Logger, getLogger
+
+class LoggableMixin:
     """
     Mixin that adds a logger to a class.
 
@@ -71,16 +71,15 @@ class LoggableMixin(object):
 
     # MARK: Logging
     @property
-    def log(self) -> logging.Logger:
+    def log(self) -> Logger:
         """
         Returns a logger for the current object. If self.name is 'None', uses the class name.
 
         Returns:
             logging.Logger: The logger instance for the object.
         """
-        log : logging.Logger|None = getattr(self, '__log', None)
+        log : Logger|None = getattr(self, '__log', None)
         if log is None:
-            from ..logging import getLogger
             parent : HierarchicalMixin|None = self.instance_parent if isinstance(self, HierarchicalMixin) else None
             log = getLogger(self.__log_name__, parent=parent)
             setattr(self, '__log', log)

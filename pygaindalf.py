@@ -7,12 +7,11 @@ Initializes logging and configuration, parses CLI arguments, and executes comman
 """
 
 import sys
-from app.util.args import ARGS
-from app.util.config.parser import ConfigFileParser
+from app.util.config import CFG
 from app.util.logging import getLogger
 
 if __name__ == "__main__":
-    config_parser = ConfigFileParser(getattr(ARGS, 'configfile'))
+    CFG.initialize()
 
     log1 = getLogger('1')
     log1.info("log1")
@@ -21,6 +20,4 @@ if __name__ == "__main__":
     log3 = getLogger('3', parent=log2)
     log3.error("log3")
     log3.info("yay")
-
-    log1.debug('Cmdline= %s', ' '.join(sys.argv))
-    #CFG.debug()
+    log2.debug("lol")

@@ -5,5 +5,5 @@
 from pydantic import BaseModel, ConfigDict
 
 
-class ForbidExtraBaseModel(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+class ConfigBaseModel(BaseModel):
+    model_config = ConfigDict(extra='forbid', frozen=True)

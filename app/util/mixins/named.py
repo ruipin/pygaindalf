@@ -5,7 +5,7 @@ from . import shorten_name
 from typing import override
 
 
-class NamedMixin(object):
+class NamedMixin:
     """
     Mixin that adds a name to a class instance.
 

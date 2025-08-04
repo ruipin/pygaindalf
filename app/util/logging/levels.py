@@ -3,8 +3,10 @@
 
 import logging
 from pydantic_core import CoreSchema, core_schema
-from pydantic import BaseModel, field_validator, Field, TypeAdapter, GetCoreSchemaHandler
-from typing import override, Any, Self
+from pydantic import  Field,  GetCoreSchemaHandler
+from typing import override, Any
+
+from ..helpers.pydantic_lib import ConfigBaseModel
 
 LEVELS : dict[str, int] = {
     "CRITICAL": logging.CRITICAL,
@@ -70,7 +72,8 @@ class LoggingLevel:
             function= cls.validate,
             #schema= core_schema.any_schema(),
             schema= core_schema.union_schema([core_schema.int_schema(), core_schema.str_schema(), core_schema.bool_schema(), core_schema.none_schema()]),
-            field_name=handler.field_name
+            field_name=handler.field_name,
+            serialization=core_schema.plain_serializer_function_ser_schema(cls.serialize, info_arg=True),
         )
 
     @classmethod
@@ -92,10 +95,32 @@ class LoggingLevel:
         # Return instance of class
         return cls(level)
 
+    @classmethod
+    def serialize(cls, value: Any, info: core_schema.SerializationInfo) -> str:
+        return str(value)
+
 
     @property
     def name(self) -> str:
         return REVERSE_LEVELS.get(self.value, str(self.value))
+
+    @override
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, LoggingLevel):
+            return self.value == other.value
+        elif isinstance(other, int):
+            return self.value == other
+        elif isinstance(other, str):
+            return self.name == other.upper()
+        return False
+
+    @override
+    def __ne__(self, other: Any) -> bool:
+        return not self.__eq__(other)
+
+    @override
+    def __hash__(self) -> int:
+        return hash(self.value)
 
     @override
     def __repr__(self) -> str:
@@ -107,10 +132,14 @@ class LoggingLevel:
 
     @override
     def __str__(self) -> str:
-        return repr(self)
+        name = REVERSE_LEVELS.get(self.value, None)
+        if name is not None:
+            return f"{name}"
+        else:
+            return str(self.value)
 
 
-class LoggingLevels(BaseModel):
-    file: LoggingLevel = Field(LoggingLevel(     -1     ), description="Log level for log file output")
-    tty : LoggingLevel = Field(LoggingLevel(logging.INFO), description="Log level for TTY output")
-    root: LoggingLevel = Field(LoggingLevel(      0     ), description="Log level for the root log handler")
+class LoggingLevels(ConfigBaseModel):
+    file: LoggingLevel = Field(default=LoggingLevel(     -1     ), description="Log level for log file output")
+    tty : LoggingLevel = Field(default=LoggingLevel(logging.INFO), description="Log level for TTY output")
+    root: LoggingLevel = Field(default=LoggingLevel(      0     ), description="Log level for the root log handler")

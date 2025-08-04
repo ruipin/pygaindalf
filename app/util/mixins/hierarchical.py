@@ -6,7 +6,7 @@ from typing import override
 from . import shorten_name
 from .named import NamedMixin
 
-class HierarchicalMixin(object):
+class HierarchicalMixin:
     """
     Mixin that adds parent/child hierarchy support to a class.
 

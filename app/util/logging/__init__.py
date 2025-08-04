@@ -11,4 +11,4 @@ from .manager import LoggingManager
 from .loggable_protocol import LoggableProtocol
 
 # getLogger function
-from .logger import getLogger
+from .logger import getLogger, Logger

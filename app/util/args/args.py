@@ -7,16 +7,16 @@ Defines global options, command actions, and wraps argparse for use throughout t
 """
 
 from .parser import ArgsParser
-from ..config.path import ConfigFilePath
+from .config_path import ConfigFilePath
 
 PARSER = ArgsParser()
 
-# Logging
-PARSER.add('config.logging.levels.file', '-lv', '--log-verbosity', action='store', help='Logfile verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)')
-PARSER.add('config.logging.levels.tty' , '-v', '--verbosity', action='store', help='Console verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)')
-
 # Configuration
-PARSER.add('configfile', '-c', '--config', type=ConfigFilePath, action='store', required=True, help='Configuration file to load')
+PARSER.add('app.paths.config', type=ConfigFilePath, action='store', help='Configuration file to load')
+
+# Logging
+PARSER.add('logging.levels.file', '-lv', '--log-verbosity', action='store', help='Logfile verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)')
+PARSER.add('logging.levels.tty' , '-v', '--verbosity', action='store', help='Console verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)')
 
 # Parse
 PARSER.parse()

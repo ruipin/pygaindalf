@@ -8,10 +8,11 @@ Defines global options, command actions, and wraps argparse for use throughout t
 
 import argparse
 import os
+import sys
 
-from typing import Any, override
+from typing import Sequence, override
 
-from ..helpers.script_info import get_script_name
+from ..helpers.script_info import get_script_name, is_unit_test
 
 ###################
 # Argument parser
@@ -20,6 +21,7 @@ ENV_PREFIX = get_script_name().upper()
 
 class ArgsParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
+        kwargs['prog'] = kwargs.get('prog', get_script_name())
         kwargs['description'] = kwargs.get('description', "pygaindalf CLI options")
         kwargs['formatter_class'] = argparse.ArgumentDefaultsHelpFormatter
 
@@ -48,6 +50,12 @@ class ArgsParser(argparse.ArgumentParser):
     def add(self, *args, **kwargs) -> argparse.Action:
         return self.add_argument(*args, **kwargs)
 
+    def get_argv(self) -> Sequence[str]:
+        if is_unit_test():
+            # In unit tests, we default to reading the config from stdin
+            return ('-',)
+        return sys.argv[1:]
+
     @override
     def parse_args(self, *args, **kwargs) -> argparse.Namespace:
         """
@@ -56,7 +64,7 @@ class ArgsParser(argparse.ArgumentParser):
         Returns:
             argparse.Namespace: The parsed arguments.
         """
-        self.namespace = super().parse_args(*args, **kwargs)
+        self.namespace = super().parse_args(self.get_argv(), *args, **kwargs)
         return self.namespace
 
     def parse(self, *args, **kwargs) -> argparse.Namespace:

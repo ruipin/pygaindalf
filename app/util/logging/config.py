@@ -4,13 +4,14 @@
 from pathlib import Path
 from .levels import LoggingLevels
 from pydantic import BaseModel, DirectoryPath, Field
-from ..config.pydantic_lib import ForbidExtraBaseModel
+from ..helpers.pydantic_lib import ConfigBaseModel
 
-class LoggingConfig(ForbidExtraBaseModel):
-    dir: DirectoryPath = Field(Path.cwd(), description="Log file directory")
-    levels: LoggingLevels = Field(description="Logging levels configuration")
-    rich: bool = Field(True, description="Enable rich text (colors etc) in TTY output")
+
+class LoggingConfig(ConfigBaseModel):
+    dir: DirectoryPath = Field(default=Path.cwd(), description="Log file directory")
+    levels: LoggingLevels = Field(default=LoggingLevels(), description="Logging levels configuration")
+    rich: bool = Field(default=True, description="Enable rich text (colors etc) in TTY output")
 
 
 class AppConfigLoggingOnly(BaseModel):
-    logging: LoggingConfig = Field(description="Logging configuration")
+    logging: LoggingConfig = Field(default=LoggingConfig(), description="Logging configuration")

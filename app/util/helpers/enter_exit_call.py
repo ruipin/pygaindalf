@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPLv3
-# Copyright © 2020 pyddcci Rui Pinheiro
+# Copyright © 2025 pygaindalf Rui Pinheiro
 
 from typing import Self
 from collections.abc import Iterable, Callable, Mapping

@@ -25,6 +25,8 @@ class ExitHandler(logging.Handler):
         """
         Handle application exit, print summary, and save config if appropriate.
         """
+        self.in_atexit = True
+
         script_name = get_script_name()
         success = True if self.num_error == 0 and self.num_critical == 0 else False
 
@@ -46,11 +48,8 @@ class ExitHandler(logging.Handler):
 
         # Log to file
         if self.manager.fh is not None:
-            if self.manager.ch is not None:
-                logging.root.removeHandler(self.manager.ch)
-
             self.manager.fh.setFormatter(self.ExitStatusFormatter())
-            logging.log(1000, exit_str)
+            logging.log(1000, exit_str, extra={'handler': 'file'})
 
         # Done
         logging.shutdown()
@@ -60,6 +59,8 @@ class ExitHandler(logging.Handler):
         super().__init__(*args, **kwargs)
 
         self.manager = manager
+
+        self.in_atexit = False
 
         self.num_warning = 0
         self.num_error = 0
@@ -71,9 +72,11 @@ class ExitHandler(logging.Handler):
 
     @override
     def handle(self, record) -> bool:
+        if self.in_atexit:
+            return False
+
         if record.levelno >= logging.CRITICAL:
             self.num_critical += 1
-            sys.exit(-1)
         elif record.levelno >= logging.ERROR:
             self.num_error += 1
         elif record.levelno >= logging.WARNING:

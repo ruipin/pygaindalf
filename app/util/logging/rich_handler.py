@@ -41,6 +41,10 @@ class CustomRichHandler(RichHandler):
         self.level_prefix = level_prefix
         self.level_suffix = level_suffix
 
+    def should_format(self, record: logging.LogRecord) -> bool:
+        simple = getattr(record, 'simple', False)
+        return not simple
+
     def get_level(self, record: logging.LogRecord) -> str:
         name = record.levelname
         return name[0].ljust(self.level_width)
@@ -67,17 +71,18 @@ class CustomRichHandler(RichHandler):
         """
         text = Text()
 
-        if self.show_level or self.show_name:
-            text.append(self.level_prefix, style='dim')
+        if self.should_format(record):
+            if self.show_level or self.show_name:
+                text.append(self.level_prefix, style='dim')
 
-        if self.show_level:
-            text.append(self.get_level(record), style=self.get_level_style(record))
+            if self.show_level:
+                text.append(self.get_level(record), style=self.get_level_style(record))
 
-        if self.show_name:
-            text.append(f"{':' if self.show_level else ''}{record.name}", style='dim')
+            if self.show_name:
+                text.append(f"{':' if self.show_level else ''}{record.name}", style='dim')
 
-        if self.show_level or self.show_name:
-            text.append(self.level_suffix, style='dim')
+            if self.show_level or self.show_name:
+                text.append(self.level_suffix, style='dim')
 
         text.append(message)
 
@@ -85,8 +90,10 @@ class CustomRichHandler(RichHandler):
 
     @override
     def render(self, *args, record : logging.LogRecord, message_renderable : ConsoleRenderable, traceback: Traceback|None, **kwargs) -> ConsoleRenderable:
+        if not self.should_format(record):
+            return message_renderable
+
         path = Path(record.pathname).name
-        level = self.get_level_text(record)
         line_no = record.lineno
         link_path = record.pathname if self.enable_link_path else None
 

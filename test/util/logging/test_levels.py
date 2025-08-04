@@ -36,7 +36,7 @@ class TestLoggingLevel:
         with pytest.raises((ValueError, TypeError)):
             LoggingLevel(input)
 
-    @pytest.mark.parametrize("input,expected_name,expected_str", [
+    @pytest.mark.parametrize("input,expected_name,expected_repr", [
         ("DEBUG", "DEBUG", "LoggingLevel.DEBUG"),
         (logging.INFO, "INFO", "LoggingLevel.INFO"),
         ("warning", "WARNING", "LoggingLevel.WARNING"),
@@ -45,7 +45,8 @@ class TestLoggingLevel:
         ("5", "5", "LoggingLevel(5)"),
         ("-1", "OFF", "LoggingLevel.OFF"),
     ])
-    def test_str_output(self, input, expected_name, expected_str):
+    def test_str_output(self, input, expected_name, expected_repr):
         model = LoggingLevel(input)
         assert model.name == expected_name
-        assert str(model) == expected_str
+        assert str(model) == expected_name
+        assert repr(model) == expected_repr
