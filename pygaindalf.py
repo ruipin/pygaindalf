@@ -7,8 +7,8 @@ Initializes logging and configuration, parses CLI arguments, and executes comman
 """
 
 import sys
-from app.util.config import CFG
-from app.util.logging import getLogger
+from app.config import CFG
+from app.logging import getLogger
 
 def main():
     CFG.initialize()
@@ -21,6 +21,9 @@ def main():
     log3.error("log3")
     log3.info("log3 info")
     log2.debug("log2 debug")
+
+    cls = CFG.providers['oanda'].component_class
+    cls(CFG.providers['oanda'])
 
 if __name__ == "__main__":
     main()

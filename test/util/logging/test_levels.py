@@ -4,9 +4,11 @@
 import pytest
 import logging
 
-from app.util.logging.levels import LoggingLevel
+from app.util.config.models.logging_levels import LoggingLevel
+
 
 @pytest.mark.logging
+@pytest.mark.logging_levels
 class TestLoggingLevel:
     @pytest.mark.parametrize("input,expected", [
         (10, 10),

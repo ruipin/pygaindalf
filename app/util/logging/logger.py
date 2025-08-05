@@ -3,7 +3,7 @@
 
 import logging
 
-from typing import Any, override, Iterable
+from typing import Any, override
 
 from .loggable_protocol import LoggableProtocol
 
@@ -22,14 +22,14 @@ class Logger(logging.Logger):
             return super().isEnabledFor(level)
 
     def isEnabledForTty(self, level: int) -> bool:
-        from . import LoggingManager
+        from .manager import LoggingManager
         ch = LoggingManager().ch
         if ch is None or ch.level > level:
             return False
         return super().isEnabledFor(level)
 
     def isEnabledForFile(self, level: int) -> bool:
-        from . import LoggingManager
+        from .manager import LoggingManager
         fh = LoggingManager().fh
         if fh is None or fh.level > level:
             return False

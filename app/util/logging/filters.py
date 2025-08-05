@@ -3,7 +3,7 @@
 
 import logging
 
-from app.util.args.parser import override
+from typing import override
 
 
 class HandlerFilter(logging.Filter):

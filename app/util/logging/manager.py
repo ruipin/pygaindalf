@@ -10,12 +10,13 @@ import logging
 import sys
 import os
 
+from typing import Any
+
+from ..helpers import script_info
+
 from .exit_handler import ExitHandler
-
-from ..helpers.script_info import get_script_name, is_unit_test
-
 from .logger import Logger
-from .config import LoggingConfig
+from ..config.models import LoggingConfig
 from .filters import HandlerFilter
 from .formatters import ConditionalFormatter
 
@@ -23,7 +24,7 @@ from .formatters import ConditionalFormatter
 # MARK: Constants
 
 # Log file name
-LOG_FILE_NAME : str = f"{get_script_name()}.log"
+LOG_FILE_NAME : str = f"{script_info.get_script_name()}.log"
 
 
 ######
@@ -39,7 +40,10 @@ class LoggingManager:
     def __init__(self):
         pass
 
-    def initialize(self, config : LoggingConfig):
+    def initialize(self, config : LoggingConfig | dict[str, Any]):
+        if not isinstance(config, LoggingConfig):
+            config = LoggingConfig.model_validate(config)
+
         if self.initialized:
             raise RuntimeError("Must not initialise LoggingManager twice")
         self.initialized = True
@@ -103,7 +107,7 @@ class LoggingManager:
 
     def _configure_exit_handler(self) -> None:
         # Exit handler is not needed for unit tests
-        if is_unit_test():
+        if script_info.is_unit_test():
             return
 
         self.eh = ExitHandler(self)
@@ -111,11 +115,11 @@ class LoggingManager:
 
 
 # Handle unit tests - we just initialize the logging manager with minimal configuration
-if is_unit_test():
-    LoggingManager().initialize(LoggingConfig.model_validate({
+if script_info.is_unit_test():
+    LoggingManager().initialize({
         'levels': {
             'file': 'OFF',
             'tty': 'NOTSET',
         },
         'rich': False,
-    }))
+    })

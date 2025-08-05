@@ -77,6 +77,24 @@ class NamedMixin:
         return shorten_name(self.instance_name)
 
 
+    def __set_name__(self, owner : type, name : str):
+        """
+        Set the instance name based on the attribute name and owner
+        """
+        if self.instance_name is None:
+            from . import HierarchicalMixin
+            if isinstance(self, HierarchicalMixin):
+                if isinstance(owner, NamedMixin):
+                    owner_name = owner.instance_name
+                elif hasattr(owner, '__name__'):
+                    owner_name = owner.__name__
+                else:
+                    owner_name = owner.__class__.__name__
+                self.instance_name = f"{owner_name}.{name}"
+            else:
+                self.instance_name = name
+
+
     # MARK: Printing
     @property
     def __repr_name(self) -> str:

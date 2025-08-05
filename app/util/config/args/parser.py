@@ -11,21 +11,25 @@ import os
 import sys
 
 from typing import Sequence, override
+from abc import ABCMeta, abstractmethod
 
-from ..helpers.script_info import get_script_name, is_unit_test, get_exe_name
+from ...helpers.script_info import get_script_name, is_unit_test, get_exe_name
 
 ###################
 # Argument parser
 
 ENV_PREFIX = get_script_name().upper()
 
-class ArgsParser(argparse.ArgumentParser):
+class ArgParserBase(argparse.ArgumentParser, metaclass=ABCMeta):
     def __init__(self, *args, **kwargs):
         kwargs['prog'] = kwargs.get('prog', get_exe_name())
         kwargs['description'] = kwargs.get('description', "pygaindalf CLI options")
         kwargs['formatter_class'] = argparse.ArgumentDefaultsHelpFormatter
 
         super().__init__(*args, **kwargs)
+
+        self.initialize()
+        self.parse()
 
     @override
     def add_argument(self, name : str, *args, default=None, **kwargs) -> argparse.Action:
@@ -49,6 +53,10 @@ class ArgsParser(argparse.ArgumentParser):
 
     def add(self, *args, **kwargs) -> argparse.Action:
         return self.add_argument(*args, **kwargs)
+
+    @abstractmethod
+    def initialize(self) -> None:
+        raise NotImplementedError("Subclasses must implement the 'initialize' method.")
 
     def get_argv(self) -> Sequence[str]:
         if is_unit_test():

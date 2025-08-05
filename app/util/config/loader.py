@@ -3,34 +3,33 @@
 
 
 import yaml
-import logging
+import argparse
 import sys
 
 from typing import Any
-from reprlib import Repr
 
-from .. import LoggableMixin
-from .models import Config
+from ..mixins import LoggableMixin
 
-from ..args.config_path import ConfigFilePath
-from .yaml_loader import IncludeLoader
+from .models.config_path import ConfigFilePath
 from ..helpers import script_info
-from ..helpers.version import ScriptVersion
+from ..helpers import script_version
 
-from ..args import ARGS
-
-from ..logging.config import AppConfigLoggingOnly, LoggingConfig
 from ..logging.manager import LoggingManager
 
+from .yaml_loader import IncludeLoader
+from .models import ConfigLoggingOnly, ConfigBase
 
-class ConfigFileLoader(LoggableMixin):
-    def __init__(self):
+
+class ConfigFileLoader[C: ConfigBase](LoggableMixin):
+    def __init__(self, config_class: type[C], args : argparse.Namespace):
+        self.config_class = config_class
+        self.args = args
         self.config = None
         self.path = '-'
 
 
     def _merge_args(self) -> None:
-        for name, value in vars(ARGS).items():
+        for name, value in vars(self.args).items():
             if value is None:
                 continue
 
@@ -65,7 +64,7 @@ class ConfigFileLoader(LoggableMixin):
             d[key] = value
 
 
-    def open(self, path : ConfigFilePath | str) -> Config:
+    def open(self, path : ConfigFilePath | str) -> C:
         if self.config is not None:
             raise RuntimeError("Configuration already loaded. Cannot load again.")
 
@@ -84,7 +83,7 @@ class ConfigFileLoader(LoggableMixin):
         return self.load(data)
 
 
-    def load(self, data : dict[str, Any] | str) -> Config:
+    def load(self, data : dict[str, Any] | str) -> C:
         if self.config is not None:
             raise RuntimeError("Configuration already loaded. Cannot load again.")
 
@@ -106,9 +105,9 @@ class ConfigFileLoader(LoggableMixin):
             'name': script_info.get_script_name(),
             'exe': script_info.get_exe_name(),
             'version': {
-                'revision': ScriptVersion().git_revision,
-                'version': ScriptVersion().version,
-                'full': ScriptVersion().version_string
+                'revision': script_version.git_revision,
+                'version': script_version.version,
+                'full': script_version.version_string
             },
             'paths': {
                 'config': self.path,
@@ -123,7 +122,7 @@ class ConfigFileLoader(LoggableMixin):
             self.log.debug('Command line: %s', ' '.join(sys.argv))
 
         # Initialise the global configuration object
-        self.config = Config.model_validate(self.data)
+        self.config = self.config_class.model_validate(self.data)
 
         # Log configuration
         self.log.info("Configuration loaded successfully")
@@ -139,7 +138,7 @@ class ConfigFileLoader(LoggableMixin):
         if not script_info.is_unit_test():
             # Convert logging config entry into LoggingConfig object
             data = self.data.get('logging', {})
-            config = AppConfigLoggingOnly(logging=data)
+            config = ConfigLoggingOnly(logging=data)
             self.data['logging'] = config.logging
 
             # Initialize the logging manager with the config

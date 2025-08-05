@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from .args import ARGS
+
+# Base provider
+from .base import ProviderBaseConfig, ProviderBase, ComponentField

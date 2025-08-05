@@ -3,10 +3,11 @@
 
 import logging
 from pydantic_core import CoreSchema, core_schema
-from pydantic import  Field,  GetCoreSchemaHandler
+from pydantic import  GetCoreSchemaHandler, Field
 from typing import override, Any
 
-from ..helpers.pydantic_lib import ConfigBaseModel
+from . import ConfigBaseModel
+
 
 LEVELS : dict[str, int] = {
     "CRITICAL": logging.CRITICAL,

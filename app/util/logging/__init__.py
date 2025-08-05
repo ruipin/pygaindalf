@@ -4,9 +4,6 @@
 # Exception Handler
 from . import exception_handler
 
-# Logging Manager
-from .manager import LoggingManager
-
 # Loggable Protocol
 from .loggable_protocol import LoggableProtocol
 

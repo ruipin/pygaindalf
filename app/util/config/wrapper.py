@@ -1,33 +1,42 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import Any
+import argparse
 
-from .models import Config
-from .loader import ConfigFileLoader
+from typing import Any
+from functools import cached_property
 
 from ..helpers.script_info import is_unit_test
-from ..args import ARGS
-from ..args.config_path import ConfigFilePath
+
+from .loader import ConfigFileLoader
+from .models import ConfigBase, ConfigFilePath
+from .args import ArgParserBase
 
 
-class ConfigWrapper:
-    def __init__(self):
+class ConfigWrapper[C: ConfigBase, A: ArgParserBase]:
+    def __init__(self, config_class : type[C], argparser_class : type[A]):
+        self.config_class = config_class
+        self.argparser_class = argparser_class
         self.config = None
 
-    def initialize(self) -> None:
-        self.open(getattr(ARGS, 'app.paths.config'))
+    def initialize(self) -> C:
+        return self.open(getattr(self.args, 'app.paths.config'))
 
-    def open(self, path : ConfigFilePath | str) -> Config:
-        loader = ConfigFileLoader()
+    @cached_property
+    def args(self) -> argparse.Namespace:
+        parser = self.argparser_class()
+        return parser.parse_args()
+
+    def open(self, path : ConfigFilePath | str) -> C:
+        loader = ConfigFileLoader(self.config_class, self.args)
         self.config = loader.open(path)
         return self.config
 
-    def load(self, config : str | dict[str, Any] | Config):
-        if isinstance(config, Config):
+    def load(self, config : str | dict[str, Any] | C) -> C:
+        if isinstance(config, self.config_class):
             self.config = config
         elif isinstance(config, (str,dict)):
-            loader = ConfigFileLoader()
+            loader = ConfigFileLoader(self.config_class, self.args)
             self.config = loader.load(config)
         else:
             raise TypeError(f"Expected Config or dict, got {type(config).__name__}")

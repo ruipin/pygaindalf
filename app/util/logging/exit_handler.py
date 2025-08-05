@@ -6,7 +6,7 @@ import logging
 import atexit
 
 from typing import override
-from ..helpers.script_info import get_script_name
+from ..helpers import script_info
 
 from . import manager
 
@@ -27,7 +27,7 @@ class ExitHandler(logging.Handler):
         """
         self.in_atexit = True
 
-        script_name = get_script_name()
+        script_name = script_info.get_script_name()
         success = True if self.num_error == 0 and self.num_critical == 0 else False
 
         # Prepare log message

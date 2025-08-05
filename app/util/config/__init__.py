@@ -2,8 +2,11 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-# Export the configuration object
-from ..args import ARGS
-from .wrapper import ConfigWrapper
+# Models
+from .models import *
 
-CFG = ConfigWrapper()
+# Argument parser
+from .args import *
+
+# Configuration wrapper
+from .wrapper import ConfigWrapper

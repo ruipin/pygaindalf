@@ -7,7 +7,7 @@ from typing import Any
 
 class ConfigFixture:
     def __init__(self):
-        from app.util.config import CFG
+        from app.config import CFG
         self.config = CFG
         self.config.load({})
 

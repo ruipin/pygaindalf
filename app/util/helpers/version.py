@@ -11,10 +11,9 @@ import subprocess
 import tomllib
 
 from functools import cached_property
+from typing import override
 
 from .script_info import get_script_home
-
-from ..args.config_path import override
 
 
 # Constants
@@ -103,3 +102,10 @@ class ScriptVersion:
     @override
     def __repr__(self) -> str:
         return f"<ScriptVersion: {str(self)}>"
+
+
+def __getattr__(key : str) -> str:
+    attr = getattr(ScriptVersion(), key, None)
+    if not isinstance(attr, str):
+        raise AttributeError(f"ScriptVersion has no attribute '{key}'")
+    return attr

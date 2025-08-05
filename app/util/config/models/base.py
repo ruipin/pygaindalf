@@ -1,46 +1,22 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-
 import logging
 
-from typing import Any
-from pydantic import DirectoryPath, Field
 from reprlib import Repr
+from pydantic import Field
 
-from .. import LoggableMixin
+from .logging import LoggingConfig
+from .app_info import AppInfo
+from .base_model import ConfigBaseModel
 
-from ..args.config_path import ConfigFilePath
-from ..helpers.pydantic_lib import ConfigBaseModel
+from ...mixins import LoggableMixin
 
-from ..logging.config import LoggingConfig
+class ConfigLoggingOnly(ConfigBaseModel):
+    logging: LoggingConfig = Field(default=LoggingConfig(), description="Logging configuration")
 
-
-# MARK: App Config
-class VersionConfig(ConfigBaseModel):
-    version : str
-    revision : str | None
-    full : str
-
-class PathsConfig(ConfigBaseModel):
-    config : ConfigFilePath
-    home : DirectoryPath
-
-
-class AppConfig(ConfigBaseModel):
-    name : str
-    exe : str
-    version : VersionConfig
-    paths : PathsConfig
-    test : bool
-
-
-
-# MARK: Main Config
-class Config(ConfigBaseModel, LoggableMixin):
-    app: AppConfig
-    logging: LoggingConfig = Field(default=LoggingConfig())
-
+class ConfigBase(ConfigLoggingOnly, LoggableMixin):
+    app: AppInfo = Field(description="Application information, automatically gathered at startup")
 
     def debug(self) -> None:
         model_dump = None
