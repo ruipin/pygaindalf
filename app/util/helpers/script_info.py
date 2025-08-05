@@ -31,12 +31,18 @@ def is_unit_test() -> bool:
 
 
 TRUST_EXE_NAME = False
-DEFAULT_SCRIPT_NAME = 'pygaindalf.py'
-def get_script_name() -> str:
+DEFAULT_EXE_NAME = 'pygaindalf.py'
+def get_exe_name() -> str:
     if TRUST_EXE_NAME and (not is_unit_test()) and len(sys.argv) > 0 and sys.argv[0]:
-        exe_name = os.path.basename(sys.argv[0])
-        return re.sub("\\.py$", '', exe_name, flags=re.I)
-    return DEFAULT_SCRIPT_NAME
+        return os.path.basename(sys.argv[0])
+    else:
+        return DEFAULT_EXE_NAME
+
+
+def get_script_name() -> str:
+    exe_name = get_exe_name()
+    return re.sub("\\.py$", '', exe_name, flags=re.I)
+
 
 
 def get_script_home() -> str:

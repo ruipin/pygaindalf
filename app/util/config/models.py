@@ -29,6 +29,7 @@ class PathsConfig(ConfigBaseModel):
 
 class AppConfig(ConfigBaseModel):
     name : str
+    exe : str
     version : VersionConfig
     paths : PathsConfig
     test : bool

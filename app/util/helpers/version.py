@@ -8,15 +8,18 @@ Provides version string and git revision helpers.
 
 import os
 import subprocess
+import tomllib
 
 from functools import cached_property
+
+from .script_info import get_script_home
 
 from ..args.config_path import override
 
 
 # Constants
-VERSION = "0.1"
 GIT_ABBREV = 9  # Abbreviation length for git revision
+
 
 # ScriptVersion class
 class ScriptVersion:
@@ -69,7 +72,13 @@ class ScriptVersion:
 
     @property
     def version(self) -> str:
-        return VERSION
+        pyproject_path = os.path.join(get_script_home(), "pyproject.toml")
+        try:
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+            return data["project"]["version"]
+        except Exception:
+            return "unknown"
 
     @cached_property
     def version_string(self) -> str:
@@ -79,7 +88,7 @@ class ScriptVersion:
         Returns:
             str: The version string.
         """
-        ver = VERSION
+        ver = self.version
 
         git_revision = self.git_revision
         if git_revision:

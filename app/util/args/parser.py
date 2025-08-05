@@ -12,7 +12,7 @@ import sys
 
 from typing import Sequence, override
 
-from ..helpers.script_info import get_script_name, is_unit_test
+from ..helpers.script_info import get_script_name, is_unit_test, get_exe_name
 
 ###################
 # Argument parser
@@ -21,7 +21,7 @@ ENV_PREFIX = get_script_name().upper()
 
 class ArgsParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
-        kwargs['prog'] = kwargs.get('prog', get_script_name())
+        kwargs['prog'] = kwargs.get('prog', get_exe_name())
         kwargs['description'] = kwargs.get('description', "pygaindalf CLI options")
         kwargs['formatter_class'] = argparse.ArgumentDefaultsHelpFormatter
 

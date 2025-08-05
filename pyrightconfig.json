@@ -1,3 +1,5 @@
 {
-    "reportImplicitOverride": "warning"
+    "typeCheckingMode": "standard",
+    "reportImplicitOverride": "warning",
+    "enableReachabilityAnalysis": true,
 }

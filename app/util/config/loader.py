@@ -104,6 +104,7 @@ class ConfigFileLoader(LoggableMixin):
             raise RuntimeError("Configuration file contains 'app' section. This is reserved for internal use.")
         self.data['app'] = {
             'name': script_info.get_script_name(),
+            'exe': script_info.get_exe_name(),
             'version': {
                 'revision': ScriptVersion().git_revision,
                 'version': ScriptVersion().version,

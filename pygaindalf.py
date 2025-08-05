@@ -10,7 +10,7 @@ import sys
 from app.util.config import CFG
 from app.util.logging import getLogger
 
-if __name__ == "__main__":
+def main():
     CFG.initialize()
 
     log1 = getLogger('1')
@@ -19,5 +19,8 @@ if __name__ == "__main__":
     log2.warning("log2")
     log3 = getLogger('3', parent=log2)
     log3.error("log3")
-    log3.info("yay")
-    log2.debug("lol")
+    log3.info("log3 info")
+    log2.debug("log2 debug")
+
+if __name__ == "__main__":
+    main()

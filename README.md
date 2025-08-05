@@ -19,6 +19,7 @@ Whether you're juggling broker CSVs, taming forex conversions, deciphering ERI r
 - [3. 🚀 Installation](#3--installation)
   - [3.1. Requirements](#31-requirements)
   - [3.2. Installing dependencies](#32-installing-dependencies)
+  - [3.3. Environment](#33-environment)
 - [4. 🧪 Running Tests](#4--running-tests)
   - [4.1. Filtering Tests](#41-filtering-tests)
 - [5. 📜 License](#5--license)
@@ -75,15 +76,32 @@ Expect rapid development, breaking changes, and ongoing improvements. This READM
 ### 3.1. Requirements
 
 - Python 3.13 or later
-- pip (Python package installer)
+- [uv](https://github.com/astral-sh/uv) (fast Python package installer)
 
 ### 3.2. Installing dependencies
 
 To install the required dependencies, run:
 
 ```sh
-pip install -r requirements.txt
+uv sync
 ```
+
+This will use `pyproject.toml` and `uv.lock` to install all dependencies.
+
+### 3.3. Environment
+
+You can either:
+
+- Activate a virtual environment (recommended):
+  ```sh
+  source .venv/bin/activate
+  ```
+
+- Or, skip the venv and prefix commands with `uv run`, e.g.:
+  ```sh
+  uv run pygaindalf.py
+  uv run pytest
+  ```
 
 ---
 
@@ -92,7 +110,7 @@ pip install -r requirements.txt
 To run the test suite using pytest, simply execute:
 
 ```sh
-pytest
+uv run pytest
 ```
 
 This will discover and run all tests in the `test/` directory.
@@ -103,11 +121,11 @@ You can filter which tests to run using pytest's `-k` and `-m` options:
 
 - To run only tests with a specific mark (e.g., `@pytest.mark.logging`):
   ```sh
-  pytest -m logging
+  uv run pytest -m logging
   ```
 - To run tests whose names match a substring or expression:
   ```sh
-  pytest -k "expression"
+  uv run pytest -k "expression"
   ```
 
 See the [pytest documentation](https://docs.pytest.org/en/stable/how-to/mark.html) for more details.
