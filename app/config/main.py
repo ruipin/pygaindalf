@@ -4,7 +4,9 @@
 
 from pydantic import Field
 
-from ..components.providers import ProviderBaseConfig
+from .default import DefaultConfig
+
+from ..components.providers import BaseProviderConfig
 
 from ..util.config import ConfigBase
 
@@ -12,4 +14,6 @@ from ..util.config import ConfigBase
 
 # MARK: Main Config
 class Config(ConfigBase):
-    providers: dict[str, ProviderBaseConfig] = Field({})
+    default: DefaultConfig = Field(default_factory=DefaultConfig, description="Default configuration for the application")
+
+    providers: dict[str, BaseProviderConfig] = Field({})

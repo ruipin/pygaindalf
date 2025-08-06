@@ -17,7 +17,7 @@ from ..helpers import script_version
 from ..logging.manager import LoggingManager
 
 from .yaml_loader import IncludeLoader
-from .models import ConfigLoggingOnly, ConfigBase
+from .models import ConfigLoggingOnly, ConfigBase, BaseConfigModel
 
 
 class ConfigFileLoader[C: ConfigBase](LoggableMixin):
@@ -121,8 +121,11 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
             self.log.info("****** %s %s ******", self.data['app']['name'], self.data['app']['version']['full'], extra={'simple': True})
             self.log.debug('Command line: %s', ' '.join(sys.argv))
 
+        # Initialize the default configuration
+        self._init_default()
+
         # Initialise the global configuration object
-        self.config = self.config_class.model_validate(self.data)
+        self.config = self.config_class.model_validate(self.data, context={'default': self.data['default']})
 
         # Log configuration
         self.log.info("Configuration loaded successfully")
@@ -134,7 +137,6 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
 
 
     def _init_logging_manager(self) -> None:
-
         if not script_info.is_unit_test():
             # Convert logging config entry into LoggingConfig object
             data = self.data.get('logging', {})
@@ -144,3 +146,12 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
             # Initialize the logging manager with the config
             manager = LoggingManager()
             manager.initialize(config.logging)
+
+    def _init_default(self) -> None:
+        config = self.data.get('default', {})
+        default_type = self.config_class.model_fields['default'].annotation
+        if not isinstance(default_type, type(BaseConfigModel)):
+            raise TypeError(f"Expected BaseConfigModel for 'default', got {type(default_type).__name__}")
+
+        default = default_type.model_validate(config)
+        self.data['default'] = default

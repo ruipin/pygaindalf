@@ -6,7 +6,7 @@ from pydantic_core import CoreSchema, core_schema
 from pydantic import  GetCoreSchemaHandler, Field
 from typing import override, Any
 
-from . import ConfigBaseModel
+from . import BaseConfigModel
 
 
 LEVELS : dict[str, int] = {
@@ -140,7 +140,7 @@ class LoggingLevel:
             return str(self.value)
 
 
-class LoggingLevels(ConfigBaseModel):
+class LoggingLevels(BaseConfigModel):
     file: LoggingLevel = Field(default=LoggingLevel(     -1     ), description="Log level for log file output")
     tty : LoggingLevel = Field(default=LoggingLevel(logging.INFO), description="Log level for TTY output")
     root: LoggingLevel = Field(default=LoggingLevel(      0     ), description="Log level for the root log handler")

@@ -2,4 +2,4 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 # Base forex provider
-from .base import ForexProviderBase, ForexProviderBaseConfig
+from .forex import ForexProviderBase, BaseForexProviderConfig

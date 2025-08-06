@@ -3,4 +3,4 @@
 
 
 # Base provider
-from .base import *
+from .component import *

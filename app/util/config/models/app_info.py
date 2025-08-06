@@ -5,19 +5,19 @@
 from pydantic import DirectoryPath
 
 from .config_path import ConfigFilePath
-from . import ConfigBaseModel
+from . import BaseConfigModel
 
 
-class VersionInfo(ConfigBaseModel):
+class VersionInfo(BaseConfigModel):
     version : str
     revision : str | None
     full : str
 
-class PathsInfo(ConfigBaseModel):
+class PathsInfo(BaseConfigModel):
     config : ConfigFilePath
     home : DirectoryPath
 
-class AppInfo(ConfigBaseModel):
+class AppInfo(BaseConfigModel):
     name : str
     exe : str
     version : VersionInfo

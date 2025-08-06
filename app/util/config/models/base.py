@@ -8,11 +8,11 @@ from pydantic import Field
 
 from .logging import LoggingConfig
 from .app_info import AppInfo
-from .base_model import ConfigBaseModel
+from .base_model import BaseConfigModel
 
 from ...mixins import LoggableMixin
 
-class ConfigLoggingOnly(ConfigBaseModel):
+class ConfigLoggingOnly(BaseConfigModel):
     logging: LoggingConfig = Field(default=LoggingConfig(), description="Logging configuration")
 
 class ConfigBase(ConfigLoggingOnly, LoggableMixin):

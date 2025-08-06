@@ -3,4 +3,4 @@
 
 
 # Base provider
-from .base import ProviderBaseConfig, ProviderBase, ComponentField
+from .provider import BaseProviderConfig, ProviderBase, ComponentField

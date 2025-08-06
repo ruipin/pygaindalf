@@ -5,11 +5,11 @@ from typing import override
 from abc import ABCMeta
 
 from ...util import classproperty
-from .. import ComponentBaseConfig, ComponentBase, ComponentField
+from .. import BaseComponentConfig, ComponentBase, ComponentField
 
 
 # MARK: Provider Base Configuration
-class ProviderBaseConfig(ComponentBaseConfig, metaclass=ABCMeta):
+class BaseProviderConfig(BaseComponentConfig, metaclass=ABCMeta):
     @classproperty
     @override
     def package_root(cls) -> str:
@@ -19,4 +19,4 @@ class ProviderBaseConfig(ComponentBaseConfig, metaclass=ABCMeta):
 
 # MARK: Provider Base class
 class ProviderBase(ComponentBase, metaclass=ABCMeta):
-    config = ComponentField(ProviderBaseConfig)
+    config = ComponentField(BaseProviderConfig)

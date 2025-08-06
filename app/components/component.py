@@ -10,15 +10,15 @@ from abc import ABCMeta, abstractmethod
 from app.util.mixins import LoggableHierarchicalNamedMixin
 
 from ..util.helpers import classproperty
-from ..util.config import ConfigBaseModel
+from ..util.config import BaseConfigModel
 
 
-class ComponentBaseConfig(ConfigBaseModel, metaclass=ABCMeta):
+class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
     package : str
 
     @model_validator(mode='wrap')
     @classmethod
-    def _validate(cls, data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> 'ComponentBaseConfig':
+    def _coerce_to_concrete_class(cls, data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> 'BaseComponentConfig':
         # Already instantiated
         if isinstance(data, cls):
             return data
@@ -49,7 +49,9 @@ class ComponentBaseConfig(ConfigBaseModel, metaclass=ABCMeta):
             raise TypeError(f"Expected configuration class {cls.__name__}, got {concrete_cls.__name__} instead.")
 
         # Construct concrete class
-        return concrete_cls.model_validate(data, context={'concrete_class': concrete_cls})
+        context = dict(info.context or {})
+        context.update({'concrete_class': concrete_cls})
+        return concrete_cls.model_validate(data, context=context)
 
     @classmethod
     def get_component_class_for_package(cls, package) -> type['ComponentBase']:
@@ -70,7 +72,7 @@ class ComponentBaseConfig(ConfigBaseModel, metaclass=ABCMeta):
         config_cls = getattr(component_cls, 'config_class', None)
         if config_cls is None:
             raise ImportError(f"Configuration class for {package} does not define 'config_class'.")
-        if not issubclass(config_cls, ComponentBaseConfig):
+        if not issubclass(config_cls, BaseComponentConfig):
             raise TypeError(f"Expected configuration class {cls.__name__}, got {config_cls.__name__} instead.")
 
         # Done
@@ -114,8 +116,8 @@ class ComponentField[T]:
 
 
 class ComponentBase(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
-    config = ComponentField(ComponentBaseConfig)
-    config_class : type[ComponentBaseConfig]
+    config = ComponentField(BaseComponentConfig)
+    config_class : type[BaseComponentConfig]
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -144,7 +146,7 @@ class ComponentBase(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
 
             setattr(cls, f'{attr}_class', classproperty(lambda cls: desc_type))
 
-    def __init__(self, config : ComponentBaseConfig, *args, **kwargs):
+    def __init__(self, config : BaseComponentConfig, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.config = config

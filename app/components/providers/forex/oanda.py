@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from .base import ForexProviderBase, ForexProviderBaseConfig, ComponentField
+from .forex import ForexProviderBase, BaseForexProviderConfig, ComponentField
+import decimal
 
 
 # MARK: Configuration
-class OandaForexProviderConfig(ForexProviderBaseConfig):
+class OandaForexProviderConfig(BaseForexProviderConfig):
     pass
 
 
@@ -18,6 +19,11 @@ class OandaForexProvider(ForexProviderBase):
         super().__init__(config, *args, **kwargs)
 
         self.log.info(self.config_class)
+        self.log.info(self.decimal.context)
+
+        x = self.decimal('5.233232')
+        y = self.decimal('2.112435')
+        self.log.info(f"{x} * {y} = {x * y}")
 
 
 COMPONENT = OandaForexProvider
