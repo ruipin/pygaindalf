@@ -16,7 +16,7 @@ from app.util.mixins import LoggableMixin, LoggableNamedMixin, LoggableHierarchi
 class L(LoggableMixin):
     pass
 
-class LH(LoggableNamedMixin):
+class LN(LoggableNamedMixin):
     pass
 
 class LHN(LoggableHierarchicalNamedMixin):
@@ -44,13 +44,29 @@ class TestLoggableMixins:
         assert a.log.name == 'L'
 
         # LoggableNamedMixin instance
-        b = LH()
+        b = LN()
         assert b.log is not None
         assert b.log.parent == logging.root
-        assert b.log.name == 'LH'
+        assert b.log.name == 'LN'
 
         # LoggableHierarchicalNamedMixin instance with parent
         c = LHN(instance_name='b', instance_parent=b)
         assert c.log is not None
         assert c.log.parent == b.log
-        assert c.log.name == 'LH.b'
+        assert c.log.name == 'LN.b'
+
+    def test_class(self):
+        # Simple LoggableMixin class
+        assert L.log is not None
+        assert L.log.parent == logging.root
+        assert L.log.name == 'T(L)'
+
+        # LoggableNamedMixin class
+        assert LN.log is not None
+        assert LN.log.parent == logging.root
+        assert LN.log.name == 'T(LN)'
+
+        # LoggableHierarchicalNamedMixin class
+        assert LHN.log is not None
+        assert LHN.log.parent == logging.root
+        assert LHN.log.name == 'T(LHN)'

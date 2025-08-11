@@ -4,14 +4,14 @@
 from abc import ABCMeta, abstractmethod
 from pydantic import Field
 
-from ....util.config.default import DefaultFactory
+from ....util.config.inherit import FieldInherit
 from .. import ProviderBase, BaseProviderConfig, ComponentField
 from ....util.helpers.decimal import DecimalConfig, DecimalFactory
 
 
 # MARK: Provider Base Configuration
 class BaseForexProviderConfig(BaseProviderConfig, metaclass=ABCMeta):
-    decimal : DecimalConfig = Field(default_factory=DefaultFactory('decimal', DecimalConfig), description="Decimal configuration for provider")
+    decimal : DecimalConfig = FieldInherit(default=DecimalConfig(), description="Decimal configuration for provider")
 
 
 

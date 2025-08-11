@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override
+from typing import override, Any
 
-from . import shorten_name
 from .named import NamedMixin
-from .hierarchical import HierarchicalMixin
+from .hierarchical import HierarchicalMixin, HierarchicalProtocol
 
-from ..logging import Logger, getLogger
+from ..helpers.classinstanceproperty import classinstanceproperty
+from ..helpers.classinstancemethod import classinstancemethod
+from ..logging import Logger, getLogger, LoggableProtocol
+
 
 class LoggableMixin:
     """
@@ -34,43 +36,35 @@ class LoggableMixin:
         if HierarchicalMixin in mro and mro.index(HierarchicalMixin) < mro.index(LoggableMixin):
             raise TypeError(f"'LoggableMixin' must come *before* 'NamedMixin' in the MRO")
 
-        setattr(self, '__log', None)
-
-    @classmethod
-    def class_short_name(cls) -> str:
-        """
-        Get a shortened class name for logging.
-
-        Returns:
-            str: The shortened class name.
-        """
-        return shorten_name(cls.__name__)
+        self._reset_log_cache()
 
 
-    # MARK: Support for Hierarchical/Named
-    def _set_instance_parent(self, new_parent : HierarchicalMixin|None) -> None:
-        """
-        Set the instance parent and reset the logger.
-
-        Args:
-            new_parent: The new parent object.
-        """
-        super()._set_instance_parent(new_parent) # type: ignore - HierarchicalMixin provides _set_instance_parent
-        setattr(self, '__log', None)
-
+    # MARK: Named/Hierarchical integration
     def _set_instance_name(self, new_name : str) -> None:
         """
-        Set the instance name and reset the logger.
+        Set the instance name for logging and identification.
 
         Args:
-            new_name (str): The new name to set.
+            name (str): The name to set for the instance.
         """
-        super()._set_instance_name(new_name) # type: ignore - NamedMixin provides _set_instance_name
-        setattr(self, '__log', None)
+        if isinstance(self, NamedMixin):
+            super()._set_instance_name(new_name) # pyright: ignore [reportAttributeAccessIssue] - NamedMixin provides _set_instance_name
+            self._reset_log_cache()
+
+    def _set_instance_parent(self, new_parent: HierarchicalMixin|None) -> None:
+        """
+        Set the instance parent for hierarchical logging and identification.
+
+        Args:
+            new_parent (HierarchicalMixin|None): The new parent to set for the instance.
+        """
+        if isinstance(self, HierarchicalMixin):
+            super()._set_instance_parent(new_parent) # pyright: ignore [reportAttributeAccessIssue] - HierarchicalMixin provides _set_instance_parent
+            self._reset_log_cache()
 
 
     # MARK: Logging
-    @property
+    @classinstanceproperty
     def log(self) -> Logger:
         """
         Returns a logger for the current object. If self.name is 'None', uses the class name.
@@ -80,12 +74,35 @@ class LoggableMixin:
         """
         log : Logger|None = getattr(self, '__log', None)
         if log is None:
-            parent : HierarchicalMixin|None = self.instance_parent if isinstance(self, HierarchicalMixin) else None
+            parent = getattr(self, 'instance_parent', None)
+            if not isinstance(parent, LoggableProtocol):
+                parent = None
             log = getLogger(self.__log_name__, parent=parent)
             setattr(self, '__log', log)
         return log
 
-    @property
+    @classinstancemethod
+    def _reset_log_cache(self) -> None:
+        setattr(self, '__log', None)
+
+    @classinstanceproperty
+    def __default_log_name__(self) -> str:
+        """
+        Get the default log name for the current object.
+
+        Returns:
+            str: The default log name.
+        """
+        name = getattr(self, '__name__', None)
+        if name is None:
+            name = getattr(self.__class__, '__name__', None)
+        if name is None:
+            raise ValueError("Could not determine default name")
+        if isinstance(self, type):
+            name = f"T({name})"
+        return name
+
+    @classinstanceproperty
     def __log_name__(self) -> str:
         """
         Get the log name for the current object.
@@ -93,9 +110,12 @@ class LoggableMixin:
         Returns:
             str: The log name.
         """
-        return self.instance_name if isinstance(self, NamedMixin) else self.__class__.__name__
+        instance_name = getattr(self, 'instance_name', None)
+        if isinstance(instance_name, str):
+            return instance_name
+        return self.__default_log_name__
 
-    @property
+    @classinstanceproperty
     def __log_hierarchy__(self) -> str:
         """
         Get the log hierarchy for the current object.
@@ -103,7 +123,7 @@ class LoggableMixin:
         Returns:
             str: The log hierarchy.
         """
-        return self.instance_hierarchy if isinstance(self, HierarchicalMixin) else self.__log_name__
+        return self.instance_hierarchy if isinstance(self, HierarchicalProtocol) else self.__log_name__
 
 
     # MARK: Printing

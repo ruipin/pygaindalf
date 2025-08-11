@@ -12,8 +12,13 @@ class ClassPropertyDescriptor[C = type, T = Any]:
     def __get__(self, obj: Any, cls: type|None = None) -> T:
         if cls is None:
             cls = type(obj)
-        #return self.fget.__get__(obj, cls)()
         return self.fget.__get__(obj, cls)()
+
+    def __set__(self, obj: Any, value: Any) -> None:
+        raise AttributeError("Can't set classproperty descriptors")
+
+    def __delete__(self, obj: Any) -> None:
+        raise AttributeError("Can't delete classproperty descriptors")
 
 
 def classproperty[C = type, T = Any](func : Callable[[C], T]) -> ClassPropertyDescriptor[C, T]:

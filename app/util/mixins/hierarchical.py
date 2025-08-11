@@ -1,10 +1,29 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override
+from pdb import run
+from typing import override, runtime_checkable, Protocol, Any
 
 from . import shorten_name
-from .named import NamedMixin
+from .named import NamedProtocol, NamedMixin
+
+
+@runtime_checkable
+class HierarchicalProtocol(Protocol):
+    @property
+    def instance_parent(self) -> Any: ...
+    @property
+    def instance_hierarchy(self) -> str: ...
+
+@runtime_checkable
+class HierarchicalMutableProtocol(Protocol):
+    @property
+    def instance_parent(self) -> Any: ...
+    @property
+    def instance_hierarchy(self) -> str: ...
+    @instance_parent.setter
+    def instance_parent(self, new_parent: Any) -> None: ...
+
 
 class HierarchicalMixin:
     """
@@ -33,7 +52,7 @@ class HierarchicalMixin:
         if NamedMixin in mro and mro.index(NamedMixin) < mro.index(HierarchicalMixin):
             raise TypeError(f"'HierarchicalMixin' must come *before* 'NamedMixin' in the MRO")
 
-        self.__parent : HierarchicalMixin|None = instance_parent
+        self._set_instance_parent(instance_parent)
 
     @classmethod
     def class_short_name(cls) -> str:
@@ -47,7 +66,7 @@ class HierarchicalMixin:
 
 
     # MARK: Parent
-    def _set_instance_parent(self, new_parent : HierarchicalMixin|None) -> None:
+    def _set_instance_parent(self, new_parent : Any) -> None:
         """
         Set the instance parent.
 
@@ -56,22 +75,22 @@ class HierarchicalMixin:
         Raises:
             TypeError: If new_parent is not a HierarchicalMixin.
         """
-        if new_parent is not None and not isinstance(new_parent, HierarchicalMixin):
-            raise TypeError("'new_parent' must be a class that extends 'HierarchicalMixin'")
-        self.__parent = new_parent
+        if new_parent is not None and not isinstance(new_parent, (HierarchicalMixin, NamedMixin)):
+            raise TypeError("'new_parent' must be a class that extends 'HierarchicalMixin' or 'NamedMixin'")
+        setattr(self, '__parent', new_parent)
 
     @property
-    def instance_parent(self) -> HierarchicalMixin|None:
+    def instance_parent(self) -> Any:
         """
         Get the instance parent.
 
         Returns:
             HierarchicalMixin | None: The parent object.
         """
-        return self.__parent
+        return getattr(self, '__parent', None)
 
     @instance_parent.setter
-    def instance_parent(self, new_parent : HierarchicalMixin|None) -> None:
+    def instance_parent(self, new_parent : Any) -> None:
         """
         Set the instance parent.
 
@@ -88,11 +107,26 @@ class HierarchicalMixin:
         Returns:
             str: The hierarchy string.
         """
-        hier = self.instance_name if isinstance(self, NamedMixin) else self.__class__.__name__
-        if self.__parent is None:
-            return hier
+        hier = self.instance_name if isinstance(self, NamedProtocol) else self.__class__.__name__
 
-        return f"{self.__parent.instance_hierarchy}.{hier}"
+        parent = getattr(self, '__parent', None)
+        if parent is None:
+            pass
+
+        elif isinstance(parent, HierarchicalProtocol):
+            hier = f"{parent.instance_hierarchy}.{hier}"
+
+        elif isinstance(parent, NamedProtocol):
+            hier = f"{parent.instance_name}.{hier}"
+
+        elif hasattr(parent, '__name__'):
+            hier = f"{parent.__name__}.{hier}"
+
+        else:
+            hier = f"{parent.__class__.__name__}.{hier}"
+
+        return hier
+
 
 
     # MARK: Printing

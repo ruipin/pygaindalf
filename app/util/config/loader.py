@@ -121,11 +121,8 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
             self.log.info("****** %s %s ******", self.data['app']['name'], self.data['app']['version']['full'], extra={'simple': True})
             self.log.debug('Command line: %s', ' '.join(sys.argv))
 
-        # Initialize the default configuration
-        self._init_default()
-
         # Initialise the global configuration object
-        self.config = self.config_class.model_validate(self.data, context={'default': self.data['default']})
+        self.config = self.config_class.model_validate(self.data)
 
         # Log configuration
         self.log.info("Configuration loaded successfully")
@@ -146,12 +143,3 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
             # Initialize the logging manager with the config
             manager = LoggingManager()
             manager.initialize(config.logging)
-
-    def _init_default(self) -> None:
-        config = self.data.get('default', {})
-        default_type = self.config_class.model_fields['default'].annotation
-        if not isinstance(default_type, type(BaseConfigModel)):
-            raise TypeError(f"Expected BaseConfigModel for 'default', got {type(default_type).__name__}")
-
-        default = default_type.model_validate(config)
-        self.data['default'] = default

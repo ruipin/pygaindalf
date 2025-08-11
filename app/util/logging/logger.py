@@ -35,6 +35,8 @@ class Logger(logging.Logger):
             return False
         return super().isEnabledFor(level)
 
+logging.setLoggerClass(Logger)
+
 
 # Helper for class constructors to obtain a logger object
 # Returns a logger object

@@ -8,6 +8,7 @@ from pydantic import ConfigDict, field_validator
 from typing import override, Any
 
 from ..config import BaseConfigModel
+from ..config.inherit import FieldInherit
 
 
 # MARK: Enumerations
@@ -52,13 +53,13 @@ class DecimalSignals(Enum):
 
 # MARK: Configuration
 class DecimalConfig(BaseConfigModel):
-    precision : int                        | None = 9
-    rounding  : DecimalRounding            | None = DecimalRounding.HALF_DOWN
-    traps     : dict[DecimalSignals, bool] | None = { signal: True for signal in DecimalSignals }
-    emin      : int                        | None = None
-    emax      : int                        | None = None
-    capitals  : bool                       | None = None
-    clamp     : bool                       | None = True
+    precision : int                        | None = FieldInherit(9)
+    rounding  : DecimalRounding            | None = FieldInherit(DecimalRounding.HALF_DOWN)
+    traps     : dict[DecimalSignals, bool] | None = FieldInherit({ signal: True for signal in DecimalSignals })
+    emin      : int                        | None = FieldInherit(None)
+    emax      : int                        | None = FieldInherit(None)
+    capitals  : bool                       | None = FieldInherit(None)
+    clamp     : bool                       | None = FieldInherit(True)
 
     @field_validator('rounding', mode='before')
     @classmethod

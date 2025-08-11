@@ -62,8 +62,6 @@ class LoggingManager:
         """
         logging.captureWarnings(True)
 
-        logging.setLoggerClass(Logger)
-
         logging.root.setLevel(self.config.levels.root.value)
 
     def _configure_file_handler(self) -> None:

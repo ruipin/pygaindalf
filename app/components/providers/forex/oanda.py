@@ -20,6 +20,7 @@ class OandaForexProvider(ForexProviderBase):
 
         self.log.info(self.config_class)
         self.log.info(self.decimal.context)
+        self.config.log.info(f"Decimal context: {self.decimal.context}")
 
         x = self.decimal('5.233232')
         y = self.decimal('2.112435')
