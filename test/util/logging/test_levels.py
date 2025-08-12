@@ -4,7 +4,7 @@
 import pytest
 import logging
 
-from app.util.config.models.logging_levels import LoggingLevel
+from app.util.logging.levels import LoggingLevel
 
 
 @pytest.mark.logging

@@ -44,9 +44,9 @@ def get_script_name() -> str:
     return re.sub("\\.py$", '', exe_name, flags=re.I)
 
 
-
+TRUST_SCRIPT_HOME = True
 def get_script_home() -> str:
-    if len(sys.argv) > 0 and sys.argv[0]:
+    if TRUST_SCRIPT_HOME and (not is_unit_test()) and len(sys.argv) > 0 and sys.argv[0]:
         return os.path.dirname(os.path.abspath(sys.argv[0]))
     else:
         return os.getcwd()

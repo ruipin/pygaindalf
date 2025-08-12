@@ -45,7 +45,7 @@ class LoggingManager:
             config = LoggingConfig.model_validate(config)
 
         if self.initialized:
-            raise RuntimeError("Must not initialise LoggingManager twice")
+            raise RuntimeError(f"Must not initialise {self.__class__.__name__} twice")
         self.initialized = True
 
         self.config = config
@@ -55,6 +55,7 @@ class LoggingManager:
         self._configure_file_handler()
         self._configure_tty_handler ()
         self._configure_exit_handler()
+        self._configure_custom_levels()
 
     def _configure_root_logger(self) -> None:
         """
@@ -110,6 +111,14 @@ class LoggingManager:
 
         self.eh = ExitHandler(self)
         logging.root.addHandler(self.eh)
+
+    def _configure_custom_levels(self) -> None:
+        """
+        Configure custom loggers with the specified levels.
+        """
+        for name, level in self.config.levels.custom.items():
+            print(name, level)
+            logging.getLogger(name).setLevel(level.value)
 
 
 # Handle unit tests - we just initialize the logging manager with minimal configuration

@@ -17,7 +17,8 @@ from ..helpers import script_version
 from ..logging.manager import LoggingManager
 
 from .yaml_loader import IncludeLoader
-from .models import ConfigLoggingOnly, ConfigBase, BaseConfigModel
+from .models import ConfigLoggingOnly, ConfigBase
+from ..requests import RequestsManager
 
 
 class ConfigFileLoader[C: ConfigBase](LoggableMixin):
@@ -129,6 +130,9 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
         if not script_info.is_unit_test():
             self.config.debug()
 
+        # Initialize any other managers that depend on the configuration
+        self._init_requests_manager()
+
         # Done
         return self.config
 
@@ -143,3 +147,15 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
             # Initialize the logging manager with the config
             manager = LoggingManager()
             manager.initialize(config.logging)
+
+
+    def _init_requests_manager(self) -> None:
+        if self.config is None:
+            raise RuntimeError("Configuration not loaded. Call 'load()' first.")
+
+        manager = RequestsManager()
+
+        # We only initialize the requests manager if it is not already initialized
+        if manager.initialized:
+            return
+        manager.initialize(self.config.requests, install=True)

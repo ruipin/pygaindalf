@@ -3,10 +3,9 @@
 
 import logging
 from pydantic_core import CoreSchema, core_schema
-from pydantic import  GetCoreSchemaHandler, Field
+from pydantic import  GetCoreSchemaHandler
+from pydantic_core import PydanticUseDefault
 from typing import override, Any
-
-from . import BaseConfigModel
 
 
 LEVELS : dict[str, int] = {
@@ -23,6 +22,15 @@ REVERSE_LEVELS : dict[int, str] = {v: k for k, v in LEVELS.items()}
 
 
 class LoggingLevel:
+    CRITICAL : 'LoggingLevel'
+    ERROR    : 'LoggingLevel'
+    WARNING  : 'LoggingLevel'
+    INFO     : 'LoggingLevel'
+    DEBUG    : 'LoggingLevel'
+    INFO     : 'LoggingLevel'
+    NOTSET   : 'LoggingLevel'
+    OFF      : 'LoggingLevel'
+
     def __init__(self, value: int):
         if not isinstance(value, int):
             value = self.__class__.coerce(value)
@@ -81,19 +89,10 @@ class LoggingLevel:
     def validate(cls, value : Any, info : core_schema.ValidationInfo) -> 'LoggingLevel':
         # Handle 'None' value as a special case - rely on field default value
         if value is None:
-            field_name = info.field_name
-            if field_name is None:
-                raise ValueError("Cannot coerce 'None' value when the field name under validation is unknown")
-
-            field = LoggingLevels.model_fields.get(field_name, None)
-            if field is None:
-                raise ValueError("Cannot coerce 'None' value when field info was not found")
-
-            value = field.default
-
-        level = cls.coerce(value)
+            raise PydanticUseDefault()
 
         # Return instance of class
+        level = cls.coerce(value)
         return cls(level)
 
     @classmethod
@@ -140,7 +139,5 @@ class LoggingLevel:
             return str(self.value)
 
 
-class LoggingLevels(BaseConfigModel):
-    file: LoggingLevel = Field(default=LoggingLevel(     -1     ), description="Log level for log file output")
-    tty : LoggingLevel = Field(default=LoggingLevel(logging.INFO), description="Log level for TTY output")
-    root: LoggingLevel = Field(default=LoggingLevel(      0     ), description="Log level for the root log handler")
+for name, value in LEVELS.items():
+    setattr(LoggingLevel, name, LoggingLevel(value))

@@ -4,7 +4,7 @@
 import decimal
 
 from enum import Enum
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict, PositiveInt, field_validator
 from typing import override, Any
 
 from ..config import BaseConfigModel
@@ -53,7 +53,7 @@ class DecimalSignals(Enum):
 
 # MARK: Configuration
 class DecimalConfig(BaseConfigModel):
-    precision : int                        | None = FieldInherit(9)
+    precision : PositiveInt                | None = FieldInherit(9)
     rounding  : DecimalRounding            | None = FieldInherit(DecimalRounding.HALF_DOWN)
     traps     : dict[DecimalSignals, bool] | None = FieldInherit({ signal: True for signal in DecimalSignals })
     emin      : int                        | None = FieldInherit(None)
