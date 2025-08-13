@@ -6,7 +6,9 @@
 
 Whether you're juggling broker CSVs, taming forex conversions, deciphering ERI reports, or wrestling with S104 incantations, this project aims to be your trusty wand. Configure your spellbook, summon your data, and let 🧙‍♂️ *Gaindalf the Red, White, and Blue* 🇬🇧 do the rest.
 
-[![License](https://img.shields.io/github/license/ruipin/pygaindalf)](LICENSE)
+[![Static Badge](https://img.shields.io/badge/-ruipin%2Fpygaindalf-grey?logo=github)](https://github.com/ruipin/pygaindalf)
+[![GitHub last commit](https://img.shields.io/github/last-commit/ruipin/pygaindalf/main)](https://github.com/ruipin/pygaindalf/commits/main/)
+[![License](https://img.shields.io/github/license/ruipin/pygaindalf)](https://github.com/ruipin/pygaindalf/blob/main/LICENSE)
 [![Version (latest)](https://img.shields.io/github/v/release/ruipin/pygaindalf)](https://github.com/ruipin/pygaindalf/releases/latest)
 [![GitHub issues](https://img.shields.io/github/issues-raw/ruipin/pygaindalf)](https://github.com/ruipin/pygaindalf/issues)
 [![Ko-fi](https://img.shields.io/badge/-buy%20me%20a%20coffee-%23FF5E5B?logo=Ko-fi&logoColor=white)](https://ko-fi.com/ruipin)
@@ -18,7 +20,7 @@ Whether you're juggling broker CSVs, taming forex conversions, deciphering ERI r
   - [2.2. Philosophy](#22-philosophy)
 - [3. 🚀 Installation](#3--installation)
   - [3.1. Requirements](#31-requirements)
-  - [3.2. Installing dependencies](#32-installing-dependencies)
+  - [3.2. Installing python dependencies](#32-installing-python-dependencies)
   - [3.3. Environment](#33-environment)
 - [4. 🧪 Running Tests](#4--running-tests)
   - [4.1. Filtering Tests](#41-filtering-tests)
@@ -35,7 +37,7 @@ This software is provided *as-is* with **no guarantees or warranties**. You alon
 
 Neither the authors nor distributors accept any liability for any data loss, inaccuracies, or operational failures - even if warned of potential issues.
 
-For full details, see Sections 15 through 17 of the [GPLv3 license](LICENSE).
+For full details, see Sections 15 through 17 of the [GPLv3 license](https://github.com/ruipin/pygaindalf/blob/main/LICENSE).
 
 ## 2. ✨ Status
 
@@ -77,10 +79,11 @@ Expect rapid development, breaking changes, and ongoing improvements. This READM
 
 - Python 3.13 or later
 - [uv](https://github.com/astral-sh/uv) (fast Python package installer)
+- [graphviz](https://graphviz.org) (for rendering class inheritance diagrams in the documentation)
 
-### 3.2. Installing dependencies
+### 3.2. Installing python dependencies
 
-To install the required dependencies, run:
+To install the required python dependencies, run:
 
 ```sh
 uv sync
@@ -134,7 +137,7 @@ See the [pytest documentation](https://docs.pytest.org/en/stable/how-to/mark.htm
 
 ## 5. 📜 License
 
-`pygaindalf` is licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE) or later.
+`pygaindalf` is licensed under the [GNU General Public License v3.0 (GPL-3.0)](https://github.com/ruipin/pygaindalf/blob/main/LICENSE) or later.
 
 This means you are free to use, modify, and distribute the software under the terms of the GPLv3, which ensures that the project and any derivatives remain free and open.
 

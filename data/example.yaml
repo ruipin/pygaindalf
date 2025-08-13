@@ -1,0 +1,18 @@
+logging:
+  levels:
+    file: OFF
+    tty: INFO
+
+default:
+  decimal:
+    precision: 9
+    rounding: HALF_DOWN
+
+providers:
+  oanda:
+    package: forex.oanda
+    decimal:
+      precision: 20
+      traps:
+        INEXACT: False
+        ROUNDED: False

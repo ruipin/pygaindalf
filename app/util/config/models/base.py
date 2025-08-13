@@ -11,12 +11,12 @@ from .base_model import BaseConfigModel
 
 from ...logging.config import LoggingConfig
 from ...mixins import LoggableMixin
-from ...requests import RequestsConfig
+from ...requests.config import RequestsConfig
 
 class ConfigLoggingOnly(BaseConfigModel):
     logging: LoggingConfig = Field(default=LoggingConfig(), description="Logging configuration")
 
-class ConfigBase(ConfigLoggingOnly, LoggableMixin):
+class ConfigBase(ConfigLoggingOnly):
     app: AppInfo = Field(description="Application information, automatically gathered at startup")
 
     requests : RequestsConfig = Field(default_factory=RequestsConfig, description="HTTP requests configuration, including rate limiting and caching")

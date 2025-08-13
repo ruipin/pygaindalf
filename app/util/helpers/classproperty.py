@@ -3,6 +3,7 @@
 
 
 from typing import Any, Callable
+from . import script_info
 
 
 class ClassPropertyDescriptor[C = type, T = Any]:
@@ -10,6 +11,8 @@ class ClassPropertyDescriptor[C = type, T = Any]:
         self.fget: Any = fget
 
     def __get__(self, obj: Any, cls: type|None = None) -> T:
+        if script_info.is_documentation_build():
+            return self.fget
         if cls is None:
             cls = type(obj)
         return self.fget.__get__(obj, cls)()
@@ -22,6 +25,7 @@ class ClassPropertyDescriptor[C = type, T = Any]:
 
 
 def classproperty[C = type, T = Any](func : Callable[[C], T]) -> ClassPropertyDescriptor[C, T]:
-    if not isinstance(func, (classmethod, staticmethod)):
-        func = classmethod(func) # pyright: ignore
+    if not script_info.is_documentation_build():
+        if not isinstance(func, (classmethod, staticmethod)):
+            func = classmethod(func) # pyright: ignore
     return ClassPropertyDescriptor(func) # pyright: ignore

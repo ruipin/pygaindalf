@@ -136,7 +136,6 @@ class ComponentSubclassMeta(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
         """
         Validate that all ComponentField descriptors in the subclass are subclasses of their base class types and create a '*_class' property for each descriptor.
         """
-        print(cls.__name__)
         super().__init_subclass__(**kwargs)
 
         mro = cls.__mro__
@@ -159,7 +158,6 @@ class ComponentSubclassMeta(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
                     raise TypeError(f"{cls.__name__}.{attr} must be a subclass of {base_desc.type.__name__}.")
 
             # Create a class property for the descriptor
-            print(attr, desc_type)
             setattr(cls, f'{attr}_class', classproperty(lambda cls: desc_type))
 
     def __init__(self, config : ComponentConfigBase, *args, **kwargs):

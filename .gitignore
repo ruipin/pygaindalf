@@ -209,3 +209,5 @@ __marimo__/
 
 # Project-specific files
 /cache
+/docs/api
+/docs/build

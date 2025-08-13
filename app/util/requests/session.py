@@ -1,14 +1,10 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from ..helpers import script_info
-
 from requests import Session
 from requests.adapters import HTTPAdapter
-from requests_cache import CacheMixin, SQLiteCache
+from requests_cache import CacheMixin
 from requests_ratelimiter import LimiterMixin, LimiterAdapter
-
-import logging
 
 
 class CustomSession(CacheMixin, LimiterMixin, Session): # pyright: ignore [reportIncompatibleMethodOverride] as this is caused by the mixins which are in library code we do not control

@@ -33,10 +33,7 @@ class HierarchicalMixin:
     Used for logging, naming, and configuration inheritance in pygaindalf.
     """
 
-    # TODO: Remove once Python 3.14 is the minimum supported version as it does not require quoting the current class name in type hint
-    type HierarchicalMixin = 'HierarchicalMixin'
-
-    def __init__(self, *args, instance_parent: HierarchicalMixin|None = None, **kwargs):
+    def __init__(self, *args, instance_parent: 'HierarchicalMixin | NamedMixin | None' = None, **kwargs):
         """
         Initialize the mixin and set the instance parent.
 
@@ -66,7 +63,7 @@ class HierarchicalMixin:
 
 
     # MARK: Parent
-    def _set_instance_parent(self, new_parent : Any) -> None:
+    def _set_instance_parent(self, new_parent : 'HierarchicalMixin | NamedMixin | None') -> None:
         """
         Set the instance parent.
 

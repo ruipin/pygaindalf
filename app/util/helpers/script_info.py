@@ -30,6 +30,17 @@ def is_unit_test() -> bool:
     return True
 
 
+def is_documentation_build() -> bool:
+    """
+    Test whether running in a documentation build environment.
+
+    Returns:
+        bool: True if running in a documentation build environment, False otherwise.
+    """
+    # Detect Sphinx documentation build
+    return 'sphinx' in sys.modules
+
+
 TRUST_EXE_NAME = False
 DEFAULT_EXE_NAME = 'pygaindalf.py'
 def get_exe_name() -> str:

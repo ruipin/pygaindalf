@@ -5,6 +5,7 @@ from typing import override, Any
 
 from .named import NamedMixin
 from .hierarchical import HierarchicalMixin, HierarchicalProtocol
+from .named import NamedMixin
 
 from ..helpers.classinstanceproperty import classinstanceproperty
 from ..helpers.classinstancemethod import classinstancemethod
@@ -51,7 +52,7 @@ class LoggableMixin:
             super()._set_instance_name(new_name) # pyright: ignore [reportAttributeAccessIssue] - NamedMixin provides _set_instance_name
             self._reset_log_cache()
 
-    def _set_instance_parent(self, new_parent: HierarchicalMixin|None) -> None:
+    def _set_instance_parent(self, new_parent: HierarchicalMixin|NamedMixin|None) -> None:
         """
         Set the instance parent for hierarchical logging and identification.
 

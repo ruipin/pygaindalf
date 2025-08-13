@@ -6,7 +6,7 @@ import argparse
 from typing import Any
 from functools import cached_property
 
-from ..helpers.script_info import is_unit_test
+from ..helpers import script_info
 
 from .loader import ConfigFileLoader
 from .models import ConfigBase, ConfigFilePath
@@ -43,11 +43,16 @@ class ConfigWrapper[C: ConfigBase, A: ArgParserBase]:
         return self.config
 
     def reset(self) -> None:
-        if not is_unit_test():
+        if not script_info.is_unit_test():
             raise RuntimeError("Cannot reset configuration outside of unit tests")
         self.config = None
 
     def __getattr__(self, name) -> Any:
-        if self.config is None:
-            raise RuntimeError("Configuration not initialized. Call 'initialize()' first.")
-        return getattr(self.config, name)
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            if script_info.is_documentation_build():
+                raise AttributeError(f"Configuration not initialized. Cannot access '{name}'")
+            if self.config is None:
+                raise RuntimeError("Configuration not initialized. Call 'initialize()' first.")
+            return getattr(self.config, name)
