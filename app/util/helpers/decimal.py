@@ -5,6 +5,7 @@ import decimal
 
 from enum import Enum
 from pydantic import ConfigDict, PositiveInt, field_validator
+from pydantic_core import PydanticUseDefault
 from typing import override, Any
 
 from ..config import BaseConfigModel
@@ -28,7 +29,7 @@ class DecimalRounding(Enum):
 
     @override
     def __repr__(self) -> str:
-        return self.name
+        return f"{self.__class__.__name__}.{self.name}"
 
 
 class DecimalSignals(Enum):
@@ -48,14 +49,14 @@ class DecimalSignals(Enum):
 
     @override
     def __repr__(self) -> str:
-        return self.name
+        return f"{self.__class__.__name__}.{self.name}"
 
 
 # MARK: Configuration
 class DecimalConfig(BaseConfigModel):
-    precision : PositiveInt                | None = FieldInherit(9)
-    rounding  : DecimalRounding            | None = FieldInherit(DecimalRounding.HALF_DOWN)
-    traps     : dict[DecimalSignals, bool] | None = FieldInherit({ signal: True for signal in DecimalSignals })
+    precision : PositiveInt                       = FieldInherit(32)
+    rounding  : DecimalRounding                   = FieldInherit(DecimalRounding.HALF_DOWN)
+    traps     : dict[DecimalSignals, bool]        = FieldInherit({ signal: True for signal in DecimalSignals })
     emin      : int                        | None = FieldInherit(None)
     emax      : int                        | None = FieldInherit(None)
     capitals  : bool                       | None = FieldInherit(None)
@@ -73,6 +74,36 @@ class DecimalConfig(BaseConfigModel):
         except KeyError:
             return value
 
+    @field_validator('traps', mode='before')
+    @classmethod
+    def validate_traps(cls, value: Any) -> dict[DecimalSignals, bool]:
+        if value is None:
+            raise PydanticUseDefault()
+        if not isinstance(value, dict):
+            raise TypeError(f"Expected a dictionary for traps, got {type(value).__name__}")
+
+        new_signals = {}
+
+        for key, enabled in value.items():
+            if isinstance(key, str):
+                try:
+                    key = DecimalSignals[key]
+                except KeyError:
+                    raise ValueError(f"Invalid signal name: {key}")
+
+            new_signals[key] = enabled
+        return new_signals
+
+    @field_validator('traps', mode='after')
+    @classmethod
+    def add_missing_traps(cls, value: dict[DecimalSignals, bool]) -> dict[DecimalSignals, bool]:
+        # Ensure all DecimalSignals are present in the traps dictionary and default to True
+        for signal in DecimalSignals:
+            if signal not in value:
+                value[signal] = True
+        return value
+
+
     @property
     def rounding_value(self) -> str | None:
         if self.rounding is None:
@@ -80,10 +111,14 @@ class DecimalConfig(BaseConfigModel):
         return self.rounding.value
 
     @property
-    def traps_value(self) -> dict[type, bool] | None:
+    def traps_value(self) -> list[type] | None:
         if self.traps is None:
             return None
-        return {key.value if isinstance(key, DecimalSignals) else key: value for key, value in self.traps.items()}
+
+        return [
+            signal.value if isinstance(signal, DecimalSignals) else signal
+            for signal, enabled in self.traps.items() if enabled
+        ]
 
     @property
     def kwargs(self) -> dict[str, Any]:
@@ -97,9 +132,6 @@ class DecimalConfig(BaseConfigModel):
             'clamp'   : self.clamp
         }
 
-class DecimalConfigUnfrozen(DecimalConfig):
-    model_config = ConfigDict(frozen=False)
-
 
 # MARK: Factory
 class DecimalFactory:
@@ -107,46 +139,21 @@ class DecimalFactory:
     Factory function to create a Decimal class with specified context settings
     This is useful for financial calculations where precision is crucial.
     """
+    def __init__(self, config : DecimalConfig | None = None, **kwargs) -> None:
+        super().__init__()
 
-    def __init__(self, *args, **kwargs):
-        self.configure(*args, **kwargs)
-
-    def configure(self, config : DecimalConfig | None = None, **kwargs) -> DecimalConfig:
         if config is not None and kwargs:
             raise ValueError("Either provide a decimal config or keyword arguments, not both.")
-        if config is not None:
-            config = DecimalConfigUnfrozen.model_validate(config.model_dump())
-        elif getattr(self, 'config', None) is None:
-            config = DecimalConfigUnfrozen.model_validate(kwargs)
-        else:
-            config = self.config.model_copy(update=kwargs)
+        elif config is None:
+            config = DecimalConfig.model_validate(kwargs)
 
         self.config = config
-        self._configure_context()
-
-        return self.config
-
-    def _configure_context(self) -> None:
-        if not hasattr(self, 'context'):
-            self.context = decimal.Context(
-                prec     = self.config.precision,
-                rounding = self.config.rounding_value,
-                traps    = self.config.traps_value,
-                Emin     = self.config.emin,
-                Emax     = self.config.emax,
-                capitals = self.config.capitals,
-                clamp    = self.config.clamp
-            )
-        else:
-            for key, value in self.config.kwargs.items():
-                current = getattr(self.context, key, None)
-                if value is not None and value != current:
-                    setattr(self.context, key, value)
+        self.context = decimal.Context(**self.config.kwargs)
 
     def apply_context(self) -> None:
         decimal.setcontext(self.context)
 
-    def with_context(self):
+    def context_manager(self):
         return decimal.localcontext(self.context)
 
     def __call__(self, value: str | int | float | decimal.Decimal) -> decimal.Decimal:

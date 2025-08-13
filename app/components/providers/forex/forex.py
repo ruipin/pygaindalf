@@ -1,27 +1,36 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from abc import ABCMeta, abstractmethod
-from pydantic import Field
+import datetime
+from decimal import Decimal
 
-from ....util.config.inherit import FieldInherit
-from .. import ProviderBase, BaseProviderConfig, ComponentField
-from ....util.helpers.decimal import DecimalConfig, DecimalFactory
+from abc import ABCMeta, abstractmethod
+from .. import component_entrypoint, ProviderBase, BaseProviderConfig, ComponentField
 
 
 # MARK: Provider Base Configuration
 class BaseForexProviderConfig(BaseProviderConfig, metaclass=ABCMeta):
-    decimal : DecimalConfig = FieldInherit(default=DecimalConfig(), description="Decimal configuration for provider")
+    pass
 
 
 
 # MARK: Provider Base class
 class ForexProviderBase(ProviderBase, metaclass=ABCMeta):
     config = ComponentField(BaseForexProviderConfig)
-    decimal = ComponentField(DecimalFactory)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
-        self.decimal = DecimalFactory(self.config.decimal)
-        self.decimal.apply_context()
+    @abstractmethod
+    @component_entrypoint
+    def get_daily_rate(self, from_currency: str, to_currency: str, date: datetime.date) -> Decimal:
+        """
+        Get the daily exchange rate from one currency to another.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    @abstractmethod
+    @component_entrypoint
+    def convert_currency(self, amount: Decimal, from_currency: str, to_currency: str, date: datetime.date) -> Decimal:
+        """
+        Convert an amount from one currency to another on a specific date.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")

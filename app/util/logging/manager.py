@@ -117,7 +117,6 @@ class LoggingManager:
         Configure custom loggers with the specified levels.
         """
         for name, level in self.config.levels.custom.items():
-            print(name, level)
             logging.getLogger(name).setLevel(level.value)
 
 

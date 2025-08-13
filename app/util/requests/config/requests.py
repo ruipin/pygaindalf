@@ -12,4 +12,4 @@ from pydantic import Field
 # MARK: Requests Configuration
 class RequestsConfig(BaseConfigModel):
     cache : RequestCacheConfig = Field(default_factory=RequestCacheConfig, description='Configuration for the requests cache.')
-    rate_limit : DefaultRequestRateConfig = Field(default_factory=lambda: DefaultRequestRateConfig(limit=1, interval=10), description='Rate limit configuration for requests.')
+    rate_limit : DefaultRequestRateConfig = Field(default_factory=lambda: DefaultRequestRateConfig(limit=1, interval=1), description='Rate limit configuration for requests.')

@@ -26,8 +26,6 @@ class LoggingLevels(BaseConfigModel):
 
     @field_validator('custom', mode='after')
     def add_default_custom_levels(cls, value: dict[str, LoggingLevel]) -> dict[str, LoggingLevel]:
-        print(value)
-
         # Seed the custom levels with the default ones if they are not present
         for name, level in DEFAULT_CUSTOM_LEVELS.items():
             if name not in value:

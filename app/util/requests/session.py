@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+from ..helpers import script_info
+
 from requests import Session
 from requests.adapters import HTTPAdapter
 from requests_cache import CacheMixin, SQLiteCache
@@ -16,7 +18,8 @@ class CustomSession(CacheMixin, LimiterMixin, Session): # pyright: ignore [repor
 
     def __init__(self, *args, **kwargs):
         from .manager import RequestsManager
-        self._requests_config = RequestsManager().config
+        self._requests_manager = RequestsManager()
+        self._requests_config = self._requests_manager.config
         if self._requests_config is None:
             raise RuntimeError("RequestsManager must be initialized before using CustomSession")
 

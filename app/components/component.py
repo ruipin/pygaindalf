@@ -2,23 +2,31 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import importlib
+import functools
+import inspect
 
 from pydantic import ModelWrapValidatorHandler, ValidationInfo, model_validator
-from typing import Any, Annotated, Callable, overload, TypeVar
+from typing import Any, Annotated, Callable, overload, TypeVar, override
 from abc import ABCMeta, abstractmethod
 
 from app.util.mixins import LoggableHierarchicalNamedMixin
+
+from ..util.config.inherit import FieldInherit
+from ..util.helpers.decimal import DecimalConfig, DecimalFactory
 
 from ..util.helpers import classproperty
 from ..util.config import BaseConfigModel
 
 
-class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
+# MARK: Base Component Configuration
+class ComponentConfigBase(BaseConfigModel, metaclass=ABCMeta):
     package : str
+
+    decimal : DecimalConfig = FieldInherit(default_factory=DecimalConfig, description="Decimal configuration for provider")
 
     @model_validator(mode='wrap')
     @classmethod
-    def _coerce_to_concrete_class(cls, data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> 'BaseComponentConfig':
+    def _coerce_to_concrete_class(cls, data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> 'ComponentConfigBase':
         # Already instantiated
         if isinstance(data, cls):
             return data
@@ -72,7 +80,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         config_cls = getattr(component_cls, 'config_class', None)
         if config_cls is None:
             raise ImportError(f"Configuration class for {package} does not define 'config_class'.")
-        if not issubclass(config_cls, BaseComponentConfig):
+        if not issubclass(config_cls, ComponentConfigBase):
             raise TypeError(f"Expected configuration class {cls.__name__}, got {config_cls.__name__} instead.")
 
         # Done
@@ -88,6 +96,8 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         raise NotImplementedError(f"{cls.__name__}.package_root() must be implemented.")
 
 
+
+# MARK: Component Field Descriptor
 class ComponentField[T]:
     def __init__(self, cls : type[T]):
         self.type = cls
@@ -115,15 +125,18 @@ class ComponentField[T]:
 
 
 
-class ComponentBase(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
-    config = ComponentField(BaseComponentConfig)
-    config_class : type[BaseComponentConfig]
+# MARK: Component subclassing mechanism
+class ComponentSubclassMeta(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
+    config = ComponentField(ComponentConfigBase)
+    config_class : type[ComponentConfigBase]
+
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
         """
         Validate that all ComponentField descriptors in the subclass are subclasses of their base class types and create a '*_class' property for each descriptor.
         """
+        print(cls.__name__)
         super().__init_subclass__(**kwargs)
 
         mro = cls.__mro__
@@ -135,6 +148,7 @@ class ComponentBase(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
                 continue
             desc_type = desc.type
 
+            # Sanity check the parent classes for the same attribute
             for parent in mro:
                 base_desc = getattr(parent.__dict__, attr, None)
                 if base_desc is None:
@@ -144,9 +158,109 @@ class ComponentBase(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
                 if not isinstance(desc_type, base_desc.type):
                     raise TypeError(f"{cls.__name__}.{attr} must be a subclass of {base_desc.type.__name__}.")
 
+            # Create a class property for the descriptor
+            print(attr, desc_type)
             setattr(cls, f'{attr}_class', classproperty(lambda cls: desc_type))
 
-    def __init__(self, config : BaseComponentConfig, *args, **kwargs):
+    def __init__(self, config : ComponentConfigBase, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.config = config
+
+
+
+# MARK: Component entrypoint decorator
+def component_entrypoint[C,T](entrypoint: Callable[..., T]) -> Callable[..., T]:
+    """
+    Decorator for component entrypoint methods.
+    It does sanity checks, sets the local context, and calls the component's setup and teardown methods.
+    """
+    @functools.wraps(entrypoint)
+    def wrapper(self : C, *args, **kwargs) -> T:
+        if not isinstance(self, ComponentBase):
+            raise TypeError(f"{entrypoint.__name__} must be called on a ComponentBase instance, got {type(self).__name__} instead.")
+
+        # If the component is already inside an entrypoint, we just call the entrypoint directly.
+        if self.inside_entrypoint:
+            result = entrypoint(self, *args, **kwargs)
+        else:
+            try:
+                self._inside_entrypoint = True
+
+                self.before_entrypoint(entrypoint.__name__, *args, **kwargs)
+
+                try:
+                    result = self.wrap_entrypoint(entrypoint, *args, **kwargs)
+                finally:
+                    self.after_entrypoint(entrypoint.__name__)
+            finally:
+                self._inside_entrypoint = False
+
+        return result
+
+    wrapper.__dict__['component_entrypoint'] = True
+    return wrapper
+
+
+
+# MARK: Component Base Class
+class ComponentBase(ComponentSubclassMeta, metaclass=ABCMeta):
+    # Decimal factory for precise calculations
+    decimal : DecimalFactory
+
+    def __init__(self, config : ComponentConfigBase, *args, **kwargs):
+        super().__init__(config, *args, **kwargs)
+        self._inside_entrypoint = False
+
+        self.decimal = DecimalFactory(self.config.decimal)
+
+    @property
+    def inside_entrypoint(self) -> bool:
+        """
+        Returns True if the component is currently inside an entrypoint method.
+        This is used to prevent recursive calls to entrypoint methods.
+        """
+        return self._inside_entrypoint if hasattr(self, '_inside_entrypoint') else False
+
+    def _assert_inside_entrypoint(self, msg : str = '') -> None:
+        """
+        Assert that the component is inside an entrypoint method.
+        Raises a RuntimeError if not.
+        """
+        if not self.inside_entrypoint:
+            if msg: msg = f" {msg}"
+            raise RuntimeError(f"An entrypoint for {self.instance_name} is not being executed.{msg}")
+
+    def _assert_outside_entrypoint(self, msg : str = '') -> None:
+        """
+        Assert that the component is outside an entrypoint method.
+        Raises a RuntimeError if not.
+        """
+        if self.inside_entrypoint:
+            if msg: msg = f" {msg}"
+            raise RuntimeError(f"An entrypoint for '{self.instance_name}' is already being executed.{msg}")
+
+    def before_entrypoint(self, entrypoint_name : str, *args, **kwargs) -> None:
+        self._assert_inside_entrypoint("Must not call 'before_entrypoint' outside an entrypoint method.")
+
+    def wrap_entrypoint[T](self, entrypoint : Callable[..., T], *args, **kwargs) -> T:
+        self._assert_inside_entrypoint("Must not call 'wrap_entrypoint' outside an entrypoint method.")
+
+        with self.decimal.context_manager():
+            return entrypoint(self, *args, **kwargs)
+
+    def after_entrypoint(self, entrypoint_name : str) -> None:
+        self._assert_inside_entrypoint("Must not call 'after_entrypoint' outside an entrypoint method.")
+
+    @override
+    def __getattribute__(self, name: str) -> Any:
+        obj = super().__getattribute__(name)
+
+        # If the object is a child class method and not a component entrypoint, raise an error as that likely means someone is trying to call it directly.
+        # This is of course not fool-proof (and anyone who really wants to call us will be able to bypass this), but it is a good way to prevent accidental misuse.
+        if inspect.ismethod(obj) and not hasattr(ComponentBase, name):
+            is_entrypoint = getattr(obj, 'component_entrypoint', False)
+            if not is_entrypoint and not self.inside_entrypoint:
+                    raise RuntimeError(f"Method '{name}' is not a component entrypoint. Must call it through the component's entrypoint method.")
+
+        return obj

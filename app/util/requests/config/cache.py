@@ -5,7 +5,7 @@ import os
 
 from enum import Enum, StrEnum
 from pydantic import Field, PositiveInt, model_validator
-from typing import Any
+from typing import Any, override
 
 from requests_ratelimiter import Duration
 
@@ -22,6 +22,10 @@ class RequestsCacheBackend(StrEnum):
     FILESYSTEM = 'filesystem'
     MEMORY = 'memory'
 
+    @override
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}.{self.name}"
+
 class RequestsCacheFileType(Enum):
     """
     Enum for file types used in requests_cache.
@@ -30,6 +34,10 @@ class RequestsCacheFileType(Enum):
     JSON = 'json'
     YAML = 'yaml'
 
+    @override
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}.{self.name}"
+
 class RequestsCacheRootDir(Enum):
     """
     Enum for root directories used in requests_cache.
@@ -37,6 +45,10 @@ class RequestsCacheRootDir(Enum):
     SCRIPT_HOME = 'script_home'
     TEMP = 'temp'
     USER = 'user'
+
+    @override
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}.{self.name}"
 
 
 # MARK: Request Cache Configuration

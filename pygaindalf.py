@@ -13,17 +13,19 @@ from app.logging import getLogger
 def main():
     CFG.initialize()
 
-    log1 = getLogger('1')
-    log1.info("log1")
-    log2 = getLogger('2')
-    log2.warning("log2")
-    log3 = getLogger('3', parent=log2)
-    log3.error("log3")
-    log3.info("log3 info")
-    log2.debug("log2 debug")
-
     cls = CFG.providers['oanda'].component_class
-    cls(CFG.providers['oanda'])
+    oanda = cls(CFG.providers['oanda'])
+
+    import datetime
+    from_currency = 'USD'
+    to_currency = 'EUR'
+    date = datetime.date.today() - datetime.timedelta(days=1)
+    rate = oanda.get_daily_rate(from_currency, to_currency, date)
+    getLogger('main').info(f"{from_currency}->{to_currency} exchange rate for {date}: {rate}")
+
+    amount = 100
+    converted = oanda.convert_currency(amount, from_currency, to_currency, date)
+    getLogger('main').info(f"Converted {amount} {from_currency} to {converted} {to_currency} on {date}")
 
 if __name__ == "__main__":
     main()

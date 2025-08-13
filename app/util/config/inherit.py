@@ -3,7 +3,7 @@
 
 import rich.repr
 
-from typing import Iterable, override, Any
+from typing import Iterable, override, Any, overload, Callable
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
 
@@ -12,22 +12,33 @@ from .context_stack import ContextStack
 
 # MARK : Inherit Factory
 class InheritFactory[T]:
-    def __init__(self, default : T) -> None:
+    def __init__(self, default : T | None = None, default_factory : Callable[..., T] | None = None) -> None:
         self.default = default
+        self.default_factory = default_factory
 
     def search(self, name : str) -> dict[str, Any] | BaseModel | None:
         return ContextStack.find_inheritance(name)
 
     def __call__(self) -> T:
-        return self.default
+        if self.default_factory is not None:
+            return self.default_factory()
+        elif self.default is not None:
+            return self.default
+        else:
+            return None # pyright: ignore[reportReturnType]
 
     @override
     def __repr__(self) -> str:
         return f'InheritFactory(default={self.default})'
 
 
-def FieldInherit[T](default : T, *args, **kwargs) -> T:
-    return Field(default_factory=InheritFactory(default), *args, **kwargs) # pyright: ignore [reportReturnType]
+@overload
+def FieldInherit[T](default: T, *args, **kwargs) -> T: ...
+@overload
+def FieldInherit[T](default_factory: Callable[..., T], *args, **kwargs) -> T: ...
+
+def FieldInherit[T](default: T | None = None, default_factory: Callable[..., T] | None = None, *args, **kwargs) -> T: # pyright: ignore[reportInconsistentOverload]
+    return Field(default_factory=InheritFactory(default=default, default_factory=default_factory), validate_default=True, *args, **kwargs)
 
 
 # MARK : Diffing

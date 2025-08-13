@@ -5,6 +5,7 @@ import pytest
 
 from typing import Any
 
+
 class ConfigFixture:
     def __init__(self):
         from app.config import CFG
