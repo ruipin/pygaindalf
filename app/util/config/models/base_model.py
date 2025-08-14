@@ -3,10 +3,10 @@
 
 import rich.repr
 
-from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator
+from pydantic import ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator
 from typing import override, Any
 
-from app.util.mixins import LoggableHierarchicalNamedMixin, HierarchicalMixin, NamedMixin
+from ...mixins.models import LoggableHierarchicalNamedModel
 
 from ...helpers.classproperty import ClassPropertyDescriptor
 from ..inherit import InheritFactory, Inherit, Default
@@ -16,11 +16,10 @@ from ..context_stack import ContextStack
 
 
 
-class BaseConfigModel(BaseModel, LoggableHierarchicalNamedMixin):
+class BaseConfigModel(LoggableHierarchicalNamedModel):
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
-        ignored_types=(ClassPropertyDescriptor,)
     )
 
 
@@ -53,31 +52,6 @@ class BaseConfigModel(BaseModel, LoggableHierarchicalNamedMixin):
             yield self.defaulted
 
 
-    def _seed_parent_and_name_to_object(self, name : str, obj : Any) -> None:
-        if isinstance(obj, HierarchicalMixin):
-            obj._set_instance_parent(self)
-        if isinstance(obj, NamedMixin):
-            obj._set_instance_name(name)
-
-    @model_validator(mode='after')
-    def _validator_seed_parent_and_name(self, info: ValidationInfo) -> Any:
-        for fldnm in self.__class__.model_fields.keys():
-            fld = getattr(self, fldnm, None)
-            if fld is None:
-                continue
-
-            if isinstance(fld, list):
-                for item in fld:
-                    self._seed_parent_and_name_to_object(fldnm, item)
-            elif isinstance(fld, dict):
-                for key, item in fld.items():
-                    self._seed_parent_and_name_to_object(f"{fldnm}.{key}", item)
-            else:
-                self._seed_parent_and_name_to_object(fldnm, fld)
-
-        return self
-
-
     @model_validator(mode='wrap')
     @classmethod
     def _validator_model_propagate_context(cls, value: Any, handler: ModelWrapValidatorHandler, info : ValidationInfo) -> Any:
@@ -95,7 +69,7 @@ class BaseConfigModel(BaseModel, LoggableHierarchicalNamedMixin):
 
     @field_validator('*', mode='wrap')
     @classmethod
-    def _validator_propagate_context(cls, value: Any, handler: ModelWrapValidatorHandler, info : ValidationInfo) -> Any:
+    def _validator_field_propagate_context(cls, value: Any, handler: ModelWrapValidatorHandler, info : ValidationInfo) -> Any:
         """
         Propagate the context from the model to the field values.
         This allows fields to access the context when they are validated.

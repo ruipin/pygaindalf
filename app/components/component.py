@@ -19,25 +19,17 @@ from ..util.config import BaseConfigModel
 
 
 # MARK: Base Component Configuration
-class ComponentConfigBase(BaseConfigModel, metaclass=ABCMeta):
+class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
     package : str
 
     decimal : DecimalConfig = FieldInherit(default_factory=DecimalConfig, description="Decimal configuration for provider")
 
     @model_validator(mode='wrap')
     @classmethod
-    def _coerce_to_concrete_class(cls, data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> 'ComponentConfigBase':
+    def _coerce_to_concrete_class(cls, data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> 'BaseComponentConfig':
         # Already instantiated
         if isinstance(data, cls):
             return data
-
-        # Concrete class already resolved
-        if isinstance(info.context, dict):
-            concrete_cls = info.context.get('concrete_class', None)
-            if concrete_cls is not None:
-                if cls is not concrete_cls:
-                    raise TypeError(f"Expected {cls.__name__} configuration, got {concrete_cls.__name__} instead.")
-                return handler(data)
 
         # Must be a dictionary
         if not isinstance(data, dict):
@@ -53,13 +45,12 @@ class ComponentConfigBase(BaseConfigModel, metaclass=ABCMeta):
         concrete_cls = getattr(component_cls, 'config_class', None)
         if concrete_cls is None:
             raise ImportError(f"Configuration class for {package} does not define 'config_class'.")
+        if cls is concrete_cls:
+            return handler(data)
         if not issubclass(concrete_cls, cls):
             raise TypeError(f"Expected configuration class {cls.__name__}, got {concrete_cls.__name__} instead.")
 
-        # Construct concrete class
-        context = dict(info.context or {})
-        context.update({'concrete_class': concrete_cls})
-        return concrete_cls.model_validate(data, context=context)
+        return concrete_cls.model_validate(data)
 
     @classmethod
     def get_component_class_for_package(cls, package) -> type['ComponentBase']:
@@ -80,7 +71,7 @@ class ComponentConfigBase(BaseConfigModel, metaclass=ABCMeta):
         config_cls = getattr(component_cls, 'config_class', None)
         if config_cls is None:
             raise ImportError(f"Configuration class for {package} does not define 'config_class'.")
-        if not issubclass(config_cls, ComponentConfigBase):
+        if not issubclass(config_cls, BaseComponentConfig):
             raise TypeError(f"Expected configuration class {cls.__name__}, got {config_cls.__name__} instead.")
 
         # Done
@@ -127,8 +118,8 @@ class ComponentField[T]:
 
 # MARK: Component subclassing mechanism
 class ComponentSubclassMeta(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
-    config = ComponentField(ComponentConfigBase)
-    config_class : type[ComponentConfigBase]
+    config = ComponentField(BaseComponentConfig)
+    config_class : type[BaseComponentConfig]
 
 
     @classmethod
@@ -160,7 +151,7 @@ class ComponentSubclassMeta(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
             # Create a class property for the descriptor
             setattr(cls, f'{attr}_class', classproperty(lambda cls: desc_type))
 
-    def __init__(self, config : ComponentConfigBase, *args, **kwargs):
+    def __init__(self, config : BaseComponentConfig, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.config = config
@@ -206,7 +197,7 @@ class ComponentBase(ComponentSubclassMeta, metaclass=ABCMeta):
     # Decimal factory for precise calculations
     decimal : DecimalFactory
 
-    def __init__(self, config : ComponentConfigBase, *args, **kwargs):
+    def __init__(self, config : BaseComponentConfig, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
         self._inside_entrypoint = False
 

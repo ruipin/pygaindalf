@@ -3,9 +3,12 @@
 
 import logging
 from typing import runtime_checkable, Protocol, Any
+from abc import abstractmethod
 
 #############
 @runtime_checkable
 class LoggableProtocol(Protocol):
     @property
-    def log(self) -> logging.Logger: ...
+    @abstractmethod
+    def log(self) -> logging.Logger:
+        raise NotImplementedError("Subclasses must implement log property")

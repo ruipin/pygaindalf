@@ -7,11 +7,11 @@ import re
 
 from typing import Any, Generator
 
-from app.components import ComponentConfigBase, ComponentBase
+from app.components import BaseComponentConfig, ComponentBase
 
 
 # MARK: Component configuration fixture
-class ComponentConfigFixture[T: ComponentConfigBase]:
+class ComponentConfigFixture[T: BaseComponentConfig]:
     def __init__(self):
         pass
 

@@ -3,12 +3,12 @@
 
 from typing import override, Any
 
-from .named import NamedMixin
-from .hierarchical import HierarchicalMixin, HierarchicalProtocol
-from .named import NamedMixin
+from .hierarchical import HierarchicalMixin, HierarchicalProtocol, HierarchicalMixinMinimal
+from .named import NamedProtocol, NamedMixin, NamedMixinMinimal
 
 from ..helpers.classinstanceproperty import classinstanceproperty
 from ..helpers.classinstancemethod import classinstancemethod
+from ..helpers import mro
 from ..logging import Logger, getLogger, LoggableProtocol
 
 
@@ -20,6 +20,10 @@ class LoggableMixin:
     Used throughout pygaindalf for consistent, contextual logging.
     """
 
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        mro.ensure_mro_order(cls, LoggableMixin, before=(NamedMixinMinimal, NamedMixin, NamedProtocol, HierarchicalMixinMinimal, HierarchicalMixin, HierarchicalProtocol))
+
     def __init__(self, *args, **kwargs):
         """
         Initialize the mixin and set up the logger.
@@ -28,40 +32,10 @@ class LoggableMixin:
             *args: Additional positional arguments for superclasses.
             **kwargs: Additional keyword arguments for superclasses.
         """
-        super().__init__(*args, **kwargs)
+        super(LoggableMixin, self).__init__(*args, **kwargs)
 
-        # Sanity check: We must come before Named
-        mro = self.__class__.__mro__
-        if NamedMixin in mro and mro.index(NamedMixin) < mro.index(LoggableMixin):
-            raise TypeError(f"'LoggableMixin' must come *before* 'NamedMixin' in the MRO")
-        if HierarchicalMixin in mro and mro.index(HierarchicalMixin) < mro.index(LoggableMixin):
-            raise TypeError(f"'LoggableMixin' must come *before* 'NamedMixin' in the MRO")
-
+        # Start with no logger
         self._reset_log_cache()
-
-
-    # MARK: Named/Hierarchical integration
-    def _set_instance_name(self, new_name : str) -> None:
-        """
-        Set the instance name for logging and identification.
-
-        Args:
-            name (str): The name to set for the instance.
-        """
-        if isinstance(self, NamedMixin):
-            super()._set_instance_name(new_name) # pyright: ignore [reportAttributeAccessIssue] - NamedMixin provides _set_instance_name
-            self._reset_log_cache()
-
-    def _set_instance_parent(self, new_parent: HierarchicalMixin|NamedMixin|None) -> None:
-        """
-        Set the instance parent for hierarchical logging and identification.
-
-        Args:
-            new_parent (HierarchicalMixin|None): The new parent to set for the instance.
-        """
-        if isinstance(self, HierarchicalMixin):
-            super()._set_instance_parent(new_parent) # pyright: ignore [reportAttributeAccessIssue] - HierarchicalMixin provides _set_instance_parent
-            self._reset_log_cache()
 
 
     # MARK: Logging
@@ -111,9 +85,8 @@ class LoggableMixin:
         Returns:
             str: The log name.
         """
-        instance_name = getattr(self, 'instance_name', None)
-        if isinstance(instance_name, str):
-            return instance_name
+        if not isinstance(self, type) and isinstance(self, NamedProtocol):
+            return self.instance_name
         return self.__default_log_name__
 
     @classinstanceproperty
@@ -154,19 +127,6 @@ class LoggableMixin:
         """
         return f"<{self.__repr_name}>"
 
-    @property
-    def __str_name(self) -> str:
-        """
-        Get the string name for the current object.
-
-        Returns:
-            str: The string name.
-        """
-        if isinstance(self, NamedMixin):
-            return self._NamedMixin__str_name # type: ignore - NamedMixin provides __str_name
-
-        return f"{self.__class__.__name__}"
-
     @override
     def __str__(self) -> str:
         """
@@ -175,4 +135,7 @@ class LoggableMixin:
         Returns:
             str: The string representation.
         """
-        return f"<{self.__str_name}>"
+        if isinstance(self, NamedProtocol):
+            return super().__str__()
+        else:
+            return f"{self.__class__.__name__}"

@@ -10,7 +10,7 @@ from typing import runtime_checkable, Protocol
 
 
 @runtime_checkable
-class NamedProtocol(Protocol):
+class NamedYamlLoaderPathProtocol(Protocol):
     @property
     def name(self) -> str: ...
 
@@ -18,7 +18,7 @@ class NamedProtocol(Protocol):
 class IncludeLoader(yaml.SafeLoader):
     def __init__(self, stream : IOBase, root : str|None = None):
         if root is None:
-            if isinstance(stream, NamedProtocol):
+            if isinstance(stream, NamedYamlLoaderPathProtocol):
                 root = os.path.dirname(os.path.abspath(stream.name))
             else:
                 root = os.getcwd()

@@ -2,24 +2,28 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from typing import Any, Callable
+from typing import Any, Callable, override
 from . import script_info
 
 
-class ClassPropertyDescriptor[C = type, T = Any]:
+# NOTE: We extend property to piggyback on any code that handles property descriptors differently than other class variables
+class ClassPropertyDescriptor[C = type, T = Any](property):
     def __init__(self, fget: Callable[[C], T]):
-        self.fget: Any = fget
+        self.getter: Any = fget
 
-    def __get__(self, obj: Any, cls: type|None = None) -> T:
+    @override
+    def __get__(self, obj: Any, cls: type | None = None) -> T: # pyright: ignore[reportIncompatibleMethodOverride] as we know we are not compatible with property
         if script_info.is_documentation_build():
-            return self.fget
+            return self.getter
         if cls is None:
             cls = type(obj)
-        return self.fget.__get__(obj, cls)()
+        return self.getter.__get__(obj, cls)()
 
+    @override
     def __set__(self, obj: Any, value: Any) -> None:
         raise AttributeError("Can't set classproperty descriptors")
 
+    @override
     def __delete__(self, obj: Any) -> None:
         raise AttributeError("Can't delete classproperty descriptors")
 

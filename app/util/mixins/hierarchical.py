@@ -2,99 +2,41 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from pdb import run
-from typing import override, runtime_checkable, Protocol, Any
+from typing import override, runtime_checkable, Protocol, ClassVar
+from abc import abstractmethod, ABCMeta
 
-from . import shorten_name
-from .named import NamedProtocol, NamedMixin
+from ..helpers import mro
+
+from .named import NamedProtocol, NamedMixin, NamedMixinMinimal
 
 
+# MARK: Hierarchical Protocols
 @runtime_checkable
 class HierarchicalProtocol(Protocol):
     @property
-    def instance_parent(self) -> Any: ...
+    def instance_parent(self) -> 'HierarchicalProtocol | NamedProtocol | None': ...
     @property
     def instance_hierarchy(self) -> str: ...
 
 @runtime_checkable
-class HierarchicalMutableProtocol(Protocol):
+class HierarchicalMutableProtocol(HierarchicalProtocol, Protocol):
     @property
-    def instance_parent(self) -> Any: ...
-    @property
-    def instance_hierarchy(self) -> str: ...
+    @override
+    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None: ...
     @instance_parent.setter
-    def instance_parent(self, new_parent: Any) -> None: ...
+    def instance_parent(self, new_parent: HierarchicalProtocol | NamedProtocol | None) -> None: ...
 
 
-class HierarchicalMixin:
-    """
-    Mixin that adds parent/child hierarchy support to a class.
-
-    Provides instance_parent and instance_hierarchy properties, allowing objects to be organized in a tree structure.
-    Used for logging, naming, and configuration inheritance in pygaindalf.
-    """
-
-    def __init__(self, *args, instance_parent: 'HierarchicalMixin | NamedMixin | None' = None, **kwargs):
-        """
-        Initialize the mixin and set the instance parent.
-
-        Args:
-            instance_parent: Optional parent for the instance.
-            *args: Additional positional arguments for superclasses.
-            **kwargs: Additional keyword arguments for superclasses.
-        """
-        super().__init__(*args, **kwargs)
-
-        # Sanity check: We must come before Named
-        mro = self.__class__.__mro__
-        if NamedMixin in mro and mro.index(NamedMixin) < mro.index(HierarchicalMixin):
-            raise TypeError(f"'HierarchicalMixin' must come *before* 'NamedMixin' in the MRO")
-
-        self._set_instance_parent(instance_parent)
-
-    @classmethod
-    def class_short_name(cls) -> str:
-        """
-        Get a shortened class name for display/logging.
-
-        Returns:
-            str: The shortened class name.
-        """
-        return shorten_name(cls.__name__)
-
-
-    # MARK: Parent
-    def _set_instance_parent(self, new_parent : 'HierarchicalMixin | NamedMixin | None') -> None:
-        """
-        Set the instance parent.
-
-        Args:
-            new_parent (HierarchicalMixin | None): The new parent object.
-        Raises:
-            TypeError: If new_parent is not a HierarchicalMixin.
-        """
-        if new_parent is not None and not isinstance(new_parent, (HierarchicalMixin, NamedMixin)):
-            raise TypeError("'new_parent' must be a class that extends 'HierarchicalMixin' or 'NamedMixin'")
-        setattr(self, '__parent', new_parent)
+# MARK: Minimal Mixin for Hierarchical Classes
+class HierarchicalMixinMinimal(metaclass=ABCMeta):
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        mro.ensure_mro_order(cls, HierarchicalMixinMinimal, before=(NamedMixinMinimal, NamedMixin, NamedProtocol))
 
     @property
-    def instance_parent(self) -> Any:
-        """
-        Get the instance parent.
-
-        Returns:
-            HierarchicalMixin | None: The parent object.
-        """
-        return getattr(self, '__parent', None)
-
-    @instance_parent.setter
-    def instance_parent(self, new_parent : Any) -> None:
-        """
-        Set the instance parent.
-
-        Args:
-            new_parent: The new parent object.
-        """
-        self._set_instance_parent(new_parent)
+    @abstractmethod
+    def instance_parent(self) -> 'HierarchicalProtocol | NamedProtocol | None':
+        raise NotImplementedError("Subclasses must implement instance_parent")
 
     @property
     def instance_hierarchy(self) -> str:
@@ -124,9 +66,6 @@ class HierarchicalMixin:
 
         return hier
 
-
-
-    # MARK: Printing
     @property
     def __repr_name(self) -> str:
         """
@@ -153,19 +92,6 @@ class HierarchicalMixin:
         """
         return f"<{self.__repr_name}>"
 
-    @property
-    def __str_name(self) -> str:
-        """
-        Get the string name of the instance.
-
-        Returns:
-            str: The string name.
-        """
-        if isinstance(self, NamedMixin):
-            return self._NamedMixin__str_name # type: ignore - NamedMixin provides __str_name
-
-        return f"{self.__class__.__name__}"
-
     @override
     def __str__(self) -> str:
         """
@@ -174,4 +100,64 @@ class HierarchicalMixin:
         Returns:
             str: The string representation.
         """
-        return f"<{self.__str_name}>"
+        if isinstance(self, NamedProtocol):
+            return super().__str__()
+        else:
+            return f"<{self.__class__.__name__}>"
+
+
+# MARK: Mixin for Hierarchical Classes
+class HierarchicalMixin(HierarchicalMixinMinimal):
+    """
+    Mixin that adds parent/child hierarchy support to a class.
+
+    Provides instance_parent and instance_hierarchy properties, allowing objects to be organized in a tree structure.
+    Used for logging, naming, and configuration inheritance in pygaindalf.
+    """
+
+    """ Attribute name used to store the instance name
+    This is used to allow base classes to customise this without needing to override the instance_name property """
+    HIERARCHICAL_MIXIN_ATTRIBUTE : ClassVar[str] = '__parent'
+
+    def __init__(self, *args, instance_parent: HierarchicalProtocol | NamedProtocol | None = None, **kwargs):
+        """
+        Initialize the mixin and set the instance parent.
+
+        Args:
+            instance_parent: Optional parent for the instance.
+            *args: Additional positional arguments for superclasses.
+            **kwargs: Additional keyword arguments for superclasses.
+        """
+        super().__init__(*args, **kwargs)
+
+        self.instance_parent = instance_parent
+
+
+    # MARK: Parent
+    @property
+    @override
+    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
+        """
+        Get the instance parent.
+
+        Returns:
+            HierarchicalProtocol | NamedProtocol | None: The parent object.
+        """
+        return getattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, None)
+
+    @instance_parent.setter
+    def instance_parent(self, new_parent : HierarchicalProtocol | NamedProtocol | None) -> None:
+        """
+        Set the instance parent.
+
+        Args:
+            new_parent: The new parent object.
+        """
+        if new_parent is not None and not isinstance(new_parent, (HierarchicalProtocol, NamedProtocol)):
+            raise TypeError(f"Expected HierarchicalProtocol, NamedProtocol, or None, got {type(new_parent).__name__}")
+
+        setattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, new_parent)
+
+        from .loggable import LoggableMixin
+        if isinstance(self, LoggableMixin):
+            self._reset_log_cache()

@@ -13,9 +13,9 @@ def shorten_name(input : str) -> str:
 
 
 # Import mixins
-from .named import NamedMixin, NamedProtocol, NamedMutableProtocol
-from .hierarchical import HierarchicalMixin, HierarchicalProtocol, HierarchicalMutableProtocol
-from .loggable import LoggableMixin, LoggableProtocol
+from .named import *
+from .hierarchical import *
+from .loggable import *
 
 # Create short-hands
 class HierarchicalNamedMixin(HierarchicalMixin, NamedMixin):
@@ -41,3 +41,6 @@ class LoggableHierarchicalNamedMixin(LoggableMixin, HierarchicalMixin, NamedMixi
     Mixin combining logging, hierarchy, and naming support.
     """
     pass
+
+# Import models
+from .models import *

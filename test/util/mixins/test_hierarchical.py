@@ -18,9 +18,6 @@ class Hier(HierarchicalMixin):
 class HierNamed(HierarchicalMixin, NamedMixin):
     pass
 
-class NamedHier(NamedMixin, HierarchicalMixin):
-    pass
-
 
 @pytest.mark.mixins
 @pytest.mark.hierarchical_mixin
@@ -28,6 +25,8 @@ class TestHierarchicalMixins:
     def test_fails_wrong_mro_order(self):
         # Creating NamedHier should fail due to incorrect MRO
         with pytest.raises(TypeError):
+            class NamedHier(NamedMixin, HierarchicalMixin):
+                pass
             NamedHier()
 
     def test_construct_no_name(self):

@@ -28,10 +28,10 @@ class LHN(LoggableHierarchicalNamedMixin):
 class TestLoggableMixins:
     def test_fails_wrong_mro_order(self):
         # Creating a class with wrong MRO should raise TypeError
-        def _break(mixin):
-            class cls(mixin, LoggableMixin):
-                pass
+        def _break(mixin : type):
             with pytest.raises(TypeError):
+                class cls(mixin, LoggableMixin):
+                    pass
                 cls()
         _break(HierarchicalMixin)
         _break(NamedMixin)

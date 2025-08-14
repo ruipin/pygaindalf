@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import override
 
 from app.components.component import (
-    ComponentConfigBase,
+    BaseComponentConfig,
     ComponentBase,
     ComponentField,
     component_entrypoint,
@@ -15,8 +15,11 @@ from app.components.component import (
 
 
 # Dummy component and config for testing entrypoint behavior
-class DummyComponentConfig(ComponentConfigBase):
-    pass
+class DummyComponentConfig(BaseComponentConfig):
+    @classmethod
+    @override
+    def get_component_class_for_package(cls, package) -> type[ComponentBase]:
+        return DummyComponent
 
 
 class DummyComponent(ComponentBase):
