@@ -162,6 +162,15 @@ wheels = [
 ]
 
 [[package]]
+name = "iso4217"
+version = "1.14.20250512"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/29/db0854475507162050c6245be61f37c7216d4157c09ec808ed13cc003d27/iso4217-1.14.20250512.tar.gz", hash = "sha256:f036bd5460f1d371f2df253e90be5032930c8f76512f3a02ecfa5ad1e9fb164b", size = 12622, upload-time = "2025-06-22T01:28:04.377Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/6f/8e1d65453c7099f863d4785d8d3370192d4bcaffc26ad2bf0542c0fbd7f3/iso4217-1.14.20250512-py2.py3-none-any.whl", hash = "sha256:f23974b5b6eb264709f6d764703d5c03f168807305077cb76d7cdfcca87d7d76", size = 10862, upload-time = "2025-06-22T01:28:03.309Z" },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -356,6 +365,7 @@ name = "pygaindalf"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "iso4217" },
     { name = "ordered-set" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -379,6 +389,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "iso4217", specifier = ">=1.14.20250512" },
     { name = "ordered-set", specifier = ">=4.1.0" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "pyyaml", specifier = ">=6.0.2" },
