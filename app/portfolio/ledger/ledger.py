@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override
+from typing import override, Any
 from pydantic import Field
 
 from ...util.mixins import LoggableHierarchicalMixin, NamedMixinMinimal
-from ..uid import NamedUidMixin
 
 from ..models.instrument import Instrument
 from ..models.entity import AutomaticNamedEntity
-from ..models.instance_store import NamedInstanceStoreModelMixin
+from ..models.instance_store import NamedInstanceStoreEntityMixin
 
 
-class Ledger(NamedInstanceStoreModelMixin, AutomaticNamedEntity):
+class Ledger(NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
     # MARK: Fields
-    instrument: Instrument = Field(description="The financial instrument associated with this ledger, such as a stock, bond, or currency.", json_schema_extra={'hierarchical': False})
+    instrument: Instrument = Field(description="The financial instrument associated with this ledger, such as a stock, bond, or currency.")
     #transactions: List[Transaction]
     #annotations: 'LedgerAnnotations'
 
@@ -27,16 +26,16 @@ class Ledger(NamedInstanceStoreModelMixin, AutomaticNamedEntity):
 
     @classmethod
     @override
-    def _convert_kwargs_to_instance_name(cls, **kwargs) -> str | None:
+    def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
         """
         Convert the provided keyword arguments to an instance name.
         This method should be implemented by subclasses to define how to derive the instance name.
         """
-        instrument_d = kwargs.get('instrument', None)
+        instrument_d = data.get('instrument', None)
         if isinstance(instrument_d, Instrument):
             return instrument_d.instance_name
         elif isinstance(instrument_d, dict):
-            return Instrument._convert_kwargs_to_instance_name(**instrument_d)
+            return Instrument.calculate_instance_name_from_dict(**instrument_d)
         else:
             raise TypeError(f"Expected 'instrument' to be an Instrument instance or a dict, got {type(instrument_d).__name__}.")
 

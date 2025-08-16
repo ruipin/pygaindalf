@@ -24,7 +24,8 @@ class TestNamedMixin:
         a = Named()
 
         expected = Named.__name__
-        assert a.instance_name == expected  # Verify the instance name matches the class name
+        assert a.instance_name is None  # Verify the instance name is None
+        assert a.final_instance_name == expected  # Verify the instance name defaults to the class name
         assert str(a) == f"<{expected}>"  # Verify the string representation matches the expected format
 
     def test_construct_with_name(self):

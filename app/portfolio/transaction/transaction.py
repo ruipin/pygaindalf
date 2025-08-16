@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override
-from dataclasses import dataclass
+from typing import override, Any
+from pydantic import Field
 
 from datetime import date
 
@@ -24,20 +24,25 @@ class TransactionType(StrEnum):
     FEE      = "fee"
 
 
-@dataclass
 class Transaction(IncrementingUidEntity):
-    instrument    : Instrument
+    instrument    : Instrument = Field(json_schema_extra={'hierarchical': False})
     type          : TransactionType
     date          : date
     quantity      : Decimal
     consideration : Decimal
     fees          : Decimal
 
-    @property
+    @classmethod
     @override
-    def uid_namespace(self) -> str:
+    def uid_namespace(cls, data : dict[str, Any]) -> str:
         """
         Returns the namespace for the UID.
         This can be overridden in subclasses to provide a custom namespace.
         """
-        return f"{super().uid_namespace}-{self.instrument.instance_name}"
+        core_uid_namespace = super().uid_namespace(data)
+
+        if (instrument := data.get('instrument', None)) is None:
+            raise ValueError(f"{cls.__name__} must have an 'instrument' field in the data to generate a UID namespace.")
+        instrument_name = Instrument.calculate_instance_name_from_arbitrary_data(instrument)
+
+        return f"{core_uid_namespace}-{instrument_name}"

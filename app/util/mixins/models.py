@@ -1,14 +1,25 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from pydantic import BaseModel, model_validator
-from typing import Any
+import warnings
 
-from . import HierarchicalMutableProtocol, NamedMutableProtocol, HierarchicalMixin, NamedMixin, LoggableMixin, HierarchicalProtocol, NamedProtocol
+from pydantic import BaseModel, model_validator, Field, field_validator
+from typing import Any, Self, Annotated
+
+from . import HierarchicalMutableProtocol, NamedMutableProtocol, HierarchicalMixinMinimal, NamedMixinMinimal, LoggableMixin, HierarchicalProtocol, NamedProtocol
 
 
 
-class HierarchicalModel(BaseModel, HierarchicalMixin):
+class HierarchicalModel(BaseModel, HierarchicalMixinMinimal):
+    instance_parent : object | None = Field(default=None, repr=False, exclude=True, description="Parent of this instance in the hierarchy. Can be None if this is a root instance.")
+
+    @field_validator('instance_parent', mode='after')
+    @classmethod
+    def _validate_instance_parent(cls, obj : object | None) -> HierarchicalProtocol | NamedProtocol | None:
+        if obj is not None and not isinstance(obj, (HierarchicalProtocol | NamedProtocol)):
+            raise TypeError(f"Expected HierarchicalProtocol | NamedProtocol | None, got {type(obj)}")
+        return obj
+
     # NOTE: We use object.__setattr__ to avoid triggering Pydantic's validation which would raise an error if the object is not
     #       mutable.
     #       Since it only happens at the model validation stage as part of __init__ we are not breaking the mutability contract.
@@ -21,7 +32,7 @@ class HierarchicalModel(BaseModel, HierarchicalMixin):
 
     def _seed_name_to_object(self, obj : Any, name : str) -> None:
         if isinstance(obj, NamedMutableProtocol) and obj.instance_name != name:
-            if not obj.is_instance_name_default():
+            if obj.instance_name is not None:
                 raise ValueError(f"Object {obj} already has a name set: {obj.instance_name}. Cannot overwrite with {name}.")
             object.__setattr__(obj, 'instance_name', name)
 
@@ -52,19 +63,11 @@ class HierarchicalModel(BaseModel, HierarchicalMixin):
 
         return self
 
-class HierarchicalNamedModel(HierarchicalModel, NamedMixin):
-    def __init__(self, instance_name : str | None = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if instance_name is not None:
-            self.instance_name = instance_name
+class HierarchicalNamedModel(HierarchicalModel):
+    instance_name : str | None = Field(default=None, min_length=1, description="Name of the instance.")
 
 class LoggableHierarchicalModel(LoggableMixin, HierarchicalModel):
-    def __init__(self, instance_parent : HierarchicalProtocol | NamedProtocol | None = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if instance_parent is not None:
-            self.instance_parent = instance_parent
+    pass
 
 class LoggableHierarchicalNamedModel(LoggableMixin, HierarchicalNamedModel):
     pass

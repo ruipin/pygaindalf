@@ -111,26 +111,13 @@ class Instrument(InstanceStoreModelMixin, AutomaticNamedEntity):
 
     # MARK: Instance Name
     @classmethod
-    def _convert_kwargs_to_instance_name(cls, **kwargs) -> str | None:
-        """
-        Convert the provided keyword arguments to an instance name.
-        This method should be implemented by subclasses to define how to derive the instance name.
-        """
-        return kwargs.get('isin', None) or kwargs.get('ticker', None)
-
-    @property
-    def identifier(self) -> str:
-        identifier = self.__class__._convert_kwargs_to_instance_name(isin=self.isin, ticker=self.ticker)
-        if identifier is None:
-            raise ValueError("No identifier available. Either ISIN or ticker must be set.")
-        else:
-            return identifier
+    @override
+    def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
+        if (identifier := data.get('isin', None) or data.get('ticker', None)) is None:
+            raise ValueError(f"{cls.__name__} must have either 'isin' or 'ticker' field in the data to generate a name for the instance.")
+        return identifier
 
     @property
     @override
     def instance_name(self) -> str:
-        """
-        Returns the name of the instrument.
-        This is used for display purposes and should be unique within the context of the application.
-        """
-        return self.identifier
+        return self.__class__.calculate_instance_name_from_dict(self.__dict__)

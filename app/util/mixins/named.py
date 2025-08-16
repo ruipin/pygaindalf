@@ -7,77 +7,62 @@ from . import shorten_name
 from typing import override, ClassVar
 from abc import ABCMeta, abstractmethod
 
-from ..helpers.classinstancemethod import classinstancemethod
-
 
 # MARK: Protocols
 @runtime_checkable
 class NamedProtocol(Protocol):
     @property
-    def instance_name(self) -> str: ...
+    def instance_name(self) -> str | None: ...
+
+@runtime_checkable
+class FinalNamedProtocol(NamedProtocol, Protocol):
     @property
-    def instance_short_name(self) -> str: ...
+    def final_instance_name(self) -> str: ...
 
 @runtime_checkable
 class NamedMutableProtocol(NamedProtocol, Protocol):
     @property
     @override
-    def instance_name(self) -> str: ...
+    def instance_name(self) -> str | None: ...
     @instance_name.setter
-    def instance_name(self, new_name: str) -> None: ...
-    def is_instance_name_default(self) -> bool: ...
+    def instance_name(self, new_name: str | None) -> None: ...
 
 
 # MARK: Minimal Mixin for Named Classes
 class NamedMixinMinimal(metaclass=ABCMeta):
     @property
-    @abstractmethod
-    def instance_name(self) -> str:
-        raise NotImplementedError("Subclasses must implement instance_name")
+    def final_instance_name(self):
+        if (name := self.instance_name) is None: # pyright: ignore[reportAttributeAccessIssue] as this mixin must only be used when instance_parent is accessible
+            name = self.get_default_name()
+        return name
 
     @property
-    def instance_short_name(self) -> str:
+    def instance_short_name(self) -> str | None:
         """
         Get a shortened version of the instance name.
 
         Returns:
             str: The shortened instance name.
         """
-        return shorten_name(self.instance_name)
+        name = self.instance_name # pyright: ignore[reportAttributeAccessIssue] as this mixin must only be used when instance_parent is accessible
+        return shorten_name(name) if name is not None else None
 
-    @classinstancemethod
-    def get_default_name(self) -> str:
+    @property
+    def final_instance_short_name(self) -> str:
+        return shorten_name(self.final_instance_name)
+
+    @classmethod
+    def get_default_name(cls) -> str:
         """
         Get the default name for logging.
 
         Returns:
             str: The default name.
         """
-        name = getattr(self, '__name__', None)
-        if name is None:
-            name = getattr(self.__class__, '__name__', None)
+        name = getattr(cls, '__name__', None)
         if name is None:
             raise ValueError("Could not determine default name")
         return name
-
-    @classinstancemethod
-    def get_default_short_name(self) -> str:
-        """
-        Get a shortened default name for logging.
-
-        Returns:
-            str: The shortened default name.
-        """
-        return shorten_name(self.get_default_name())
-
-    def is_instance_name_default(self) -> bool:
-        """
-        Check if the instance name is the default name.
-
-        Returns:
-            bool: True if the instance name is the default, False otherwise.
-        """
-        return self.instance_name == self.get_default_name()
 
     @property
     def __repr_name(self) -> str:
@@ -87,7 +72,7 @@ class NamedMixinMinimal(metaclass=ABCMeta):
         Returns:
             str: The name for __repr__.
         """
-        nm  = self.instance_name
+        nm  = self.final_instance_name
         cnm = self.__class__.__name__
 
         if cnm in nm:
@@ -113,13 +98,13 @@ class NamedMixinMinimal(metaclass=ABCMeta):
         Returns:
             str: The string name.
         """
-        nm = self.instance_name
+        nm = self.final_instance_name
         cnm = self.__class__.__name__
 
         if nm == cnm:
             return nm
         else:
-            return f"{self.__class__.get_default_short_name()} {nm}"
+            return f"{shorten_name(self.__class__.__name__)} {nm}"
 
     @override
     def __str__(self) -> str:
@@ -161,16 +146,14 @@ class NamedMixin(NamedMixinMinimal):
 
 
     @property
-    @override
-    def instance_name(self) -> str:
+    def instance_name(self) -> str | None:
         """
         Get the instance name, or class name if not set.
 
         Returns:
             str: The instance name.
         """
-        name = getattr(self, self.__class__.NAMED_MIXIN_ATTRIBUTE, None)
-        return name if name is not None else self.get_default_name()
+        return getattr(self, self.__class__.NAMED_MIXIN_ATTRIBUTE, None)
 
     @instance_name.setter
     def instance_name(self, new_name : str | None) -> None:

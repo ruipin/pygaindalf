@@ -5,7 +5,7 @@
 from ..components.providers.provider import ProviderBase
 
 
-#class StateManager:
+#class Portfolio:
 #    ledgers: dict[str, Ledger]
 #    providers: dict[str, ProviderBase]
 #    #audit_log: list[AuditEvent]

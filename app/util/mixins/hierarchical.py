@@ -7,7 +7,7 @@ from abc import abstractmethod, ABCMeta
 
 from ..helpers import mro
 
-from .named import NamedProtocol, NamedMixin, NamedMixinMinimal
+from .named import NamedProtocol, FinalNamedProtocol, NamedMixin, NamedMixinMinimal
 
 
 # MARK: Hierarchical Protocols
@@ -34,11 +34,6 @@ class HierarchicalMixinMinimal(metaclass=ABCMeta):
         mro.ensure_mro_order(cls, HierarchicalMixinMinimal, before=(NamedMixinMinimal, NamedMixin, NamedProtocol))
 
     @property
-    @abstractmethod
-    def instance_parent(self) -> 'HierarchicalProtocol | NamedProtocol | None':
-        raise NotImplementedError("Subclasses must implement instance_parent")
-
-    @property
     def instance_hierarchy(self) -> str:
         """
         Get the hierarchy of the instance as a string.
@@ -46,20 +41,26 @@ class HierarchicalMixinMinimal(metaclass=ABCMeta):
         Returns:
             str: The hierarchy string.
         """
-        hier = self.instance_name if isinstance(self, NamedProtocol) else self.__class__.__name__
+        hier = None
+        if isinstance(self, FinalNamedProtocol):
+            hier = self.final_instance_name
+        elif isinstance(self, NamedProtocol):
+            hier = self.instance_name
+        if hier is None:
+            hier = self.__class__.__name__
 
-        parent = getattr(self, '__parent', None)
+        parent = self.instance_parent # pyright: ignore[reportAttributeAccessIssue] as this mixin must only be used when instance_parent is accessible
         if parent is None:
             pass
 
         elif isinstance(parent, HierarchicalProtocol):
             hier = f"{parent.instance_hierarchy}.{hier}"
 
-        elif isinstance(parent, NamedProtocol):
-            hier = f"{parent.instance_name}.{hier}"
+        elif isinstance(parent, NamedProtocol) and (name := parent.instance_name):
+            hier = f"{name}.{hier}"
 
-        elif hasattr(parent, '__name__'):
-            hier = f"{parent.__name__}.{hier}"
+        elif (name := getattr(parent, '__name__', None)) and isinstance(name, str):
+            hier = f"{name}.{hier}"
 
         else:
             hier = f"{parent.__class__.__name__}.{hier}"
@@ -135,7 +136,6 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
 
     # MARK: Parent
     @property
-    @override
     def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
         """
         Get the instance parent.

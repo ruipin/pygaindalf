@@ -4,7 +4,7 @@
 from typing import override, Any
 
 from .hierarchical import HierarchicalMixin, HierarchicalProtocol, HierarchicalMixinMinimal
-from .named import NamedProtocol, NamedMixin, NamedMixinMinimal
+from .named import FinalNamedProtocol, NamedProtocol, NamedMixin, NamedMixinMinimal
 
 from ..helpers.classinstanceproperty import classinstanceproperty
 from ..helpers.classinstancemethod import classinstancemethod
@@ -85,8 +85,13 @@ class LoggableMixin:
         Returns:
             str: The log name.
         """
-        if not isinstance(self, type) and isinstance(self, NamedProtocol):
-            return self.instance_name
+        if not isinstance(self, type):
+            if isinstance(self, FinalNamedProtocol):
+                return self.final_instance_name
+            if isinstance(self, NamedProtocol):
+                name = self.instance_name
+                if name is not None:
+                    return name
         return self.__default_log_name__
 
     @classinstanceproperty
