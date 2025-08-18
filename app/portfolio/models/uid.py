@@ -16,7 +16,7 @@ from ...util.mixins import NamedMixinMinimal, NamedProtocol, NamedMutableProtoco
 
 
 UID_SEPARATOR = '#'
-UID_ID_REGEX = re.compile(r'^[a-zA-Z0-9_-]+$')
+UID_ID_REGEX = re.compile(r'^[a-zA-Z0-9@_-]+$')
 
 
 # MARK: Uid Class
@@ -54,7 +54,7 @@ class Uid:
     @override
     def __eq__(self, other):
         if not isinstance(other, Uid):
-            raise TypeError(f"Cannot compare Uid with {type(other).__name__}")
+            return False
         return self.as_tuple() == other.as_tuple()
 
     @override

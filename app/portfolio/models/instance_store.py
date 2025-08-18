@@ -2,18 +2,21 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from pydantic import model_validator, BaseModel, ModelWrapValidatorHandler
+from pydantic import model_validator, BaseModel, ModelWrapValidatorHandler, PrivateAttr
 from typing import Any, Self, ClassVar, override
 from abc import ABCMeta, abstractmethod
 
 from ...util.mixins import NamedProtocol
+from ...util.helpers import script_info
 
 from .entity import Entity
 
 
 class InstanceStoreEntityMixin(metaclass=ABCMeta):
+    _initialized : bool = PrivateAttr(default=False)
+
     def __init_subclass__(cls) -> None:
-        if not isinstance(cls, Entity):
+        if (not issubclass(cls, Entity)) and (type(cls) is not ABCMeta):
             raise TypeError(f"{cls.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
 
     # MARK: Abstract Methods
@@ -30,74 +33,87 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
 
     # MARK: Create instance
     def __new__(cls, **kwargs):
-        if (instance := cls._instance_store_search(**kwargs)) is None:
+        version = kwargs.get('version', None)
+
+        if (instance := cls._instance_store_search(**kwargs)) is None or (version is not None and version == instance.entity_log.next_version):
             instance = super().__new__(cls)
-            instance.__dict__['initialized'] = False
+            instance._initialized = False
         return instance
 
 
     # MARK: Handle (re-)initialization
-    @model_validator(mode='wrap')
-    @classmethod
-    def _validate_singleton(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
-        if not issubclass(cls, BaseModel):
-            raise TypeError(f"{cls.__name__} must be a subclass of BaseModel to use InstanceStoreEntityMixin.")
+    def __init__(self, **kwargs):
+        if not isinstance(self, Entity):
+            raise TypeError(f"{self.__class__.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
 
-        if isinstance(data, cls):
-            return data
+        if not self._initialized:
+            super().__init__(**kwargs)
+            self.__class__._instance_store_add(self)
+        else:
+            self._validate_reinitialization(kwargs)
 
-        if not isinstance(data, dict):
-            raise TypeError(f"Expected a dictionary for {cls.__name__}, got {type(data).__name__}.")
 
-        # If an instance already exists, swap out its dictionary by an empty one as the constructor will run
-        instance = cls._instance_store_search(**data)
-        old_dict = None
-        new_dict = None
-        if instance is not None:
-            old_dict = instance.__dict__
-            new_dict = instance.__dict__ = {
-                'initialized': True
-            }
+    def _validate_reinitialization(self, data : dict[str, Any]) -> None:
+        if not isinstance(self, Entity):
+            raise TypeError(f"{self.__class__.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
 
-        # Do validation/initialization
-        result = handler(data)
+        keys = set()
 
-        if not isinstance(result, Entity):
-            raise ValueError(f"Expected the handler to return an instance of {cls.__name__}, got {type(result).__name__}.")
+        for key, info in self.__class__.model_fields.items():
+            if info.init == False or info.exclude == True:
+                if key in data:
+                    raise ValueError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__}.")
+                continue
 
-        # If we were reinitializing an instance, compare the dictionaries - they must be the exact same
-        if instance is not None:
-            if result is not instance:
-                raise ValueError(f"Re-initialization of {cls.__name__} returned a different instance than the existing one: {result} != {instance}.")
-            if old_dict is None or new_dict is None:
-                raise RuntimeError(f"The old_dict or new_dict variables should never be None here. This error should be unreachable, so something went terribly wrong!")
-            instance.__dict__ = old_dict
+            # Check if the field is optional
+            if key not in data:
+                if info.is_required():
+                    raise ValueError(f"Field '{key}' is required for reinitialization of {self.__class__.__name__}.")
+                continue
 
-            key_set = set(*old_dict.keys(), *new_dict.keys())
-            for key in key_set:
-                if not key:
-                    raise ValueError(f"Key '{key}' in {cls.__name__} cannot be empty.")
-                if key[0] == '_':
-                    continue
-                old_value = old_dict.get(key, None)
-                new_value = new_dict.get(key, None)
-                if isinstance(old_value, object):
-                    if old_value is not new_value:
-                        raise ValueError(f"Re-initialization of {cls.__name__} changed the instance's attribute object '{key}': {old_value} -> {new_value}")
-                else:
-                    if old_value != new_value:
-                        raise ValueError(f"Re-initialization of {cls.__name__} changed the instance's attribute '{key}': {old_value} -> {new_value}")
+            # Try to coerce
+            data_value = data.get(key, None)
+            self_value = self.__dict__.get(key, None)
 
-        # Mark the result as initialized and return it
-        result.__dict__['initialized'] = True
-        cls._instance_store_add(result)
-        return result
+            if self_value is None:
+                if data_value is not None:
+                    raise ValueError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__}.")
+                continue
+
+            self_type = type(self_value)
+            if not isinstance(data_value, self_type):
+                coerced = self_type(data_value)
+                if not isinstance(coerced, self_type):
+                    raise TypeError(f"Cannot coerce field '{key}' from {type(data_value).__name__} to {self_type.__name__} for reinitialization of {self.__class__.__name__}.")
+                data_value = coerced
+
+            if isinstance(self_value, Entity) or (eq := getattr(self_value, '__eq__', None)) is None or (eq_res := eq(data_value)) is NotImplemented:
+                if self_type is not data_value:
+                    raise TypeError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__} because it is not the existing value.")
+            else:
+                if (not eq_res):
+                    raise TypeError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__} because it is not equal to the existing value.")
+
+            keys.add(key)
+
+        data_keys = set(data.keys())
+        keys_diff = keys ^ data_keys
+        if keys_diff:
+            raise ValueError(f"Fields {keys_diff} cannot be set during reinitialization of {self.__class__.__name__}")
+
+
+
 
 
 
 # MARK: Mixin for Named Instances
 class NamedInstanceStoreEntityMixin(InstanceStoreEntityMixin, metaclass=ABCMeta):
     INSTANCES : ClassVar[dict[str, Entity]] = {}
+
+    if script_info.is_unit_test():
+        @classmethod
+        def reset_state(cls) -> None:
+            cls.INSTANCES.clear()
 
     @classmethod
     @override

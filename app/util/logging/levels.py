@@ -79,7 +79,6 @@ class LoggingLevel:
     ) -> CoreSchema:
         return core_schema.with_info_after_validator_function(
             function= cls.validate,
-            #schema= core_schema.any_schema(),
             schema= core_schema.union_schema([core_schema.int_schema(), core_schema.str_schema(), core_schema.bool_schema(), core_schema.none_schema()]),
             field_name=handler.field_name,
             serialization=core_schema.plain_serializer_function_ser_schema(cls.serialize, info_arg=True),

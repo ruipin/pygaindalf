@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from . import ForexProviderBase, BaseForexProviderConfig, ComponentField, component_entrypoint
 
 import requests
 import datetime
@@ -9,24 +8,27 @@ import functools
 
 from decimal import Decimal
 from typing import override, Any
+from iso4217 import Currency
+
+from . import ForexProviderBase, BaseForexProviderConfig
 
 
 # MARK: Configuration
 class OandaForexProviderConfig(BaseForexProviderConfig):
+    def __init__(self, **kwargs: Any):
+        super().__init__(**kwargs)
+        # Additional configuration parameters can be added here if needed
+        # For now, we just call the parent constructor
+
     pass
 
 
 
 # MARK: Provider
-class OandaForexProvider(ForexProviderBase):
-    config = ComponentField(OandaForexProviderConfig)
-
-    def __init__(self, config: OandaForexProviderConfig, *args, **kwargs):
-        super().__init__(config, *args, **kwargs)
-
-
+class OandaForexProvider(ForexProviderBase[OandaForexProviderConfig]):
     @functools.lru_cache(maxsize=128)
-    def _get_daily_exchange_rate(self, from_currency: str, to_currency: str, date: datetime.date) -> Decimal:
+    @override
+    def _get_daily_exchange_rate(self, from_currency: Currency, to_currency: Currency, date: datetime.date) -> Decimal:
         """
         Internal method to get the daily exchange rate.
         This is a placeholder for the actual implementation.
@@ -34,8 +36,8 @@ class OandaForexProvider(ForexProviderBase):
         url = 'https://fxds-public-exchange-rates-api.oanda.com/cc-api/currencies'
         #         ?base=USD&quote=GBP&data_type=general_currency_pair&start_date=2025-08-05&end_date=2025-08-06'
         params : dict[str, Any] = {
-            'base': from_currency.upper(),
-            'quote': to_currency.upper(),
+            'base': from_currency.code.upper(),
+            'quote': to_currency.code.upper(),
             'data_type': 'general_currency_pair',
             'start_date': (date - datetime.timedelta(days=1)).strftime('%Y-%m-%d'),
             'end_date': date.strftime('%Y-%m-%d'),
@@ -61,17 +63,5 @@ class OandaForexProvider(ForexProviderBase):
 
         self.log.debug(f"Exchange rate for {from_currency} to {to_currency} on {date}: {result}")
         return result
-
-
-    @override
-    @component_entrypoint
-    def get_daily_rate(self, from_currency: str, to_currency: str, date: datetime.date) -> Decimal:
-        return self._get_daily_exchange_rate(from_currency, to_currency, date)
-
-    @override
-    @component_entrypoint
-    def convert_currency(self, amount: Decimal, from_currency: str, to_currency: str, date: datetime.date) -> Decimal:
-        rate = self._get_daily_exchange_rate(from_currency, to_currency, date)
-        return amount * rate
 
 COMPONENT = OandaForexProvider

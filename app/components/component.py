@@ -4,9 +4,14 @@
 import importlib
 import functools
 import inspect
+import types
 
-from pydantic import ModelWrapValidatorHandler, ValidationInfo, model_validator
-from typing import Any, Annotated, Callable, overload, TypeVar, override
+from pydantic import ModelWrapValidatorHandler, ValidationInfo, model_validator, GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
+from typing import (Any, Callable, TypeVar, override,
+    get_args as typing_get_args,
+    cast as typing_cast,
+)
 from abc import ABCMeta, abstractmethod
 
 from app.util.mixins import LoggableHierarchicalNamedMixin
@@ -26,7 +31,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
 
     @model_validator(mode='wrap')
     @classmethod
-    def _coerce_to_concrete_class(cls, data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> 'BaseComponentConfig':
+    def _coerce_to_concrete_class[Child : BaseComponentConfig](cls : type[Child], data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> Child:
         # Already instantiated
         if isinstance(data, cls):
             return data
@@ -40,9 +45,9 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
             raise ValueError(f"Missing 'package' key in {cls.__name__} configuration.")
 
         # Get the concrete configuration class for this package
-        component_cls = cls.get_component_class_for_package(package)
+        component_cls : type = cls.get_component_class_for_package(package)
 
-        concrete_cls = getattr(component_cls, 'config_class', None)
+        concrete_cls = component_cls.config_class
         if concrete_cls is None:
             raise ImportError(f"Configuration class for {package} does not define 'config_class'.")
         if cls is concrete_cls:
@@ -53,7 +58,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         return concrete_cls.model_validate(data)
 
     @classmethod
-    def get_component_class_for_package(cls, package) -> type['ComponentBase']:
+    def get_component_class_for_package(cls, package) -> type['ComponentSubclassMeta']:
         # Import the package
         root_path = cls.package_root
         rel_path = f'.{package}'
@@ -66,9 +71,10 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
             raise ImportError(f"Configuration class for {package} not found in '{path}'.")
         if not isinstance(component_cls, type):
             raise TypeError(f"Expected a class for {package} component, got {type(component_cls).__name__} instead.")
+        component_cls = component_cls
 
         # Sanity check the configuration class
-        config_cls = getattr(component_cls, 'config_class', None)
+        config_cls = component_cls.config_class
         if config_cls is None:
             raise ImportError(f"Configuration class for {package} does not define 'config_class'.")
         if not issubclass(config_cls, BaseComponentConfig):
@@ -78,7 +84,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         return component_cls
 
     @property
-    def component_class(self) -> type['ComponentBase']:
+    def component_class(self) -> type['ComponentSubclassMeta']:
         return self.get_component_class_for_package(self.package)
 
     @classproperty
@@ -87,39 +93,28 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         raise NotImplementedError(f"{cls.__name__}.package_root() must be implemented.")
 
 
-
-# MARK: Component Field Descriptor
-class ComponentField[T]:
-    def __init__(self, cls : type[T]):
-        self.type = cls
-
-    def __set_name__(self, owner : type, name : str):
-        self.attr = f'_{name}'
-
-    @overload
-    def __get__(self, obj: None, objtype: type) -> 'ComponentField[T]': ...
-    @overload
-    def __get__(self, obj: Any, objtype: type) -> T: ...
-
-    def __get__(self, obj, objtype=None) -> 'T | ComponentField[T]':
-        if obj is None:
-            return self
-        if not hasattr(obj, self.attr):
-            raise AttributeError(f"{obj.__class__.__name__} 'config' was not initialized.")
-        return getattr(obj, self.attr)
-
-    def __set__(self, obj, value : T):
-        if not isinstance(value, self.type):
-            raise TypeError(f"Expected {self.type.__name__}, got {type(value).__name__} instead.")
-        setattr(obj, self.attr, value)
-        obj.__set_name__(obj.__class__, self.attr)
-
-
-
 # MARK: Component subclassing mechanism
-class ComponentSubclassMeta(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
-    config = ComponentField(BaseComponentConfig)
-    config_class : type[BaseComponentConfig]
+class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
+    config : C
+    config_class : type[C]
+
+    @classmethod
+    def _introspect_config_class(cls) -> type[C]:
+        """
+        Introspects the class to find the configuration class.
+        """
+        bases = types.get_original_bases(cls)
+        print(cls.__name__, bases)
+        for base in bases:
+            args = typing_get_args(base)
+            for arg in args:
+                if isinstance(arg, TypeVar):
+                    return typing_cast(type[C], C)
+
+                if isinstance(arg, type) and issubclass(arg, BaseComponentConfig):
+                    return typing_cast(type[C], arg)
+
+        raise TypeError(f"Could not find a BaseComponentConfig subclass type argument in the bases of {cls.__name__}.")
 
 
     @classmethod
@@ -129,30 +124,26 @@ class ComponentSubclassMeta(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
         """
         super().__init_subclass__(**kwargs)
 
-        mro = cls.__mro__
-        attrs = list(cls.__dict__.keys())
+        # Introspect the original bases to get the configuration class
+        cls.config_class = cls._introspect_config_class()
+        cls.__annotations__['config_class'] = cls.config_class
+        if not isinstance(cls.config_class, TypeVar):
+            cls.config_class.component_class = cls # pyright: ignore[reportAttributeAccessIssue] as we are overriding the component_class class property on purpose
 
-        for attr in attrs:
-            desc = getattr(cls, attr, None)
-            if desc is None or not isinstance(desc, ComponentField):
-                continue
-            desc_type = desc.type
 
-            # Sanity check the parent classes for the same attribute
-            for parent in mro:
-                base_desc = getattr(parent.__dict__, attr, None)
-                if base_desc is None:
-                    continue
-                if not isinstance(base_desc, ComponentField):
-                    raise TypeError(f"{cls.__name__}.{attr} must be a ComponentField descriptor.")
-                if not isinstance(desc_type, base_desc.type):
-                    raise TypeError(f"{cls.__name__}.{attr} must be a subclass of {base_desc.type.__name__}.")
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        assert cls is source
+        return core_schema.is_instance_schema(cls)
 
-            # Create a class property for the descriptor
-            setattr(cls, f'{attr}_class', classproperty(lambda cls: desc_type))
 
-    def __init__(self, config : BaseComponentConfig, *args, **kwargs):
+    def __init__(self, config : C, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        if isinstance(self.config_class, TypeVar):
+            raise TypeError(f"{self.__class__.__name__} is a generic class and must not be instantiated without providing an explicit configuration class type argument to override the TypeVar {self.config_class.__name__}.")
 
         self.config = config
 
@@ -193,11 +184,11 @@ def component_entrypoint[C,T](entrypoint: Callable[..., T]) -> Callable[..., T]:
 
 
 # MARK: Component Base Class
-class ComponentBase(ComponentSubclassMeta, metaclass=ABCMeta):
+class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass=ABCMeta):
     # Decimal factory for precise calculations
     decimal : DecimalFactory
 
-    def __init__(self, config : BaseComponentConfig, *args, **kwargs):
+    def __init__(self, config : C, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
         self._inside_entrypoint = False
 

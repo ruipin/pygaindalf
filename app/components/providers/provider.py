@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override
+from typing import override, Self
 from abc import ABCMeta
 
 from ...util import classproperty
-from .. import BaseComponentConfig, ComponentBase, ComponentField
+from .. import BaseComponentConfig, ComponentBase
 
 
 # MARK: Provider Base Configuration
@@ -18,5 +18,5 @@ class BaseProviderConfig(BaseComponentConfig, metaclass=ABCMeta):
 
 
 # MARK: Provider Base class
-class ProviderBase(ComponentBase, metaclass=ABCMeta):
-    config = ComponentField(BaseProviderConfig)
+class ProviderBase[C : BaseProviderConfig](ComponentBase[C], metaclass=ABCMeta):
+    pass

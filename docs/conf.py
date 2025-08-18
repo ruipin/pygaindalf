@@ -43,6 +43,11 @@ autosummary_ignore_imports = True
 
 autoclass_content = 'class'
 
+autodoc_warningiserror = True  # Treat warnings as errors in autodoc
+autodoc_class_signature = 'separated'  # Use the 'separated' style for class signatures
+autodoc_inherit_docstrings = False  # Do not inherit docstrings from parent classes
+autodoc_typehints = 'both'  # Show type hints in both the signature and the docstring
+
 inheritance_graph_attrs = dict(size='""')
 
 templates_path = ['_templates']

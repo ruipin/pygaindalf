@@ -4,3 +4,4 @@
 from .entity import *
 from .named_entity import *
 from .incrementing_uid_entity import *
+from .audit import *

@@ -2,21 +2,21 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt
 from typing import override, Any, ClassVar, MutableMapping
 from abc import abstractmethod, ABCMeta
 from weakref import WeakValueDictionary
+from functools import cached_property
 
 from ....util.mixins import LoggableHierarchicalModel, NamedProtocol
-from ....util.helpers import classproperty
+from ....util.helpers import script_info
 
 from ..uid import Uid
-
-from ..meta_data import EntityMetaData
-
+from .audit import EntityAuditLog
 
 
-# MARK: Entity
+
+
 class Entity(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -25,10 +25,15 @@ class Entity(LoggableHierarchicalModel):
     )
 
 
-    # MARK: Entity - Uid
-    uid : Uid = Field(frozen=True, description="Unique identifier for the entity.")
+    # MARK: Uid
+    uid : Uid = Field(default=None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
 
-    UID_STORAGE : 'ClassVar[MutableMapping[Uid, Entity]]' = WeakValueDictionary() # Class variable to store UIDs of all instances of this class. Used to check for duplicate UIDs.
+    _UID_STORAGE : 'ClassVar[MutableMapping[Uid, Entity]]' = WeakValueDictionary() # Class variable to store UIDs of all instances of this class. Used to check for duplicate UIDs.
+
+    if script_info.is_unit_test():
+        @classmethod
+        def reset_state(cls) -> None:
+            cls._UID_STORAGE.clear()
 
     @classmethod
     def uid_namespace(cls, data : dict[str, Any]) -> str:
@@ -44,7 +49,7 @@ class Entity(LoggableHierarchicalModel):
 
     @model_validator(mode='before')
     @classmethod
-    def _validate_uid_before(cls, data: Any, info: ValidationInfo) -> Uid:
+    def _validate_uid_before(cls, data: Any, info: ValidationInfo) -> 'Entity':
         if (uid := data.get('uid', None)) is None:
             uid = {}
 
@@ -58,7 +63,8 @@ class Entity(LoggableHierarchicalModel):
         if uid.namespace != uid_namespace:
             raise ValueError(f"Uid namespace '{uid.namespace}' does not match expected namespace '{uid_namespace}'.")
 
-        return uid
+        data['uid'] = uid
+        return data
 
     @model_validator(mode='after')
     def _validate_uid_after(self, info: ValidationInfo) -> 'Entity':
@@ -67,15 +73,10 @@ class Entity(LoggableHierarchicalModel):
 
         # If the entity already exists, we fail unless we are cloning the entity and incrementing the version
         existing = uid_storage.get(self.uid, None)
-        if existing:
-            if (\
-                (context := info.context) is None or \
-                (not isinstance(context, dict)) or \
-                (context_entity := context.get('existing_entity', None)) is None or \
-                (context_entity.uid is not existing) or \
-                (self.version <= existing.version)
-            ):
-                raise ValueError(f"Duplicate UID detected: {self.uid}. Each entity must have a unique UID or increment the version.")
+        if existing and existing is not self:
+            if (self.version != existing.entity_log.next_version):
+                pass
+                #raise ValueError(f"Duplicate UID detected: {self.uid}. Each entity must have a unique UID or increment the version.")
 
         # Store the entity in the UID storage
         uid_storage[self.uid] = self
@@ -85,7 +86,7 @@ class Entity(LoggableHierarchicalModel):
 
     @classmethod
     def _get_uid_storage(cls) -> 'MutableMapping[Uid, Entity]':
-        if (uid_storage := cls.UID_STORAGE) is None:
+        if (uid_storage := cls._UID_STORAGE) is None:
             raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
         return uid_storage
 
@@ -93,6 +94,8 @@ class Entity(LoggableHierarchicalModel):
     def from_uid(cls, uid: Uid) -> 'Entity | None':
         return cls._get_uid_storage().get(uid, None)
 
+
+    # MARK: Instance Name
     @classmethod
     @abstractmethod
     def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
@@ -115,15 +118,73 @@ class Entity(LoggableHierarchicalModel):
         return cls.calculate_instance_name_from_dict(data)
 
 
-    # MARK: Entity - Meta
-    meta : EntityMetaData = Field(default_factory=EntityMetaData, description="Metadata associated with the entity.", json_schema_extra={'keep_on_reinit': True})
+    # MARK: Meta
+    entity_log : EntityAuditLog = Field(default_factory=lambda data: EntityAuditLog(data['uid']), validate_default=True, repr=False, exclude=True, description="The audit log for this entity, which tracks changes made to it over time.")
+    version    : PositiveInt    = Field(default_factory=lambda data: data['entity_log'].next_version, validate_default=True, ge=1, description="The version of this entity. Incremented when the entity is cloned as part of an update action.")
 
+    @field_validator('entity_log', mode='after')
+    @classmethod
+    def _validate_audit_log(cls, entity_log: EntityAuditLog, info: ValidationInfo) -> EntityAuditLog:
+        if (uid := info.data.get('uid', None)) is None or not isinstance(uid, Uid):
+            raise ValueError(f"Entity must have a valid 'uid' to validate the audit log. Found: {uid}.")
+        if entity_log.entity_uid != uid:
+            raise ValueError(f"Audit log UID '{entity_log.entity_uid}' does not match entity UID '{uid}'.")
+        return entity_log
+
+    @field_validator('version', mode='after')
+    @classmethod
+    def _validate_version(cls, version: PositiveInt, info: ValidationInfo) -> PositiveInt:
+        if (entity_log := info.data.get('entity_log', None)) is None or not isinstance(entity_log, EntityAuditLog):
+            raise ValueError(f"Entity must have a valid 'entity_log' to validate the version. Found: {entity_log}.")
+        if version != entity_log.next_version:
+            raise ValueError(f"Entity version '{version}' does not match the next audit log version '{entity_log.version + 1}'. The version should be incremented when the entity is cloned as part of an update action.")
+        return version
+
+    @override
+    def model_post_init(self, context : Any) -> None:
+        self.entity_log.on_create(self)
+
+    def __del__(self):
+        if not script_info.is_unit_test() and not self.superseded:
+            self.entity_log.on_delete(self, who='system', why='__del__')
+
+    @computed_field
     @property
-    def version(self):
-        return self.meta.version
+    def superseded(self) -> bool:
+        """
+        Indicates whether this entity instance has been superseded by another instance with an incremented version.
+        """
+        return self.entity_log.version > self.version
 
 
-    # MARK: Entity - Utilities
+    def update[T : Entity](self : T, **kwargs: Any) -> T:
+        """
+        Creates a new instance of the entity with the updated data.
+        The new instance will have an incremented version and the same UID, superseding the current instance.
+        """
+        if not kwargs:
+            raise ValueError("No data provided to update the entity.")
+
+        if 'uid' in kwargs:
+            raise ValueError("Cannot update the 'uid' of an entity. The UID is immutable and should not be changed.")
+        if 'version' in kwargs:
+            raise ValueError("Cannot update the 'version' of an entity. The version is managed by the entity itself and should not be changed directly.")
+
+        args = {}
+        for field_name in self.__class__.model_fields.keys():
+            if field_name in kwargs:
+                args[field_name] = kwargs[field_name]
+            else:
+                args[field_name] = getattr(self, field_name)
+
+        args.update(kwargs)
+        args['uid'    ] = self.uid
+        args['version'] = self.entity_log.next_version
+
+        return self.__class__(**args)
+
+
+    # MARK: Utilities
     @override
     def __hash__(self):
         return hash(self.uid)

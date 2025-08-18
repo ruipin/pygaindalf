@@ -9,7 +9,6 @@ from typing import override
 from app.components.component import (
     BaseComponentConfig,
     ComponentBase,
-    ComponentField,
     component_entrypoint,
 )
 
@@ -22,9 +21,7 @@ class DummyComponentConfig(BaseComponentConfig):
         return DummyComponent
 
 
-class DummyComponent(ComponentBase):
-    config = ComponentField(DummyComponentConfig)
-
+class DummyComponent(ComponentBase[DummyComponentConfig]):
     def __init__(self, config: DummyComponentConfig):
         super().__init__(config)
         self.events: list[str] = []

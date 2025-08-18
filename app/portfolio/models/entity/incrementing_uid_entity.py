@@ -5,6 +5,8 @@
 from typing import ClassVar, override, Any
 from pydantic import computed_field
 
+from ....util.helpers import script_info
+
 from ..uid import IncrementingUidFactory, Uid
 
 from .named_entity import AutomaticNamedEntity
@@ -12,20 +14,28 @@ from .entity import Entity
 
 
 class IncrementingUidEntity(AutomaticNamedEntity):
-    uid_factory : ClassVar[IncrementingUidFactory]
+    _UID_FACTORY : ClassVar[IncrementingUidFactory]
+
+    if script_info.is_unit_test():
+        @classmethod
+        @override
+        def reset_state(cls) -> None:
+            super().reset_state()
+            if hasattr(cls, '_UID_FACTORY'):
+                del cls._UID_FACTORY
 
     def __init_subclass__(cls) -> None:
         """
         Initialize the mixin for subclasses.
         This ensures that the UID factory is created only once per class.
         """
-        if getattr(cls, 'uid_factory', None) is None:
-            cls.uid_factory = IncrementingUidFactory()
+        if getattr(cls, '_UID_FACTORY', None) is None:
+            cls._UID_FACTORY = IncrementingUidFactory()
 
     @classmethod
     @override
     def _calculate_uid(cls, data : dict[str, Any]) -> Uid:
-        return cls.uid_factory.next(cls.uid_namespace(data))
+        return cls._UID_FACTORY.next(cls.uid_namespace(data))
 
     @classmethod
     @override

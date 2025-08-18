@@ -2,17 +2,21 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from . import AutomaticNamedEntity
-from .instance_store import InstanceStoreModelMixin
 
 from pydantic import Field, ValidatorFunctionWrapHandler, model_validator, PrivateAttr, field_validator, ValidationInfo, TypeAdapter
 from pydantic_core import PydanticUseDefault
-from typing import override, Any, ClassVar, Self
+from typing import override, Any, ClassVar, Self, MutableMapping
 
 from iso4217 import Currency
 
+from ...util.helpers import script_info
 
-class Instrument(InstanceStoreModelMixin, AutomaticNamedEntity):
+from .instance_store import InstanceStoreEntityMixin
+from .entity import Entity
+from . import AutomaticNamedEntity
+
+
+class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
     # MARK: Fields
     isin     : str | None = Field(default=None, min_length=1, description="International Securities Identification Number (ISIN) of the instrument.")
     ticker   : str | None = Field(default=None, min_length=1, description="Ticker symbol of the instrument, used for trading and identification.")
@@ -20,8 +24,16 @@ class Instrument(InstanceStoreModelMixin, AutomaticNamedEntity):
 
 
     # MARK: Instance Store Behaviour
-    BY_ISIN   : 'ClassVar[dict[str, Instrument]]' = dict()
-    BY_TICKER : 'ClassVar[dict[str, Instrument]]' = dict()
+    BY_ISIN   : 'ClassVar[MutableMapping[str, Instrument]]' = dict()
+    BY_TICKER : 'ClassVar[MutableMapping[str, Instrument]]' = dict()
+
+    if script_info.is_unit_test():
+        @classmethod
+        @override
+        def reset_state(cls) -> None:
+            super().reset_state()
+            cls.BY_ISIN.clear()
+            cls.BY_TICKER.clear()
 
     @classmethod
     def instance(cls, isin : str | None = None, ticker: str | None = None) -> 'Instrument | None':
@@ -62,7 +74,7 @@ class Instrument(InstanceStoreModelMixin, AutomaticNamedEntity):
 
     @classmethod
     @override
-    def _instance_store_add(cls, instance: InstanceStoreModelMixin) -> None:
+    def _instance_store_add(cls, instance: Entity) -> None:
         """
         Add an instance to the store.
         This method is called when a new instance is created.
@@ -74,7 +86,6 @@ class Instrument(InstanceStoreModelMixin, AutomaticNamedEntity):
             cls.BY_ISIN[instance.isin] = instance
         if instance.ticker:
             cls.BY_TICKER[instance.ticker] = instance
-
 
 
     # MARK: Model Validation
@@ -113,7 +124,7 @@ class Instrument(InstanceStoreModelMixin, AutomaticNamedEntity):
     @classmethod
     @override
     def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
-        if (identifier := data.get('isin', None) or data.get('ticker', None)) is None:
+        if (identifier := data.get('isin', None)) is None and (identifier := data.get('ticker', None)) is None:
             raise ValueError(f"{cls.__name__} must have either 'isin' or 'ticker' field in the data to generate a name for the instance.")
         return identifier
 

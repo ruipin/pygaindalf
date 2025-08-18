@@ -3,5 +3,5 @@
 
 
 # Base provider
-from .. import ComponentField, component_entrypoint
-from .provider import BaseProviderConfig, ProviderBase, ComponentField
+from .. import component_entrypoint
+from .provider import BaseProviderConfig, ProviderBase

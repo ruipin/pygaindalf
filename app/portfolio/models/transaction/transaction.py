@@ -11,8 +11,8 @@ from decimal import Decimal
 from enum import StrEnum
 
 
-from ..models.entity import IncrementingUidEntity
-from ..models.instrument import Instrument
+from ..entity import IncrementingUidEntity
+from ..instrument import Instrument
 
 
 class TransactionType(StrEnum):
@@ -22,6 +22,14 @@ class TransactionType(StrEnum):
     DIVIDEND = "dividend"
     INTEREST = "interest"
     FEE      = "fee"
+
+    @override
+    def __str__(self) -> str:
+        return self.value
+
+    @override
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}.{self.name}"
 
 
 class Transaction(IncrementingUidEntity):
