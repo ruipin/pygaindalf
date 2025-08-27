@@ -12,6 +12,7 @@ from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator
 
 from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal
 from ....util.helpers import script_info
+from ....util.helpers.callguard import callguard_class
 
 from ..uid import Uid
 
@@ -56,6 +57,7 @@ class EntityAudit(BaseModel):
         return self
 
 
+@callguard_class()
 class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinimal):
     TRACK_ENTITY_DIFF = True
 

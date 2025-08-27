@@ -10,13 +10,14 @@ from functools import cached_property
 
 from ....util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ....util.helpers import script_info
+from ....util.helpers.callguard import callguard_class, no_callguard
 
 from ..uid import Uid
 from .audit import EntityAuditLog
 
 
 
-
+@callguard_class()
 class Entity(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -90,6 +91,7 @@ class Entity(LoggableHierarchicalModel):
             raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
         return uid_storage
 
+    @no_callguard
     @classmethod
     def from_uid(cls, uid: Uid) -> 'Entity | None':
         return cls._get_uid_storage().get(uid, None)

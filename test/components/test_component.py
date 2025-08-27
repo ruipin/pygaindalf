@@ -27,26 +27,26 @@ class DummyComponent(ComponentBase[DummyComponentConfig]):
         self.events: list[str] = []
 
     @override
-    def before_entrypoint(self, entrypoint_name: str, *args, **kwargs) -> None:
-        super().before_entrypoint(entrypoint_name, *args, **kwargs)
+    def _before_entrypoint(self, entrypoint_name: str, *args, **kwargs) -> None:
+        super()._before_entrypoint(entrypoint_name, *args, **kwargs)
         # inside_entrypoint should already be True here
         assert self.inside_entrypoint is True
         self.events.append(f"before:{entrypoint_name}")
 
     @override
-    def wrap_entrypoint(self, entrypoint, *args, **kwargs):
+    def _wrap_entrypoint(self, entrypoint, *args, **kwargs):
         # We record around the super call which applies the Decimal context
         self.events.append(f"wrap:{entrypoint.__name__}:before")
-        result = super().wrap_entrypoint(entrypoint, *args, **kwargs)
+        result = super()._wrap_entrypoint(entrypoint, *args, **kwargs)
         self.events.append(f"wrap:{entrypoint.__name__}:after")
         return result
 
     @override
-    def after_entrypoint(self, entrypoint_name: str) -> None:
+    def _after_entrypoint(self, entrypoint_name: str) -> None:
         # Still inside the entrypoint here
         assert self.inside_entrypoint is True
         self.events.append(f"after:{entrypoint_name}")
-        super().after_entrypoint(entrypoint_name)
+        super()._after_entrypoint(entrypoint_name)
 
     # Non-entrypoint helper
     def helper(self) -> Decimal:

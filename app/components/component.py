@@ -8,7 +8,7 @@ import types
 
 from pydantic import ModelWrapValidatorHandler, ValidationInfo, model_validator, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from typing import (Any, Callable, TypeVar, override,
+from typing import (Any, Callable, TypeVar, override, Concatenate, Self,
     get_args as typing_get_args,
     cast as typing_cast,
 )
@@ -18,18 +18,21 @@ from app.util.mixins import LoggableHierarchicalNamedMixin
 
 from ..util.config.inherit import FieldInherit
 from ..util.helpers.decimal import DecimalConfig, DecimalFactory
+from ..util.helpers.callguard import no_callguard, callguard_class, CALLGUARD_ENABLED, CallguardHandlerInfo, CallguardWrapped
 
 from ..util.helpers import classproperty
 from ..util.config import BaseConfigModel
 
 
 # MARK: Base Component Configuration
+@callguard_class()
 class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
     package : str
 
     decimal : DecimalConfig = FieldInherit(default_factory=DecimalConfig, description="Decimal configuration for provider")
 
     @model_validator(mode='wrap')
+    @no_callguard
     @classmethod
     def _coerce_to_concrete_class[Child : BaseComponentConfig](cls : type[Child], data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> Child:
         # Already instantiated
@@ -104,7 +107,7 @@ class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMi
         Introspects the class to find the configuration class.
         """
         bases = types.get_original_bases(cls)
-        print(cls.__name__, bases)
+        #print(cls.__name__, bases)
         for base in bases:
             args = typing_get_args(base)
             for arg in args:
@@ -150,40 +153,37 @@ class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMi
 
 
 # MARK: Component entrypoint decorator
-def component_entrypoint[C,T](entrypoint: Callable[..., T]) -> Callable[..., T]:
-    """
-    Decorator for component entrypoint methods.
-    It does sanity checks, sets the local context, and calls the component's setup and teardown methods.
-    """
-    @functools.wraps(entrypoint)
-    def wrapper(self : C, *args, **kwargs) -> T:
-        if not isinstance(self, ComponentBase):
-            raise TypeError(f"{entrypoint.__name__} must be called on a ComponentBase instance, got {type(self).__name__} instead.")
+def _handle_entrypoint[T, **P, R](entrypoint_name : str, entrypoint : Callable[Concatenate[T,P], R], self, *args : P.args, **kwargs : P.kwargs) -> R:
+    # If we are already inside an entrypoint, call it directly
+    if self._inside_entrypoint:
+        return entrypoint(self, *args, **kwargs)
 
-        # If the component is already inside an entrypoint, we just call the entrypoint directly.
-        if self.inside_entrypoint:
-            result = entrypoint(self, *args, **kwargs)
-        else:
-            try:
-                self._inside_entrypoint = True
+    # Execute entrypoint
+    try:
+        self._inside_entrypoint = True
 
-                self.before_entrypoint(entrypoint.__name__, *args, **kwargs)
+        self._before_entrypoint(entrypoint.__name__, *args, **kwargs)
 
-                try:
-                    result = self.wrap_entrypoint(entrypoint, *args, **kwargs)
-                finally:
-                    self.after_entrypoint(entrypoint.__name__)
-            finally:
-                self._inside_entrypoint = False
+        try:
+            result = self._wrap_entrypoint(entrypoint, *args, **kwargs)
+        finally:
+            self._after_entrypoint(entrypoint.__name__)
 
-        return result
+    finally:
+        self._inside_entrypoint = False
 
-    wrapper.__dict__['component_entrypoint'] = True
-    return wrapper
+    return result
 
+def component_entrypoint[T, **P, R](entrypoint: Callable[Concatenate[T,P], R]) -> Callable[Concatenate[T,P], R]:
+    if CALLGUARD_ENABLED:
+        entrypoint.__dict__['component_entrypoint'] = True
+        return entrypoint
+    else:
+        return functools.partial(_handle_entrypoint, entrypoint.__name__, entrypoint)
 
 
 # MARK: Component Base Class
+@callguard_class(public_methods=True, ignore_patterns=('inside_entrypoint'))
 class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass=ABCMeta):
     # Decimal factory for precise calculations
     decimal : DecimalFactory
@@ -193,6 +193,22 @@ class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass
         self._inside_entrypoint = False
 
         self.decimal = DecimalFactory(self.config.decimal)
+
+    def __callguard_handler__[**P, R](self : Self, method : CallguardWrapped[Self,P,R], info : CallguardHandlerInfo[Self,P,R], *args, **kwargs) -> R:
+        # Default callguard behaviour
+        if info.method_name.startswith('_') and not info.default_checker(info):
+            raise RuntimeError(f"Callguard: Unauthorized call to private method '{info.method_name}' from module '{info.caller_module}' and caller '{info.caller_self}'")
+
+        # When inside an entrypoint all calls are allowed
+        if self._inside_entrypoint:
+            return method(self, *args, **kwargs)
+
+        # Fail if this is not an entrypoint
+        elif not method.__dict__.get('component_entrypoint', False):
+            raise RuntimeError(f"Method '{info.method_name}' is not a component entrypoint. It must be called through a component entrypoint method.")
+
+        return _handle_entrypoint(info.method_name, method, self, *args, **kwargs)
+
 
     @property
     def inside_entrypoint(self) -> bool:
@@ -220,27 +236,14 @@ class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass
             if msg: msg = f" {msg}"
             raise RuntimeError(f"An entrypoint for '{self.instance_name}' is already being executed.{msg}")
 
-    def before_entrypoint(self, entrypoint_name : str, *args, **kwargs) -> None:
-        self._assert_inside_entrypoint("Must not call 'before_entrypoint' outside an entrypoint method.")
+    def _before_entrypoint(self, entrypoint_name : str, *args, **kwargs) -> None:
+        self._assert_inside_entrypoint("Must not call '_before_entrypoint' outside an entrypoint method.")
 
-    def wrap_entrypoint[T](self, entrypoint : Callable[..., T], *args, **kwargs) -> T:
-        self._assert_inside_entrypoint("Must not call 'wrap_entrypoint' outside an entrypoint method.")
+    def _wrap_entrypoint[S : ComponentBase, **P, T](self : S, entrypoint : Callable[Concatenate[S,P], T], *args : P.args, **kwargs : P.kwargs) -> T:
+        self._assert_inside_entrypoint("Must not call '_wrap_entrypoint' outside an entrypoint method.")
 
         with self.decimal.context_manager():
             return entrypoint(self, *args, **kwargs)
 
-    def after_entrypoint(self, entrypoint_name : str) -> None:
-        self._assert_inside_entrypoint("Must not call 'after_entrypoint' outside an entrypoint method.")
-
-    @override
-    def __getattribute__(self, name: str) -> Any:
-        obj = super().__getattribute__(name)
-
-        # If the object is a child class method and not a component entrypoint, raise an error as that likely means someone is trying to call it directly.
-        # This is of course not fool-proof (and anyone who really wants to call us will be able to bypass this), but it is a good way to prevent accidental misuse.
-        if inspect.ismethod(obj) and not hasattr(ComponentBase, name):
-            is_entrypoint = getattr(obj, 'component_entrypoint', False)
-            if not is_entrypoint and not self.inside_entrypoint:
-                    raise RuntimeError(f"Method '{name}' is not a component entrypoint. Must call it through the component's entrypoint method.")
-
-        return obj
+    def _after_entrypoint(self, entrypoint_name : str) -> None:
+        self._assert_inside_entrypoint("Must not call '_after_entrypoint' outside an entrypoint method.")

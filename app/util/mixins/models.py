@@ -4,7 +4,7 @@
 import warnings
 
 from pydantic import BaseModel, model_validator, Field, field_validator
-from typing import Any, Self, Annotated
+from typing import Any, Self, Annotated, override
 
 from . import HierarchicalMutableProtocol, NamedMutableProtocol, HierarchicalMixinMinimal, NamedMixinMinimal, LoggableMixin, HierarchicalProtocol, NamedProtocol
 
@@ -62,6 +62,14 @@ class HierarchicalModel(BaseModel, HierarchicalMixinMinimal):
                 self._seed_parent_and_name_to_object(fldnm, fld)
 
         return self
+
+    @override
+    def __str__(self):
+        return super(HierarchicalMixinMinimal, self).__str__()
+
+    @override
+    def __repr__(self):
+        return super(HierarchicalMixinMinimal, self).__repr__()
 
 class HierarchicalNamedModel(HierarchicalModel):
     instance_name : str | None = Field(default=None, min_length=1, description="Name of the instance.")

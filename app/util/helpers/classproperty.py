@@ -7,7 +7,7 @@ from . import script_info
 
 
 # NOTE: We extend property to piggyback on any code that handles property descriptors differently than other class variables
-class ClassPropertyDescriptor[C = type, T = Any](property):
+class ClassPropertyDescriptor[C : object, T : Any](property):
     def __init__(self, fget: Callable[[C], T]):
         self.getter: Any = fget
 
@@ -28,7 +28,7 @@ class ClassPropertyDescriptor[C = type, T = Any](property):
         raise AttributeError("Can't delete classproperty descriptors")
 
 
-def classproperty[C = type, T = Any](func : Callable[[C], T]) -> ClassPropertyDescriptor[C, T]:
+def classproperty[C : object, T : Any](func : Callable[[C], T]) -> ClassPropertyDescriptor[C, T]:
     if not script_info.is_documentation_build():
         if not isinstance(func, (classmethod, staticmethod)):
             func = classmethod(func) # pyright: ignore

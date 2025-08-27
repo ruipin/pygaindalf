@@ -23,6 +23,9 @@ class Ledger(Sequence, NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
     @property
     @override
     def instance_name(self) -> str:
+        instrument = getattr(self, 'instrument', None)
+        if instrument is None:
+            return f"{self.__class__.__name__}@None"
         return f"{self.__class__.__name__}@{self.instrument.instance_name}"
 
     @classmethod

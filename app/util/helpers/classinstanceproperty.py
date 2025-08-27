@@ -5,7 +5,7 @@ from typing import Any, Callable, override
 
 
 # NOTE: We extend property to piggyback on any code that handles property descriptors differently than other class variables
-class ClassInstancePropertyDescriptor[C = type, T = Any](property):
+class ClassInstancePropertyDescriptor[C : object, T : Any](property):
     """
     Descriptor for a read-only property accessible from both class and instances.
     The wrapped function receives either the instance (when accessed via instance)
@@ -29,5 +29,5 @@ class ClassInstancePropertyDescriptor[C = type, T = Any](property):
         raise AttributeError("Can't delete classinstanceproperty descriptor")
 
 
-def classinstanceproperty[C = type, T = Any](func: Callable[[C], T]) -> ClassInstancePropertyDescriptor[C, T]:
-    return ClassInstancePropertyDescriptor(func)  # pyright: ignore
+def classinstanceproperty[C : object, T : Any](func: Callable[[C], T]) -> ClassInstancePropertyDescriptor[C, T]:
+    return ClassInstancePropertyDescriptor(func)
