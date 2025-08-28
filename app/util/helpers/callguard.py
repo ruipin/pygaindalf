@@ -94,7 +94,7 @@ def get_execution_frame_self(frame : FrameType) -> object | None:
 # MARK: Option types
 type CallguardWrapped[T,**P, R] = Callable[Concatenate[T,P], R]
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class CallguardHandlerInfo[T : object, **P, R]:
     method_name : str
     check_module : bool

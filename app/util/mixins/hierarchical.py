@@ -119,6 +119,7 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
     """ Attribute name used to store the instance name
     This is used to allow base classes to customise this without needing to override the instance_name property """
     HIERARCHICAL_MIXIN_ATTRIBUTE : ClassVar[str] = '__parent'
+    ALLOW_CHANGING_INSTANCE_PARENT : ClassVar[bool] = False
 
     def __init__(self, *args, instance_parent: HierarchicalProtocol | NamedProtocol | None = None, **kwargs):
         """
@@ -155,6 +156,9 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
         """
         if new_parent is not None and not isinstance(new_parent, (HierarchicalProtocol, NamedProtocol)):
             raise TypeError(f"Expected HierarchicalProtocol, NamedProtocol, or None, got {type(new_parent).__name__}")
+
+        if not self.__class__.ALLOW_CHANGING_INSTANCE_PARENT and self.instance_parent is not None:
+            raise RuntimeError("Changing instance_parent is not allowed for this class.")
 
         setattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, new_parent)
 

@@ -13,6 +13,7 @@ from abc import ABCMeta, abstractmethod
 
 from ...util.helpers import classproperty
 from ...util.mixins import NamedMixinMinimal, NamedProtocol, NamedMutableProtocol
+from ...util.helpers import script_info
 
 
 UID_SEPARATOR = '#'
@@ -93,6 +94,10 @@ class IncrementingUidFactory:
         if increment:
             self.counters[namespace] = counter + 1
         return uid
+
+    if script_info.is_unit_test():
+        def reset(self) -> None:
+            self.counters.clear()
 
 
 # MARK: Protocol

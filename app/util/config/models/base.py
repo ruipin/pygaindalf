@@ -5,7 +5,7 @@ import logging
 
 from reprlib import Repr
 from pydantic import Field
-from typing import override, Any
+from typing import override, Any, ClassVar
 
 from .app_info import AppInfo
 from .base_model import BaseConfigModel
@@ -15,18 +15,13 @@ from ...mixins import LoggableMixin
 from ...requests.config import RequestsConfig
 
 class ConfigLoggingOnly(BaseConfigModel):
+    PROPAGATE_FROM_PARENT  : ClassVar[bool] = False
+
     logging: LoggingConfig = Field(default=LoggingConfig(), description="Logging configuration")
 
-    @override
-    def _seed_parent_and_name_to_object(self, name : str, obj : Any) -> None:
-        # We need to override this method to avoid setting the parent and name when instantiating ConfigLoggingOnly but not its subclasses.
-        # This is because ConfigLoggingOnly is used during the initialization of the logging system, and we do not want to set the parent and name
-        # at that point. Otherwise, our sanity checks fail when the full configuration is loaded because the parent was already set.
-        if self.__class__ is ConfigLoggingOnly:
-            return
-        super()._seed_parent_and_name_to_object(name, obj)
-
 class ConfigBase(ConfigLoggingOnly):
+    PROPAGATE_FROM_PARENT  : ClassVar[bool] = True
+
     app: AppInfo = Field(description="Application information, automatically gathered at startup")
 
     requests : RequestsConfig = Field(default_factory=RequestsConfig, description="HTTP requests configuration, including rate limiting and caching")

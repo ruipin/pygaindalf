@@ -1,16 +1,22 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import sys
 
-from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt
-from typing import override, Any, ClassVar, MutableMapping
+from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
+from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager
 from abc import abstractmethod, ABCMeta
 from weakref import WeakValueDictionary
 from functools import cached_property
 
 from ....util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ....util.helpers import script_info
-from ....util.helpers.callguard import callguard_class, no_callguard
+from ....util.helpers.callguard import callguard_class
+
+if TYPE_CHECKING:
+    from ...journal.entity_journal import EntityJournal
+    from ...journal.session_manager import SessionManager
+    from ...journal.session import Session
 
 from ..uid import Uid
 from .audit import EntityAuditLog
@@ -22,7 +28,7 @@ class Entity(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
-        #validate_assignment=True,
+        validate_assignment=True,
     )
 
 
@@ -37,7 +43,7 @@ class Entity(LoggableHierarchicalModel):
             cls._UID_STORAGE.clear()
 
     @classmethod
-    def uid_namespace(cls, data : dict[str, Any]) -> str:
+    def uid_namespace(cls, data : dict[str, Any] | None = None) -> str:
         """
         Returns the namespace for the UID.
         This can be overridden in subclasses to provide a custom namespace.
@@ -75,9 +81,8 @@ class Entity(LoggableHierarchicalModel):
         # If the entity already exists, we fail unless we are cloning the entity and incrementing the version
         existing = uid_storage.get(self.uid, None)
         if existing and existing is not self:
-            if (self.version != existing.entity_log.next_version):
-                pass
-                #raise ValueError(f"Duplicate UID detected: {self.uid}. Each entity must have a unique UID or increment the version.")
+            if (self.version <= existing.version):
+                raise ValueError(f"Duplicate UID detected: {self.uid} with versions {self.version} vs {existing.version}. Each entity must have a unique UID or increment the version.")
 
         # Store the entity in the UID storage
         uid_storage[self.uid] = self
@@ -91,10 +96,12 @@ class Entity(LoggableHierarchicalModel):
             raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
         return uid_storage
 
-    @no_callguard
     @classmethod
-    def from_uid(cls, uid: Uid) -> 'Entity | None':
-        return cls._get_uid_storage().get(uid, None)
+    def by_uid[T : 'Entity'](cls : type[T], uid: Uid) -> T | None:
+        result = cls._get_uid_storage().get(uid, None)
+        if not isinstance(result, cls):
+            raise ValueError(f"UID storage returned an instance of {type(result).__name__} instead of {cls.__name__}.")
+        return result
 
 
     # MARK: Instance Name
@@ -121,6 +128,7 @@ class Entity(LoggableHierarchicalModel):
 
 
     # MARK: Meta
+    _initialized : bool = PrivateAttr(default=False)
     entity_log : EntityAuditLog = Field(default_factory=lambda data: EntityAuditLog(data['uid']), validate_default=True, repr=False, exclude=True, description="The audit log for this entity, which tracks changes made to it over time.")
     version    : PositiveInt    = Field(default_factory=lambda data: data['entity_log'].next_version, validate_default=True, ge=1, description="The version of this entity. Incremented when the entity is cloned as part of an update action.")
 
@@ -144,10 +152,14 @@ class Entity(LoggableHierarchicalModel):
 
     @override
     def model_post_init(self, context : Any) -> None:
+        super().model_post_init(context)
+
         self.entity_log.on_create(self)
+        self._intialized = True
 
     def __del__(self):
-        if not script_info.is_unit_test() and not self.superseded:
+        # No need to track deletion in finalizing state
+        if not sys.is_finalizing and not self.superseded:
             self.entity_log.on_delete(self, who='system', why='__del__')
 
     @computed_field
@@ -158,6 +170,12 @@ class Entity(LoggableHierarchicalModel):
         """
         return self.entity_log.version > self.version
 
+    @property
+    def initialized(self) -> bool:
+        try:
+            return getattr(self, '_initialized', False)
+        except:
+            return False
 
     def update[T : Entity](self : T, **kwargs: Any) -> T:
         """
@@ -185,6 +203,62 @@ class Entity(LoggableHierarchicalModel):
 
         return self.__class__(**args)
 
+
+    # MARK: Journal
+    @property
+    def journal(self) -> 'EntityJournal':
+        return self.session.get_entity_journal(entity=self)
+
+    @property
+    def session(self) -> 'Session':
+        manager = self.session_manager
+        session = manager.session
+        if session is None:
+            raise RuntimeError("No active session found in the session manager.")
+
+        return session
+
+    @cached_property
+    def session_manager(self) -> 'SessionManager':
+        parent = self.instance_parent
+        if not isinstance(parent, Entity):
+            raise ValueError(f"Entity must have an instance parent of type Entity to access the journal manager. Found: {type(parent).__name__}.")
+
+        return parent.session_manager
+
+    @override
+    def __getattribute__(self, name: str) -> Any:
+        # Short-circuit a few attributes to avoid recursion
+        if name.startswith('_') or name in ('initialized', 'session_manager', 'session', 'instance_parent'):
+            return super().__getattribute__(name)
+
+        # Short-circuit if not yet initialized
+        if not self.initialized:
+            return super().__getattribute__(name)
+
+        # If not in a session, return the normal attribute
+        if not self.session_manager.in_session:
+            return super().__getattribute__(name)
+
+        # Otherwise, use the journal to get the attribute
+        return self.journal.get(name)
+
+    @override
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Short-circuit private attributes
+        if name.startswith('_'):
+            return super().__setattr__(name, value)
+
+        # Short-circuit if not yet initialized
+        if not self._initialized:
+            return super().__setattr__(name, value)
+
+        # If not in a session, set the normal attribute
+        if not self.session_manager.in_session:
+            return super().__setattr__(name, value)
+
+        # Otherwise, use the journal to set the attribute
+        self.journal.set(name, value)
 
     # MARK: Utilities
     @override

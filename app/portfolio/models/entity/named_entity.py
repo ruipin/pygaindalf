@@ -47,6 +47,8 @@ class ManualNamedEntity(NamedEntity, metaclass=ABCMeta):
 
 
 class AutomaticNamedEntity(NamedEntity, metaclass=ABCMeta):
+    PROPAGATE_INSTANCE_NAME_FROM_PARENT : ClassVar[bool] = False
+
     @classmethod
     @override
     def _calculate_uid(cls, data : dict[str, Any]) -> Uid:

@@ -13,7 +13,7 @@ from .entity import Entity
 
 
 class InstanceStoreEntityMixin(metaclass=ABCMeta):
-    _initialized : bool = PrivateAttr(default=False)
+    __initialized : bool = PrivateAttr(default=False)
 
     def __init_subclass__(cls) -> None:
         if (not issubclass(cls, Entity)) and (type(cls) is not ABCMeta):
@@ -37,7 +37,7 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
 
         if (instance := cls._instance_store_search(**kwargs)) is None or (version is not None and version == instance.entity_log.next_version):
             instance = super().__new__(cls)
-            instance._initialized = False
+            instance.__initialized = False
         return instance
 
 
@@ -46,7 +46,7 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
         if not isinstance(self, Entity):
             raise TypeError(f"{self.__class__.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
 
-        if not self._initialized:
+        if not self.__initialized:
             super().__init__(**kwargs)
             self.__class__._instance_store_add(self)
         else:
@@ -88,7 +88,7 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
                 data_value = coerced
 
             if isinstance(self_value, Entity) or (eq := getattr(self_value, '__eq__', None)) is None or (eq_res := eq(data_value)) is NotImplemented:
-                if self_type is not data_value:
+                if self_value is not data_value:
                     raise TypeError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__} because it is not the existing value.")
             else:
                 if (not eq_res):

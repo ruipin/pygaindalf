@@ -13,10 +13,10 @@ from app.util.mixins import HierarchicalMixin, NamedMixin
 
 
 class Hier(HierarchicalMixin):
-    pass
+    ALLOW_CHANGING_INSTANCE_PARENT = True
 
 class HierNamed(HierarchicalMixin, NamedMixin):
-    pass
+    ALLOW_CHANGING_INSTANCE_PARENT = True
 
 
 @pytest.mark.mixins
@@ -51,6 +51,10 @@ class TestHierarchicalMixins:
             b.instance_parent = 5 # pyright: ignore as we know this will fail type checking
 
         # Change c's parent to a
+        Hier.ALLOW_CHANGING_INSTANCE_PARENT = False
+        with pytest.raises(RuntimeError):
+            c.instance_parent = a
+        Hier.ALLOW_CHANGING_INSTANCE_PARENT = True
         c.instance_parent = a
         assert c.instance_parent is a
         assert c.instance_hierarchy == "Hier.Hier"
@@ -78,6 +82,10 @@ class TestHierarchicalMixins:
             b.instance_parent = 5 # pyright: ignore as we know this will fail type checking
 
         # Change c's parent to a
+        HierNamed.ALLOW_CHANGING_INSTANCE_PARENT = False
+        with pytest.raises(RuntimeError):
+            c.instance_parent = b
+        HierNamed.ALLOW_CHANGING_INSTANCE_PARENT = True
         c.instance_parent = a
         assert c.instance_parent is a
         assert c.instance_hierarchy == "name1.name3"

@@ -32,7 +32,6 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
     decimal : DecimalConfig = FieldInherit(default_factory=DecimalConfig, description="Decimal configuration for provider")
 
     @model_validator(mode='wrap')
-    @no_callguard
     @classmethod
     def _coerce_to_concrete_class[Child : BaseComponentConfig](cls : type[Child], data : Any, handler : ModelWrapValidatorHandler, info : ValidationInfo) -> Child:
         # Already instantiated

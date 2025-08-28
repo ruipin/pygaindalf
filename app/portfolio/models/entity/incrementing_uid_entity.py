@@ -22,7 +22,7 @@ class IncrementingUidEntity(AutomaticNamedEntity):
         def reset_state(cls) -> None:
             super().reset_state()
             if hasattr(cls, '_UID_FACTORY'):
-                del cls._UID_FACTORY
+                cls._UID_FACTORY.reset()
 
     def __init_subclass__(cls) -> None:
         """

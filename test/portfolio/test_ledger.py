@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import datetime
 import pytest
+from decimal import Decimal
 
 from iso4217 import Currency
 
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.ledger import Ledger
+from app.portfolio.models.transaction import Transaction, TransactionType
 
 
 @pytest.mark.portfolio
@@ -35,3 +38,46 @@ class TestLedger:
         assert len(ledg.entity_log) == 1
         assert ledg.entity_log.exists is True
         assert ledg.entity_log.next_version == 2
+
+    def test_ledger_with_transactions_sequence_interface(self):
+        inst = Instrument(
+            ticker="AAPL",
+            currency=Currency("USD"),
+        )
+        # Manually construct transactions (ledger currently immutable, so we just build tuple)
+        tx1 = Transaction(
+            instrument_uid=inst.uid,
+            type=TransactionType.BUY,
+            date=datetime.date(2025, 1, 1),
+            quantity=Decimal("10"),
+            consideration=Decimal("1500"),
+        )
+        tx2 = Transaction(
+            instrument_uid=inst.uid,
+            type=TransactionType.SELL,
+            date=datetime.date(2025, 1, 5),
+            quantity=Decimal("4"),
+            consideration=Decimal("620"),
+        )
+
+        ledg = Ledger(
+            instrument=inst,
+            transactions=(tx1, tx2),
+        )
+
+        assert len(ledg) == 2
+        assert ledg.length == 2
+        assert ledg[0] is tx1
+        assert ledg[1] is tx2
+        assert list(iter(ledg)) == [tx1, tx2]
+
+    def test_ledger_uid_and_instance_name_stable(self):
+        inst = Instrument(
+            ticker="TSLA",
+            currency=Currency("USD"),
+        )
+        ledg1 = Ledger(instrument=inst)
+        # Reinitialize with same instrument (should reuse)
+        ledg2 = Ledger(instrument=inst)
+
+        assert ledg1 is ledg2
