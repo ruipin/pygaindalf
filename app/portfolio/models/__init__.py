@@ -5,7 +5,7 @@ from .entity import *
 from .instrument import *
 from .transaction import *
 from .ledger import *
-from .instance_store import *
+from .entity.instance_store import *
 
 from ...util.helpers import script_info
 

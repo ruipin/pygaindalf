@@ -8,11 +8,14 @@ from datetime import datetime
 
 from ...util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ...util.helpers.callguard import callguard_class
+from ...util.helpers.wrappers import before_attribute_check
 
 from ..models.uid import Uid, IncrementingUidFactory
 from ..models.entity.entity import Entity
+from ..models.entity.stale import stale_check
 
 from .entity_journal import EntityJournal
+
 
 
 @callguard_class()
@@ -39,9 +42,18 @@ class Session(LoggableHierarchicalModel):
     start_time : datetime = Field(default_factory=datetime.now, init=False, description="Timestamp when the session started.")
 
 
-    # MARK: State machine
+    # MARK: Stale
     _ended : bool = PrivateAttr(default=False)
+    @property
+    def ended(self) -> bool:
+        return self._ended
 
+    @property
+    def stale(self) -> bool:
+        return self.ended
+
+
+    # MARK: State machine
     @override
     def model_post_init(self, context : Any):
         super().model_post_init(context)
@@ -57,7 +69,7 @@ class Session(LoggableHierarchicalModel):
             raise RuntimeError("Cannot commit an ended session.")
 
         # No need to do anything if there are no edits to commit
-        if not self.has_uncommited_edits:
+        if not self.dirty:
             return
 
         # TODO: Log commit
@@ -70,7 +82,7 @@ class Session(LoggableHierarchicalModel):
             raise RuntimeError("Cannot abort an ended session.")
 
         # No need to do anything if there are no edits to commit
-        if not self.has_uncommited_edits:
+        if not self.dirty:
             return
 
         # TODO: Log abort
@@ -81,24 +93,20 @@ class Session(LoggableHierarchicalModel):
         if self.ended:
             raise RuntimeError("Cannot end an already ended session.")
 
-        if self.has_uncommited_edits:
+        if self.dirty:
             self.commit()
 
         # TODO: Log ended
 
         self._ended = True
 
-    @property
-    def ended(self) -> bool:
-        return self._ended
-
 
     # Entity Journals
     _entity_journals : dict[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
 
     @property
-    def has_uncommited_edits(self) -> bool:
-        return len(self) > 0
+    def dirty(self) -> bool:
+        return any(j.dirty for j in self._entity_journals.values())
 
     def _add_entity_journal(self, entity: Entity) -> EntityJournal:
         if self.ended:

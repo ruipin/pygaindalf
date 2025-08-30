@@ -52,6 +52,9 @@ class JournalledSequence[T](MutableSequence[T]):
     def __getitem__(self, index: slice) -> MutableSequence[T]: ...
     @override
     def __getitem__(self, index: int | slice) -> T | MutableSequence[T]:
+        if isinstance(index, slice):
+            raise NotImplementedError("Sliced read access not implemented yet")
+
         if self._sequence is None and not isinstance(index, slice):
             return self._original[index]
         elif self._sequence is None:

@@ -207,6 +207,8 @@ class Entity(LoggableHierarchicalModel):
     # MARK: Journal
     @property
     def journal(self) -> 'EntityJournal':
+        if self.superseded:
+            raise RuntimeError("Cannot access the journal of a superseded entity.")
         return self.session.get_entity_journal(entity=self)
 
     @property
@@ -237,7 +239,7 @@ class Entity(LoggableHierarchicalModel):
             return super().__getattribute__(name)
 
         # If not in a session, return the normal attribute
-        if not self.session_manager.in_session:
+        if self.superseded or not self.session_manager.in_session:
             return super().__getattribute__(name)
 
         # Otherwise, use the journal to get the attribute
@@ -254,11 +256,22 @@ class Entity(LoggableHierarchicalModel):
             return super().__setattr__(name, value)
 
         # If not in a session, set the normal attribute
-        if not self.session_manager.in_session:
+        if self.superseded or not self.session_manager.in_session:
             return super().__setattr__(name, value)
 
         # Otherwise, use the journal to set the attribute
         self.journal.set(name, value)
+
+    @property
+    def dirty(self) -> bool:
+        if self.superseded:
+            return False
+        return self.journal.dirty
+
+    @property
+    def stale(self) -> bool:
+        return self.superseded or self.dirty
+
 
     # MARK: Utilities
     @override
