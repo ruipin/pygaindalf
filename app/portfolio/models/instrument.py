@@ -11,9 +11,9 @@ from iso4217 import Currency
 
 from ...util.helpers import script_info
 
-from .instance_store import InstanceStoreEntityMixin
+from .entity.instance_store import InstanceStoreEntityMixin
 from .entity import Entity
-from . import AutomaticNamedEntity
+from .entity import AutomaticNamedEntity
 
 
 class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):

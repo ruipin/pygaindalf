@@ -10,10 +10,10 @@ from decimal import Decimal
 
 from enum import StrEnum
 
-from ...models import Uid
+from ..models import Uid
 
-from ..entity import IncrementingUidEntity
-from ..instrument import Instrument
+from .entity import IncrementingUidEntity
+from .instrument import Instrument
 
 
 class TransactionType(StrEnum):

@@ -2,7 +2,8 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
-from typing import override, Self
+import functools
+from typing import override, Self, Callable, Any, cast as typing_cast
 from app.util.helpers.callguard import (
     callguard_callable,
     callguard_property,
@@ -402,9 +403,9 @@ class TestCallguardFilter:
         @callguard_class()
         class FilterSample:
             @classmethod
-            def __callguard_filter__(cls, name, value):
+            def __callguard_filter__(cls, attribute : str, **kwargs):
                 # Only guard names ending with '_guarded'
-                return name.endswith('_guarded')
+                return attribute.endswith('_guarded')
 
             def _a_guarded(self) -> str:
                 return "a"
@@ -426,3 +427,299 @@ class TestCallguardFilter:
 
         # Internal calls: both accessible (guarded one allowed internally)
         assert obj.caller() == ("a", "b")
+
+
+# ---------------------------------------------------------------------------
+# MARK: decorator basic functionality
+# ---------------------------------------------------------------------------
+def custom_decorator[**P,R](func: Callable[P,R]) -> Callable[P,R]:
+    """Decorator used in tests to verify that callguard applies a custom decorator.
+
+    Behaviour:
+    - If return value is str -> prefix with 'wrapped:'
+    - If return value is int -> increment by 1
+    """
+    @functools.wraps(func)
+    def _wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        result = func(*args, **kwargs)
+        if isinstance(result, str):
+            result = f"wrapped:{result}"
+        elif isinstance(result, int):
+            result = result + 1
+        return typing_cast(R, result)
+    return _wrapper
+
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardCustomDecorator:
+    def test_custom_decorator_applied_private_method(self):
+        # Disable public method decoration so only the private method is decorated once
+        @callguard_class(decorator=custom_decorator, decorate_private_methods=True, decorate_public_methods=False)
+        class Sample:
+            def __init__(self) -> None:
+                self.invoked: list[str] = []
+
+            def _secret(self) -> str:
+                self.invoked.append("_secret")
+                return "ok"
+
+            def public(self) -> str:
+                return self._secret()
+
+        s = Sample()
+        # External call blocked BEFORE wrapper executes
+        with pytest.raises(RuntimeError):  # external direct call blocked
+            s._secret()
+        # Internal call allowed and decorator executed
+        assert s.public() == "wrapped:ok"
+        assert s.invoked == ["_secret"]
+
+    def test_custom_decorator_applied_private_property(self):
+        # Disable public method decoration so only the private property getter is decorated
+        @callguard_class(decorator=custom_decorator, decorate_private_methods=True, decorate_public_methods=False)
+        class SampleProp:
+            def __init__(self) -> None:
+                self._value = 10
+
+            @property
+            def _val(self) -> int:
+                return self._value
+
+            def read(self) -> int:
+                return self._val
+
+        sp = SampleProp()
+        with pytest.raises(RuntimeError):  # blocked external access; decorator not invoked
+            _ = sp._val
+        # Internal access via method -> decorator increments int by 1
+        assert sp.read() == 11
+
+    def test_custom_decorator_applied_public_method(self):
+        @callguard_class(decorate_public_methods=True, decorator=custom_decorator)
+        class PublicSample:
+            def public(self) -> str:
+                return "ok"
+
+            def caller(self) -> str:
+                return self.public()
+
+        ps = PublicSample()
+        # Direct external call -> decorated once
+        assert ps.public() == "wrapped:ok"
+        # Internal call via another decorated public method -> double wrapped
+        assert ps.caller() == "wrapped:wrapped:ok"
+
+    def test_custom_decorator_public_and_private_methods(self):
+        @callguard_class(decorator=custom_decorator, decorate_public_methods=True, decorate_private_methods=True)
+        class MixedSample:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def public(self) -> str:
+                # Call private method; both should be decorated (public + private)
+                return f"pub:{self._secret()}"
+
+            def _secret(self) -> str:
+                self.calls.append("_secret")
+                return "inner"
+
+            def access_private(self) -> str:
+                return self._secret()
+
+        ms = MixedSample()
+        # External direct call to public -> allowed, decorated
+        assert ms.public() == "wrapped:pub:wrapped:inner"
+        # External direct call to private -> blocked
+        with pytest.raises(RuntimeError):
+            ms._secret()
+        # Internal call to private via helper method -> decorated
+        assert ms.access_private() == "wrapped:wrapped:inner"
+        assert ms.calls == ["_secret", "_secret"]  # called once via public, once via access_private
+
+    def test_custom_decorator_applied_public_int_method(self):
+        @callguard_class(decorator=custom_decorator, decorate_public_methods=True)
+        class PublicInt:
+            def value(self) -> int:
+                return 10
+
+        pi = PublicInt()
+        assert pi.value() == 11  # incremented by decorator
+
+# ---------------------------------------------------------------------------
+# MARK: allow_same_module
+# ---------------------------------------------------------------------------
+# External helper functions in SAME module as guarded classes
+def _external_call_allow(obj: 'AllowSameModuleSample') -> str:
+    return obj._secret()  # should be allowed (same module)
+
+def _external_call_no_allow(obj: 'NoAllowSameModuleSample') -> str:
+    return obj._secret()  # should be blocked
+
+
+@callguard_class(allow_same_module=True)
+class AllowSameModuleSample:
+    def _secret(self) -> str:
+        return "ok"
+
+    def internal(self) -> str:
+        return self._secret()
+
+
+@callguard_class()
+class NoAllowSameModuleSample:
+    def _secret(self) -> str:
+        return "ok"
+
+    def internal(self) -> str:
+        return self._secret()
+
+
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardAllowSameModule:
+    def test_allow_same_module_direct_and_indirect(self):
+        a = AllowSameModuleSample()
+        assert a._secret() == "ok"  # direct external call allowed
+        assert _external_call_allow(a) == "ok"  # helper function call allowed
+        assert a.internal() == "ok"
+
+    def test_without_allow_same_module_blocks(self):
+        n = NoAllowSameModuleSample()
+        with pytest.raises(RuntimeError):
+            n._secret()
+        with pytest.raises(RuntimeError):
+            _external_call_no_allow(n)
+        assert n.internal() == "ok"
+
+
+# ---------------------------------------------------------------------------
+# MARK: decorator_factory
+# ---------------------------------------------------------------------------
+_factory_calls: list[dict[str, Any]] = []
+
+
+def _decorator_factory(**options: Any):
+    """Return the custom_decorator while recording invocation options."""
+    _factory_calls.append({k: v for k, v in options.items() if k in ("method_name", "guard")})
+
+    def _decorator[F](func: F) -> F:  # type: ignore[override]
+        wrapped = custom_decorator(func)  # type: ignore[arg-type]
+        return typing_cast(F, wrapped)
+
+    return _decorator
+
+
+@callguard_class(decorator_factory=_decorator_factory, decorate_private_methods=True)
+class FactorySample:
+    def _secret(self) -> str:
+        return "ok"
+
+    def public(self) -> str:
+        return self._secret()
+
+
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardDecoratorFactory:
+    def test_decorator_factory_applied(self):
+        f = FactorySample()
+        with pytest.raises(RuntimeError):
+            f._secret()
+        assert f.public() == "wrapped:ok"
+        assert len(_factory_calls) == 1
+        assert _factory_calls[0]["method_name"] == "_secret"
+
+
+# ---------------------------------------------------------------------------
+# MARK: __callguard_decorator_factory__ attribute
+# ---------------------------------------------------------------------------
+_attr_factory_calls: list[str] = []
+
+
+def _attr_factory(**options: Any):
+    _attr_factory_calls.append(options.get("method_name", "?"))
+
+    def _decorator[F](func: F) -> F:  # type: ignore[override]
+        wrapped = custom_decorator(func)  # type: ignore[arg-type]
+        return typing_cast(F, wrapped)
+
+    return _decorator
+
+
+@callguard_class(decorate_private_methods=True)
+class AttrFactorySample:
+    __callguard_decorator_factory__ = staticmethod(_attr_factory)
+
+    def _hidden(self) -> str:
+        return "ok"
+
+    def access(self) -> str:
+        return self._hidden()
+
+
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardClassDecoratorFactoryAttribute:
+    def test_class_level_factory_attribute(self):
+        a = AttrFactorySample()
+        with pytest.raises(RuntimeError):
+            a._hidden()
+        assert a.access() == "wrapped:ok"
+        assert _attr_factory_calls == ["_hidden"]
+
+
+# ---------------------------------------------------------------------------
+# MARK: guard_ignore_patterns
+# ---------------------------------------------------------------------------
+@callguard_class(guard_private_methods=True, guard_ignore_patterns=[r"_skip_guard$"])
+class GuardIgnoreSample:
+    def _will_guard(self) -> str:
+        return "guarded"
+
+    def _skip_guard(self) -> str:  # pattern -> not guarded
+        return "skipped"
+
+    def both(self) -> tuple[str, str]:
+        return self._will_guard(), self._skip_guard()
+
+
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardGuardIgnorePatterns:
+    def test_guard_ignore_patterns(self):
+        g = GuardIgnoreSample()
+        with pytest.raises(RuntimeError):
+            g._will_guard()
+        assert g._skip_guard() == "skipped"  # not guarded
+        assert g.both() == ("guarded", "skipped")
+
+
+# ---------------------------------------------------------------------------
+# MARK: decorate_ignore_patterns
+# ---------------------------------------------------------------------------
+@callguard_class(
+    decorator=custom_decorator,
+    decorate_private_methods=True,
+    decorate_ignore_patterns=[r"_skip_decorate$"]
+)
+class DecorateIgnoreSample:
+    def _decorated(self) -> str:
+        return "ok"
+
+    def _skip_decorate(self) -> str:  # pattern excluded from decoration
+        return "ok2"
+
+    def call(self) -> tuple[str, str]:
+        return self._decorated(), self._skip_decorate()
+
+
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardDecorateIgnorePatterns:
+    def test_decorate_ignore_patterns(self):
+        d = DecorateIgnoreSample()
+        with pytest.raises(RuntimeError):
+            d._decorated()
+        with pytest.raises(RuntimeError):
+            d._skip_decorate()
+        assert d.call() == ("wrapped:ok", "ok2")

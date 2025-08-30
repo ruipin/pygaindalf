@@ -6,10 +6,10 @@ from pydantic import model_validator, BaseModel, ModelWrapValidatorHandler, Priv
 from typing import Any, Self, ClassVar, override
 from abc import ABCMeta, abstractmethod
 
-from ...util.mixins import NamedProtocol
-from ...util.helpers import script_info
+from ....util.mixins import NamedProtocol
+from ....util.helpers import script_info
 
-from .entity import Entity
+from . import Entity
 
 
 class InstanceStoreEntityMixin(metaclass=ABCMeta):

@@ -1,0 +1,122 @@
+"""Tests for JournalledSequence copy-on-write and journaling"""
+
+import pytest
+
+from app.portfolio.journal.journalled_sequence import (
+    JournalledSequence,
+    JournalledSequenceEditType,
+)
+
+
+@pytest.mark.journal
+@pytest.mark.portfolio
+@pytest.mark.journalled_data_structures
+class TestJournalledSequence:
+    def test_no_edit_pass_through(self):
+        original = [1, 2, 3]
+        js = JournalledSequence(original)
+        assert js.edited is False
+        assert len(js) == len(original)
+        assert js[0] == 1  # pass-through before edits
+        assert js._sequence is None  # copy not yet made
+
+    def test_setitem_triggers_copy_and_journal(self):
+        original = [1, 2, 3]
+        js = JournalledSequence(original)
+        js[1] = 42
+        assert js.edited is True
+        assert js._sequence is not None
+        assert original[1] == 2  # original unchanged
+        assert js[1] == 42
+        assert len(js._journal) == 1
+        e = js._journal[0]
+        assert e.type is JournalledSequenceEditType.SETITEM
+        assert e.index == 1 and e.value == 42
+
+    def test_delitem(self):
+        original = [1, 2, 3]
+        js = JournalledSequence(original)
+        del js[0]
+        assert js.edited is True
+        assert js[0] == 2
+        assert len(js) == 2
+        assert len(js._journal) == 1
+        e = js._journal[0]
+        assert e.type is JournalledSequenceEditType.DELITEM
+        assert e.index == 0
+
+    def test_insert(self):
+        original = [1, 2, 3]
+        js = JournalledSequence(original)
+        js.insert(1, 99)
+        assert js.edited is True
+        assert js[1] == 99
+        assert len(js) == 4
+        e = js._journal[0]
+        assert e.type is JournalledSequenceEditType.INSERT
+        assert e.index == 1 and e.value == 99
+
+    def test_multiple_edits_order(self):
+        original = [10, 20]
+        js = JournalledSequence(original)
+        js.insert(1, 15)
+        js[0] = 5
+        del js[2]  # delete 20
+        assert [e.type for e in js._journal] == [
+            JournalledSequenceEditType.INSERT,
+            JournalledSequenceEditType.SETITEM,
+            JournalledSequenceEditType.DELITEM,
+        ]
+        assert js._sequence is not None
+        assert list(js._sequence) == [5, 15]
+
+    def test_slice_get_not_supported(self):
+        original = [1, 2, 3]
+        js = JournalledSequence(original)
+
+        try:
+            _ = js[0:2]
+        except NotImplementedError:
+            pytest.xfail("Sliced read access not implemented yet")
+        else:
+            pytest.fail("Sliced read access not implemented yet but did not raise NotImplementedError")
+
+    def test_slice_set(self):
+        original = [1, 2, 3, 4]
+        js = JournalledSequence(original)
+        js[1:3] = [9, 9]
+        assert js._sequence is not None
+        assert list(js._sequence) == [1, 9, 9, 4]
+        assert js._journal[0].type is JournalledSequenceEditType.SETITEM
+        assert isinstance(js._journal[0].index, slice)
+
+    def test_extended_multiple_edits(self):
+        """More comprehensive multi-edit scenario covering set, insert, delete and slice set."""
+        original = [10, 20, 30, 40, 50]
+        js = JournalledSequence(original)
+
+        # 1. set existing index
+        js[1] = 21
+        # 2. insert in the middle (after index 2 original position)
+        js.insert(3, 35)
+        # 3. delete first element
+        del js[0]
+        # 4. slice set (replace two consecutive items)
+        js[1:3] = [300, 350]
+
+        # Journal assertions
+        assert len(js._journal) == 4
+        j0, j1, j2, j3 = js._journal
+        assert (j0.type, j0.index, j0.value) == (JournalledSequenceEditType.SETITEM, 1, 21)
+        assert (j1.type, j1.index, j1.value) == (JournalledSequenceEditType.INSERT, 3, 35)
+        assert (j2.type, j2.index, j2.value) == (JournalledSequenceEditType.DELITEM, 0, None)
+        assert j3.type is JournalledSequenceEditType.SETITEM and isinstance(j3.index, slice)
+        assert j3.value == [300, 350]
+
+        # Final sequence state
+        seq = js._sequence
+        assert seq is not None
+        assert seq == [21, 300, 350, 40, 50]
+        # Original must remain unchanged
+        assert original == [10, 20, 30, 40, 50]
+

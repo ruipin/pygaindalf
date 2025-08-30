@@ -8,7 +8,7 @@ import dataclasses
 import re
 
 from types import FrameType
-from typing import (Any, Iterable, ParamSpec, Concatenate, TypedDict, Unpack, overload, Literal, Annotated, Protocol, runtime_checkable, Mapping,
+from typing import (Any, Iterable, ParamSpec, Concatenate, TypedDict, NotRequired, Unpack, overload, Literal, Annotated, Protocol, runtime_checkable, Mapping,
     cast as typing_cast,
 )
 from collections.abc import Callable
@@ -18,11 +18,11 @@ from pydantic import BaseModel
 
 from ..logging import getLogger
 
+from .wrappers import WrapperDecorator
+
 
 # MARK: Configuration
 CALLGUARD_ENABLED = True # Global enable/disable switch
-CALLGUARD_COMPARE_MODULE = True # Whether to compare caller and callee modules
-CALLGUARD_COMPARE_SELF = True # Whether to compare 'self' or 'cls' instances (if False, will skip self/cls comparison)
 CALLGUARD_SELF_IS_FIRST_ARGUMENT = True # Whether to assume the first argument is 'self' or 'cls' (if False, will use introspection to find the first argument)
 CALLGUARD_STRICT_SELF = True # Whether to enforce that the first argument is named 'self' or 'cls'
 
@@ -92,13 +92,30 @@ def get_execution_frame_self(frame : FrameType) -> object | None:
 
 
 # MARK: Option types
-type CallguardWrapped[T,**P, R] = Callable[Concatenate[T,P], R]
+type CallguardWrapped[T : object, **P, R] = Callable[Concatenate[T,P], R]
+type CallguardWrappedDecorator[T : object, **P, R] = Callable[[CallguardWrapped[T,P,R]], CallguardWrapped[T,P,R]]
+
+class CallguardWrappedDecoratorFactory[T : object, **P, R](Protocol):
+    @classmethod
+    def __call__(cls, **options : 'Unpack[CallguardOptions]') -> CallguardWrappedDecorator[T,P,R]: ...
+
+class CallguardFilterInfo[T : object](TypedDict):
+    klass     : type[T]
+    attribute : str
+    value     : Any
+    guard     : bool
+    decorate  : bool
+
+class CallguardFilterMethod[T : object](Protocol):
+    @classmethod
+    def __call__(cls, **info : Unpack[CallguardFilterInfo[T]]) -> bool: ...
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class CallguardHandlerInfo[T : object, **P, R]:
     method_name : str
     check_module : bool
     check_self : bool
+    allow_same_module : bool
     caller_frame : FrameType
     callee_frame : FrameType
     caller_self : object
@@ -108,17 +125,30 @@ class CallguardHandlerInfo[T : object, **P, R]:
     default_checker : 'Callable[[CallguardHandlerInfo], bool]'
     default_handler : 'Callable[Concatenate[T, Callable[Concatenate[T,P], R], CallguardHandlerInfo, P], R]'
 
-class CallguardOptions(TypedDict, total=False):
-    method_name : str
-    check_module : bool
 
-class CallguardClassOptions(TypedDict, total=False):
-    force : bool
-    private_methods : bool
-    public_methods : bool
-    dunder_methods : bool
-    pydantic_decorators : bool
-    ignore_patterns : Iterable[str | re.Pattern[str]]
+class CallguardOptions[T : object, **P, R](TypedDict):
+    method_name       : NotRequired[str]
+    check_module      : NotRequired[bool]
+    allow_same_module : NotRequired[bool]
+    guard             : NotRequired[bool]
+    decorator         : NotRequired[CallguardWrappedDecorator[T,P,R] | None]
+    decorator_factory : NotRequired[CallguardWrappedDecoratorFactory[T,P,R] | None]
+
+
+class CallguardClassOptions[T : object, **P, R](TypedDict):
+    force                    : NotRequired[bool]
+    ignore_patterns          : NotRequired[Iterable[str | re.Pattern[str]]]
+    guard_private_methods    : NotRequired[bool]
+    guard_public_methods     : NotRequired[bool]
+    guard_dunder_methods     : NotRequired[bool]
+    guard_ignore_patterns    : NotRequired[Iterable[str | re.Pattern[str]]]
+    decorate_private_methods : NotRequired[bool]
+    decorate_public_methods  : NotRequired[bool]
+    decorate_dunder_methods  : NotRequired[bool]
+    decorate_ignore_patterns : NotRequired[Iterable[str | re.Pattern[str]]]
+    decorator                : NotRequired[CallguardWrappedDecorator[T,P,R]]
+    decorator_factory        : NotRequired[CallguardWrappedDecoratorFactory[T,P,R]]
+    allow_same_module        : NotRequired[bool]
 
 
 def _callguard_enabled(obj : Any = None) -> bool:
@@ -136,12 +166,16 @@ def default_callguard_checker[T : object, **P, R](info : CallguardHandlerInfo[T,
         callee_name = info.callee_frame.f_locals.get('method_name', info.callee_frame.f_code.co_name)
         LOG.debug(f"Callee frame: {callee_name} in {info.callee_module}")
 
-    if CALLGUARD_COMPARE_MODULE and info.check_module:
+    if info.check_module:
         if info.caller_module != info.callee_module:
             LOG.error(f"Module mismatch: caller {info.caller_module}, callee {info.callee_module}")
             return False
 
-    if CALLGUARD_COMPARE_SELF and info.check_self:
+    if info.allow_same_module:
+        if info.caller_module == info.callee_module:
+            return True
+
+    if info.check_self:
         if info.caller_self is not info.callee_self:
             if (
                 (not isinstance(info.callee_self, type) or not isinstance(info.caller_self, info.callee_self)) and
@@ -162,7 +196,7 @@ class CallguardCallableDecorator[T : object, **P, R]:
             **kwargs : P.kwargs
         ) -> R: ...
 
-    def __init__(self, **options : Unpack[CallguardOptions]):
+    def __init__(self, **options : Unpack[CallguardOptions[T,P,R]]):
         self.options = options
 
     def __call__(self, method : CallguardWrapped[T,P,R]) -> CallguardWrapped[T,P,R]:
@@ -171,84 +205,105 @@ class CallguardCallableDecorator[T : object, **P, R]:
     @staticmethod
     def default_handler(obj : T, method : CallguardWrapped[T,P,R], info : CallguardHandlerInfo[T,P,R], *args : P.args, **kwargs : P.kwargs) -> R:
         if not info.default_checker(info):
-            raise RuntimeError(f"Callguard: Unauthorized call to {info.method_name} from module {info.caller_module} and caller {info.caller_self}")
+            raise RuntimeError(f"Callguard: Unauthorized call to {info.callee_module}.{info.method_name} of instance {info.callee_self}, from {info.caller_module}.{info.caller_frame.f_code.co_qualname} of instance {info.caller_self}")
         return method(obj, *args, **kwargs)
 
     @staticmethod
-    def guard(method : CallguardWrapped[T,P,R], **callguard_options : Unpack[CallguardOptions]) -> CallguardWrapped[T,P,R]:
+    def guard(method : CallguardWrapped[T,P,R], **callguard_options : Unpack[CallguardOptions[T,P,R]]) -> CallguardWrapped[T,P,R]:
         if not _callguard_enabled(method):
             return method
 
+        decorator = callguard_options.get('decorator', None)
+        decorator_factory = callguard_options.get('decorator_factory', None)
+
+        if decorator_factory is not None:
+            if decorator is not None:
+                raise ValueError("Cannot specify both 'decorator' and 'decorator_factory'")
+            decorator = decorator_factory(**callguard_options)
+
+        if decorator is not None:
+            method = decorator(method)
+
+
         check_module = callguard_options.get('check_module', False)
+        allow_same_module = callguard_options.get('allow_same_module', False)
         method_name = callguard_options.get('method_name', method.__name__)
+        guard = callguard_options.get('guard', True)
 
-        @functools.wraps(method)
-        def _wrapper(self : T, *args : P.args, **kwargs : P.kwargs) -> Any:
-            LOG.debug(f"Callguard: Guarding call to {method_name}")
+        if guard:
+            wrapped = method
+            @functools.wraps(wrapped)
+            def _wrapper(self : T, *args : P.args, **kwargs : P.kwargs) -> R:
+                LOG.debug(f"Callguard: Guarding call to {method_name}")
 
-            callee_frame = get_execution_frame(frames_up=1)
-            if callee_frame is None:
-                raise RuntimeError("No callee frame found")
-
-            try:
-                caller_frame = callee_frame.f_back
-                if caller_frame is None:
-                    raise RuntimeError("No caller frame found")
+                callee_frame = get_execution_frame(frames_up=1)
+                if callee_frame is None:
+                    raise RuntimeError("No callee frame found")
 
                 try:
-                    caller_module = get_execution_frame_module(caller_frame)
-                    if caller_module is None:
-                        raise RuntimeError("No caller module found")
-
-                    info : CallguardHandlerInfo[T,P,R] = CallguardHandlerInfo(
-                        method_name=method_name,
-                        check_module=check_module,
-                        check_self=True,
-                        caller_frame=caller_frame,
-                        callee_frame=callee_frame,
-                        caller_self=get_execution_frame_self(caller_frame),
-                        callee_self=self,
-                        caller_module=caller_module,
-                        callee_module=method.__module__,
-                        default_checker=default_callguard_checker,
-                        default_handler=CallguardCallableDecorator[T,P,R].default_handler,
-                    )
+                    caller_frame = callee_frame.f_back
+                    if caller_frame is None:
+                        raise RuntimeError("No caller frame found")
 
                     try:
-                        if isinstance(self, CallguardCallableDecorator[T,P,R].CallguardHandlerProtocol):
-                            return self.__callguard_handler__(method, info, *args, **kwargs)
-                        else:
-                            return info.default_handler(self, method, info, *args, **kwargs)
+                        caller_module = get_execution_frame_module(caller_frame)
+                        if caller_module is None:
+                            raise RuntimeError("No caller module found")
+
+                        info : CallguardHandlerInfo[T,P,R] = CallguardHandlerInfo(
+                            method_name=method_name,
+                            check_module=check_module,
+                            check_self=True,
+                            allow_same_module=allow_same_module,
+                            caller_frame=caller_frame,
+                            callee_frame=callee_frame,
+                            caller_self=get_execution_frame_self(caller_frame),
+                            callee_self=self,
+                            caller_module=caller_module,
+                            callee_module=method.__module__,
+                            default_checker=default_callguard_checker,
+                            default_handler=CallguardCallableDecorator[T,P,R].default_handler,
+                        )
+
+                        try:
+                            if isinstance(self, CallguardCallableDecorator[T,P,R].CallguardHandlerProtocol):
+                                return self.__callguard_handler__(wrapped, info, *args, **kwargs)
+                            else:
+                                return info.default_handler(self, wrapped, info, *args, **kwargs)
+                        finally:
+                            del info
                     finally:
-                        del info
+                        del caller_frame
                 finally:
-                    del caller_frame
-            finally:
-                del callee_frame
+                    del callee_frame
+            method = _wrapper
 
-        setattr(_wrapper, '__callguarded__', True)
-        return _wrapper
+        setattr(method, '__callguarded__', True)
+        return method
 
-def callguard_callable(**callguard_options : Unpack[CallguardOptions]) -> CallguardCallableDecorator:
+def callguard_callable[T : object,**P,R](**callguard_options : Unpack[CallguardOptions[T,P,R]]) -> CallguardCallableDecorator[T,P,R]:
     return CallguardCallableDecorator(**callguard_options)
 
 
 # MARK: Classmethod Decorator
-class CallguardClassmethodDecorator[T : type, **P, R]:
-    type WrappedClassmethod = classmethod[T, P, R]
+type WrappedClassmethod[T : object, **P, R] = classmethod[T,P,R]
 
-    def __init__(self, **options : Unpack[CallguardOptions]):
+class CallguardClassmethodDecorator[T : object, **P, R]:
+    def __init__(self, **options : Unpack[CallguardOptions[T,P,R]]):
         self.options = options
 
     def __call__(self, method : WrappedClassmethod) -> WrappedClassmethod:
         return self.guard(method, **self.options)
 
     @staticmethod
-    def guard(method : WrappedClassmethod, **callguard_options : Unpack[CallguardOptions]) -> WrappedClassmethod:
+    def guard(method : WrappedClassmethod, **callguard_options : Unpack[CallguardOptions[T,P,R]]) -> WrappedClassmethod[T,P,R]:
         if not _callguard_enabled(method):
             return method
 
-        callguarded = typing_cast(Callable[Concatenate[T,P],R], CallguardCallableDecorator.guard(method.__func__, **callguard_options))
+        callguarded = typing_cast(
+            CallguardWrapped[type[T],P,R],
+            CallguardCallableDecorator.guard(method.__func__, **callguard_options)
+        )
         if callguarded is method.__func__:
             return method
 
@@ -256,20 +311,20 @@ class CallguardClassmethodDecorator[T : type, **P, R]:
         result.__doc__ = method.__doc__
         return result
 
-def callguard_classmethod(**callguard_options : Unpack[CallguardOptions]) -> CallguardClassmethodDecorator:
+def callguard_classmethod[T : object, **P, R](**callguard_options : Unpack[CallguardOptions[T,P,R]]) -> CallguardClassmethodDecorator[T,P,R]:
     return CallguardClassmethodDecorator(**callguard_options)
 
 
 # MARK: Property Decorator
-class CallguardPropertyDecorator:
-    def __init__(self, **options : Unpack[CallguardOptions]):
+class CallguardPropertyDecorator[T : object, **P, R]:
+    def __init__(self, **options : Unpack[CallguardOptions[T,P,R]]):
         self.options = options
 
     def __call__(self, prop : property) -> property:
         return self.guard(prop, **self.options)
 
     @staticmethod
-    def guard(prop : property, **callguard_options : Unpack[CallguardOptions]) -> property:
+    def guard(prop : property, **callguard_options : Unpack[CallguardOptions[T,P,R]]) -> property:
         if not _callguard_enabled(prop):
             return prop
 
@@ -298,25 +353,107 @@ class CallguardPropertyDecorator:
             prop.__doc__
         )
 
-def callguard_property(**callguard_options : Unpack[CallguardOptions]) -> CallguardPropertyDecorator:
+def callguard_property[T : object, **P, R](**callguard_options : Unpack[CallguardOptions[T,P,R]]) -> CallguardPropertyDecorator[T,P,R]:
     return CallguardPropertyDecorator(**callguard_options)
 
 
 # MARK: Class decorator
-class CallguardClassDecorator[T : type]:
+class CallguardClassDecorator[T : object, **P, R]:
     @runtime_checkable
     class PydanticDescriptorProtocol(Protocol):
         @property
         def decorator_info(self): ...
 
-    def __init__(self, **callguard_options: Unpack[CallguardClassOptions]):
+    def __init__(self, **callguard_options: Unpack[CallguardClassOptions[T,P,R]]):
         self.options = callguard_options
 
     def __call__(self, cls: T) -> T:
         return self.guard(cls, **self.options)  # type: ignore
 
     @staticmethod
-    def guard(klass: T, **callguard_class_options: Unpack[CallguardClassOptions]) -> T:
+    def _individual_ignore_patterns_match(name : str, patterns : Iterable[str | re.Pattern[str]] | re.Pattern[str] | str | None) -> bool:
+        if patterns is None:
+            return False
+        if isinstance(patterns, (str, re.Pattern)):
+            return bool(re.match(patterns, name))
+        return any(re.match(pattern, name) for pattern in patterns)
+
+    @classmethod
+    def _ignore_patterns_match(cls, *, name : str, guard : bool, decorate : bool, options : CallguardClassOptions[T,P,R]) -> tuple[bool, bool]:
+        if cls._individual_ignore_patterns_match(name, options.get('ignore_patterns', None)):
+            guard = False
+            decorate = False
+        else:
+            if guard and cls._individual_ignore_patterns_match(name, options.get('guard_ignore_patterns', None)):
+                guard = False
+            if decorate and cls._individual_ignore_patterns_match(name, options.get('decorate_ignore_patterns', None)):
+                decorate = False
+        return (guard, decorate)
+
+    @classmethod
+    def _get_custom_decorator(cls, klass : type[T], options : CallguardClassOptions[T,P,R]) -> tuple[CallguardWrappedDecorator[T,P,R] | None, CallguardWrappedDecoratorFactory[T,P,R] | None]:
+        # Decorator
+        decorator = options.get('decorator', None)
+        if decorator is None:
+            decorator = typing_cast(CallguardWrappedDecorator[T,P,R] | None, getattr(klass, '__callguard_decorator__', None))
+        if decorator is not None:
+            if not callable(decorator):
+                raise ValueError(f"Custom decorator {decorator} must be callable")
+
+        factory = options.get('decorator_factory', None)
+        if factory is None:
+            factory = typing_cast(CallguardWrappedDecoratorFactory[T,P,R] | None, getattr(klass, '__callguard_decorator_factory__', None))
+        if factory is not None:
+            if not callable(factory):
+                raise ValueError(f"Custom decorator factory {factory} must be callable")
+
+        if decorator is not None and factory is not None:
+            raise ValueError("Cannot specify both 'decorator' and 'decorator_factory'")
+
+        return (decorator, factory)
+
+    @classmethod
+    def _collect_pydantic_decorators(cls, klass : type[T], options : CallguardClassOptions[T,P,R]) -> tuple[str, ...]:
+        if issubclass(klass, BaseModel):
+            infos = klass.__pydantic_decorators__
+            validator_dicts = (getattr(infos, v.name) for v in dataclasses.fields(infos))
+            return tuple(k for d in validator_dicts for k in d.keys())
+        else:
+            return ()
+
+    @classmethod
+    def _call_individual_filter_method(cls, **info : Unpack[CallguardFilterInfo[T]]) -> bool:
+        klass = info.get('klass', None)
+        if klass is None:
+            raise RuntimeError("Class not found")
+        callguard_filter_method = typing_cast(CallguardFilterMethod[T] | None, getattr(klass, '__callguard_filter__', None))
+        if callguard_filter_method is not None:
+            if not callable(callguard_filter_method):
+                raise RuntimeError(f"Class {klass.__name__} has a non-callable __callguard_filter__ attribute")
+            return callguard_filter_method(**info)
+        return True
+
+    @classmethod
+    def _call_filter_method(cls, *, klass : type[T], attribute : str, value : Any, guard : bool, decorate : bool) -> tuple[bool, bool]:
+        for _guard, _decorate in ((guard, False), (False, decorate)):
+            if not (_guard or _decorate):
+                continue
+
+            if not cls._call_individual_filter_method(
+                klass=klass,
+                attribute=attribute,
+                value=value,
+                guard=_guard,
+                decorate=_decorate
+            ):
+                if _guard:
+                    guard = False
+                else:
+                    decorate = False
+        return (guard, decorate)
+
+    @classmethod
+    def guard(cls, klass: type[T], **callguard_class_options: Unpack[CallguardClassOptions[T,P,R]]) -> type[T]:
         LOG.debug(f"Callguard: Guarding class {klass.__name__}")
 
         # Check if we should proceed
@@ -331,20 +468,29 @@ class CallguardClassDecorator[T : type]:
         # Always force callguarding if inherited from a callguarded class
         callguard_class_options['force'] = True
 
-        # Default values
-        wrap_private_methods     : bool = callguard_class_options.get('private_methods', True )
-        wrap_public_methods      : bool = callguard_class_options.get('public_methods' , False)
-        wrap_dunder_methods      : bool = callguard_class_options.get('dunder_methods' , False)
-        wrap_pydantic_decorators : bool = callguard_class_options.get('pydantic_decorators', False)
+        # Decoration
+        (decorator, decorator_factory) = cls._get_custom_decorator(klass, callguard_class_options)
 
-        # If class is a pydantic model, preparee the list of decorators
-        if (not wrap_pydantic_decorators) and issubclass(klass, BaseModel):
-            infos = klass.__pydantic_decorators__
-            validator_dicts = (getattr(infos, v.name) for v in dataclasses.fields(infos))
-            pydantic_decorators = tuple(k for d in validator_dicts for k in d.keys())
-        else:
-            pydantic_decorators = ()
-        klass = typing_cast(T, klass) # Pyright gets confused with the issubclass call above, so we reset the klass type here
+        # Default values
+        guard_private_methods    : bool = bool(callguard_class_options.get('guard_private_methods'   , True ))
+        decorate_private_methods : bool = bool(callguard_class_options.get('decorate_private_methods', False))
+        private_methods = guard_private_methods or decorate_private_methods
+
+        guard_public_methods     : bool = bool(callguard_class_options.get('guard_public_methods'   , False))
+        decorate_public_methods  : bool = bool(callguard_class_options.get('decorate_public_methods', False))
+        public_methods = guard_public_methods or decorate_public_methods
+
+        guard_dunder_methods     : bool = bool(callguard_class_options.get('guard_dunder_methods'   , False))
+        decorate_dunder_methods  : bool = bool(callguard_class_options.get('decorate_dunder_methods', False))
+        dunder_methods = guard_dunder_methods or decorate_dunder_methods
+
+        if (decorate_private_methods or decorate_public_methods or decorate_dunder_methods) and (not decorator and not decorator_factory):
+            raise ValueError("Cannot decorate methods without a custom decorator or factory")
+
+        allow_same_module : bool = bool(callguard_class_options.get('allow_same_module', False))
+
+        # If class is a pydantic model, prepare the list of decorators
+        pydantic_decorators = cls._collect_pydantic_decorators(klass, callguard_class_options)
 
         # Patch methods and properties in-place
         modifications = {}
@@ -354,36 +500,52 @@ class CallguardClassDecorator[T : type]:
             raise ValueError(f"klass must have a __dict__ Mapping, got {type(d)} instead")
 
         for name, value in d.items():
+            guard = False
+            decorate = False
+
             # Filter out public/dunder methods
             if name.startswith('_'):
                 if name.startswith('__') and name.endswith('__'):
-                    if not wrap_dunder_methods:
+                    if not dunder_methods:
                         continue
-                elif not wrap_private_methods:
+                    guard = guard_dunder_methods
+                    decorate = decorate_dunder_methods
+                elif not private_methods:
                     continue
-            elif not wrap_public_methods:
-                continue
+                guard = guard_private_methods
+                decorate = decorate_private_methods
+            else:
+                if not public_methods:
+                    continue
+                guard = guard_public_methods
+                decorate = decorate_public_methods
 
+            # Skip pydantic decorators
             if name in pydantic_decorators:
                 LOG.debug(f"Callguard: Skipping {klass.__name__}.{name} as it is a pydantic decorator")
                 continue
 
             # Filter out ignored patterns
-            if any(re.match(pattern, name) for pattern in callguard_class_options.get('ignore_patterns', ())):
+            if guard or decorate:
+                (guard, decorate) = cls._ignore_patterns_match(name=name, decorate=decorate, guard=guard, options=callguard_class_options)
+            # Call custom filter method, if defined
+            if guard or decorate:
+                (guard, decorate) = cls._call_filter_method(klass=klass, attribute=name, value=value, guard=guard, decorate=decorate)
+            # Skip if neither guarding nor decorating
+            if not guard and not decorate:
                 continue
 
-            # Call custom filter method, if defined
-            callguard_filter_method = getattr(klass, '__callguard_filter__', None)
-            if callguard_filter_method is not None:
-                if not callable(callguard_filter_method):
-                    raise RuntimeError(f"Class {klass.__name__} has a non-callable __callguard_filter__ attribute")
-                if not callguard_filter_method(name, value):
-                    LOG.debug(f"Callguard: Skipping {klass.__name__}.{name} due to __callguard_filter__")
-                    continue
+            # Sanity check
+            if decorate and (decorator is None and decorator_factory is None):
+                raise ValueError("Cannot decorate methods without a custom decorator or factory")
 
-            callguard_options : CallguardOptions = {
+            callguard_options : CallguardOptions[T,P,R] = {
                 'check_module': name.startswith('__') or name.startswith(f"_{klass.__name__}__"),
+                'allow_same_module': allow_same_module,
                 'method_name': name,
+                'guard': guard,
+                'decorator': decorator if decorate else None,
+                'decorator_factory': decorator_factory if decorate else None,
             }
 
             # Wrap the method/property
@@ -428,7 +590,7 @@ class CallguardClassDecorator[T : type]:
         # Done
         return klass
 
-def callguard_class(**callguard_options : Unpack[CallguardClassOptions]) -> CallguardClassDecorator:
+def callguard_class[T : object, **P, R](**callguard_options : Unpack[CallguardClassOptions[T,P,R]]) -> CallguardClassDecorator[T,P,R]:
     return CallguardClassDecorator(**callguard_options)
 
 
