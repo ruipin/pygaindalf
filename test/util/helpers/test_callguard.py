@@ -723,3 +723,191 @@ class TestCallguardDecorateIgnorePatterns:
         with pytest.raises(RuntimeError):
             d._skip_decorate()
         assert d.call() == ("wrapped:ok", "ok2")
+
+
+# ---------------------------------------------------------------------------
+# MARK: guard_skip_* options
+# ---------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardGuardSkipOptions:
+    def test_guard_skip_classmethods(self):
+        @callguard_class(guard_skip_classmethods=True)
+        class Sample:
+            def _inst(self) -> str:
+                return "i"
+
+            @classmethod
+            def _cm(cls) -> str:
+                return "c"
+
+            def call_inst(self) -> str:
+                return self._inst()
+
+            @classmethod
+            def call_cm(cls) -> str:
+                return cls._cm()
+
+        s = Sample()
+        # Instance private still guarded
+        with pytest.raises(RuntimeError):
+            s._inst()
+        # Classmethod private NOT guarded due to skip
+        assert Sample._cm() == "c"
+        # Internal calls succeed
+        assert s.call_inst() == "i"
+        assert Sample.call_cm() == "c"
+
+    def test_guard_skip_instancemethods(self):
+        @callguard_class(guard_skip_instancemethods=True)
+        class Sample2:
+            def _inst(self) -> str:
+                return "i"
+
+            @classmethod
+            def _cm(cls) -> str:
+                return "c"
+
+            @classmethod
+            def call_cm(cls) -> str:
+                return cls._cm()
+
+        s2 = Sample2()
+        # Instance private NOT guarded due to skip
+        assert s2._inst() == "i"
+        # Classmethod private still guarded
+        with pytest.raises(RuntimeError):
+            Sample2._cm()
+        # Internal classmethod call allowed
+        assert Sample2.call_cm() == "c"
+
+    def test_guard_skip_properties(self):
+        @callguard_class(guard_skip_properties=True)
+        class Sample3:
+            def __init__(self) -> None:
+                self._v = 5
+
+            @property
+            def _val(self) -> int:
+                return self._v
+
+            def access(self) -> int:
+                return self._val
+
+            def _hidden(self) -> str:
+                return "h"
+
+            def call_hidden(self) -> str:
+                return self._hidden()
+
+        s3 = Sample3()
+        # Property private NOT guarded due to skip
+        assert s3._val == 5
+        # Private method still guarded
+        with pytest.raises(RuntimeError):
+            s3._hidden()
+        assert s3.call_hidden() == "h"
+
+
+# ---------------------------------------------------------------------------
+# MARK: decorate_skip_* options
+# ---------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardDecorateSkipOptions:
+    def test_decorate_skip_classmethods(self):
+        @callguard_class(
+            decorator=custom_decorator,
+            decorate_private_methods=True,
+            decorate_skip_classmethods=True,
+        )
+        class Sample:
+            def _inst(self) -> str:
+                return "i"
+
+            @classmethod
+            def _cm(cls) -> str:
+                return "c"
+
+            def call_inst(self) -> str:
+                return self._inst()
+
+            @classmethod
+            def call_cm(cls) -> str:
+                return cls._cm()
+
+        s = Sample()
+        # External calls
+        with pytest.raises(RuntimeError):
+            s._inst()
+        with pytest.raises(RuntimeError):
+            Sample._cm()
+        # Internal instance private decorated
+        assert s.call_inst() == "wrapped:i"
+        # Internal classmethod private NOT decorated
+        assert Sample.call_cm() == "c"
+
+    def test_decorate_skip_instancemethods(self):
+        @callguard_class(
+            decorator=custom_decorator,
+            decorate_private_methods=True,
+            decorate_skip_instancemethods=True,
+            decorate_skip_classmethods=False,
+        )
+        class Sample2:
+            def _inst(self) -> str:
+                return "i"
+
+            @classmethod
+            def _cm(cls) -> str:
+                return "c"
+
+            def call_inst(self) -> str:
+                return self._inst()
+
+            @classmethod
+            def call_cm(cls) -> str:
+                return cls._cm()
+
+        s2 = Sample2()
+        with pytest.raises(RuntimeError):
+            Sample2._cm()
+        with pytest.raises(RuntimeError):
+            s2._inst()
+        # Instance private NOT decorated due to skip
+        assert s2.call_inst() == "i"
+        # Classmethod private decorated
+        assert Sample2.call_cm() == "wrapped:c"
+
+    def test_decorate_skip_properties(self):
+        @callguard_class(
+            decorator=custom_decorator,
+            decorate_private_methods=True,
+            decorate_skip_properties=True,
+        )
+        class Sample3:
+            def __init__(self) -> None:
+                self._v = 5
+
+            @property
+            def _val(self) -> int:
+                return self._v
+
+            def access(self) -> int:
+                return self._val
+
+            def _hidden(self) -> str:
+                return "h"
+
+            def call_hidden(self) -> str:
+                return self._hidden()
+
+        s3 = Sample3()
+        with pytest.raises(RuntimeError):
+            s3._hidden()
+        with pytest.raises(RuntimeError):
+            _ = s3._val
+        # Property NOT decorated -> unchanged value
+        assert s3.access() == 5
+        # Private method decorated internally
+        assert s3.call_hidden() == "wrapped:h"

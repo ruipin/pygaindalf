@@ -92,11 +92,11 @@ class TestBeforeAttributeCheckDecorator:
             def __init__(self):
                 self.state = "ready"
 
-            @before_attribute_check("state", "ready")
+            @before_attribute_check(attribute="state", desired="ready")
             def go(self) -> str:
                 return "ok"
 
-            @before_attribute_check("state", "ready", message="State not ready")
+            @before_attribute_check(attribute="state", desired="ready", message="State not ready")
             def go_custom(self) -> str:
                 return "ok"
 

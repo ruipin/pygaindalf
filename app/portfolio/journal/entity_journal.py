@@ -2,8 +2,8 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from pydantic import ConfigDict, Field, PrivateAttr, computed_field, BaseModel, ModelWrapValidatorHandler, ValidationInfo, model_validator, PositiveInt
-from typing import Any, Literal, TYPE_CHECKING
+from pydantic import ConfigDict, Field, PrivateAttr, computed_field, BaseModel, ModelWrapValidatorHandler, ValidationInfo, model_validator, PositiveInt, model_validator
+from typing import Any, Literal, TYPE_CHECKING, ClassVar
 from enum import Enum
 
 from abc import ABCMeta
@@ -15,15 +15,13 @@ from ...util.helpers.callguard import callguard_class
 from ..models.uid import Uid
 
 from ..models.entity.entity import Entity
-from ..models.entity.stale import stale_check
+from ..models.entity.superseded import superseded_check
 
 from .journalled_sequence import JournalledSequence
 from .journalled_mapping import JournalledMapping
 
 
-
-
-@callguard_class()
+@callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_ignore_patterns=('ended','superseded'))
 class EntityJournal(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -31,35 +29,43 @@ class EntityJournal(LoggableHierarchicalModel):
         validate_assignment=True,
     )
 
+    PROPAGATE_TO_CHILDREN : ClassVar[bool] = False
+
 
     # MARK: Entity
-    entity : 'Entity' = Field(description="Entity associated with this journal entry.")
+    entity_uid : Uid = Field(description="Unique identifier of the entity associated with this journal entry.")
 
-    @computed_field(description="Unique identifier of the entity associated with this journal entry.")
+    @model_validator(mode='after')
+    def _validate_entity_uid(self, info: ValidationInfo) -> 'EntityJournal':
+        self.entity # property access fails if the UID is invalid
+        return self
+
+    @computed_field(description="The entity associated with this journal entry.")
     @property
-    def entity_uid(self) -> Uid:
-        return self.entity.uid
+    def entity(self) -> Entity:
+        if (entity := Entity.by_uid(self.entity_uid)) is None:
+            raise ValueError(f"EntityJournal.entity_uid '{self.entity_uid}' does not correspond to a valid Entity.")
+        return entity
 
-    _updates : dict[str, Any] = PrivateAttr(default_factory=dict)
-    _dirty_children : set[Uid] = PrivateAttr(default_factory=set)
+    @entity.setter
+    def entity(self, value : Entity) -> None:
+        self.entity_uid = value.uid
 
 
-    # MARK: Stale
+    # MARK: Superseded
     _ended : bool = PrivateAttr(default=False)
     @property
     def ended(self) -> bool:
-        return self._ended
+        try:
+            return getattr(self, '_ended', False)
+        except:
+            return False
 
     @property
     def superseded(self) -> bool:
-        return self.entity.superseded
+        return self.ended or self.entity.superseded
 
     @property
-    def stale(self) -> bool:
-        return self.ended or self.superseded
-
-    @property
-    @stale_check
     def dirty(self) -> bool:
         for attr, value in self._updates.items():
             # TODO: set
@@ -72,6 +78,9 @@ class EntityJournal(LoggableHierarchicalModel):
 
 
     # MARK: Fields API
+    _updates : dict[str, Any] = PrivateAttr(default_factory=dict)
+    _dirty_children : set[Uid] = PrivateAttr(default_factory=set)
+
     def is_computed_field(self, field : str) -> bool:
         return field in self.entity.__class__.model_computed_fields
 
@@ -121,9 +130,6 @@ class EntityJournal(LoggableHierarchicalModel):
 
     # MARK: Commit
     def commit(self) -> 'Entity':
-        if self.stale:
-            raise RuntimeError("Cannot commit a stale journal.")
-
         # TODO: loop through updates and flatten into an updates dict:
         # - if Entity, get latest version (assert version has changed)
         # - if JournalledList / JournalledDict, flatten and make immutable

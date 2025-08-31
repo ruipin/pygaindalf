@@ -1,4 +1,5 @@
-"""Tests for JournalledSequence copy-on-write and journaling"""
+# SPDX-License-Identifier: GPLv3
+# Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
 

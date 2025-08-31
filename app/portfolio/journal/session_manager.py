@@ -1,20 +1,15 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import contextlib
 
-from pydantic import ConfigDict, Field, PrivateAttr, computed_field
-from contextlib import contextmanager
+from pydantic import ConfigDict, PrivateAttr, computed_field
 from typing import Iterator, TypedDict, Unpack
 
 from ...util.mixins import LoggableHierarchicalModel
 from ...util.helpers.callguard import callguard_class
 
-from .session import Session
-
-
-class SessionParams(TypedDict, total=False):
-    actor  : str
-    reason : str
+from .session import Session, SessionParams
 
 
 @callguard_class()
@@ -34,7 +29,6 @@ class SessionManager(LoggableHierarchicalModel):
             raise RuntimeError("A session is already active.")
 
         session = self._session = Session(instance_parent=self, **kwargs)
-
         return session
 
     def _commit(self) -> None:
@@ -46,25 +40,31 @@ class SessionManager(LoggableHierarchicalModel):
     def _end(self) -> None:
         self._session = None
 
-    @contextmanager
+    @contextlib.contextmanager
     def __call__(self, **kwargs : Unpack[SessionParams]) -> Iterator[Session]:
+        session = self._start(**kwargs)
         try:
-            self._start(**kwargs)
-            if self._session is None:
+            if self._session is not session:
                 raise RuntimeError("Session failed to start.")
 
-            yield self._session
+            yield session
 
-            if self._session is None:
+            if self._session is not session:
                 raise RuntimeError("Session is no longer valid.")
 
-            self._session.commit()
+            if not session.ended:
+                session.commit()
         except Exception as e:
-            if self._session is not None:
-                self._session.abort()
+            if self._session is not session:
+                raise RuntimeError("Session is no longer valid.")
+
+            if not session.ended:
+                session.abort()
+
             raise e
         finally:
-            self._end()
+            if not session.ended:
+                self._end()
 
 
     # MARK: Active

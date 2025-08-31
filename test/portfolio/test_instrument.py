@@ -96,7 +96,7 @@ class TestInstrument:
         assert i2.currency == Currency('GBP')
 
         # Update the instrument using the 'update' method
-        i3 = i1.update(
+        i3 = i2.update(
             currency=Currency('EUR'),
         )
 

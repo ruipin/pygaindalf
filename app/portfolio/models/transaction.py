@@ -45,8 +45,7 @@ class Transaction(IncrementingUidEntity):
     # MARK: Instrument
     @model_validator(mode='after')
     def _validate_instrument_uid(self, info: ValidationInfo) -> 'Transaction':
-        if self.instrument_uid.namespace is not (ins := Instrument.uid_namespace()):
-            raise ValueError(f"Transaction.instrument_uid must have the correct namespace '{ins}', got '{self.instrument_uid.namespace}' instead.")
+        self.instrument # property access fails if the UID is invalid
         return self
 
     @computed_field(description="The instrument associated with this transaction.")

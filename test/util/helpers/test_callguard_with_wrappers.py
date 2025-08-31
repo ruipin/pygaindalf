@@ -64,7 +64,7 @@ class TestCallguardWithWrappers:
 
     def test_before_attribute_check_pass_internal_fail_external(self):
     # Use attribute check decorator as the custom decorator for guarding
-        attr_check_decorator = before_attribute_check('state', 'ready')
+        attr_check_decorator = before_attribute_check(attribute='state', desired='ready')
         @callguard_class(decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:
@@ -84,7 +84,7 @@ class TestCallguardWithWrappers:
         assert s.run() == 'ok'
 
     def test_before_attribute_check_fails_internal(self):
-        attr_check_decorator = before_attribute_check('state', 'ready')
+        attr_check_decorator = before_attribute_check(attribute='state', desired='ready')
         @callguard_class(decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:

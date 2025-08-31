@@ -3,22 +3,25 @@
 
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field
-from typing import ClassVar, Any, override
+from typing import ClassVar, Any, override, TypedDict
 from datetime import datetime
 
 from ...util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ...util.helpers.callguard import callguard_class
-from ...util.helpers.wrappers import before_attribute_check
 
 from ..models.uid import Uid, IncrementingUidFactory
 from ..models.entity.entity import Entity
-from ..models.entity.stale import stale_check
+from ..models.entity.superseded import superseded_check
 
 from .entity_journal import EntityJournal
 
 
+class SessionParams(TypedDict):
+    actor  : str
+    reason : str
 
-@callguard_class()
+
+@callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_ignore_patterns=('superseded','ended'))
 class Session(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -42,14 +45,17 @@ class Session(LoggableHierarchicalModel):
     start_time : datetime = Field(default_factory=datetime.now, init=False, description="Timestamp when the session started.")
 
 
-    # MARK: Stale
+    # MARK: Superseded
     _ended : bool = PrivateAttr(default=False)
     @property
     def ended(self) -> bool:
-        return self._ended
+        try:
+            return getattr(self, '_ended', False)
+        except:
+            return False
 
     @property
-    def stale(self) -> bool:
+    def superseded(self) -> bool:
         return self.ended
 
 
@@ -112,7 +118,7 @@ class Session(LoggableHierarchicalModel):
         if self.ended:
             raise RuntimeError("Cannot add an entity journal to an ended session.")
 
-        journal = EntityJournal(entity=entity)
+        journal = EntityJournal(entity_uid=entity.uid)
         self._entity_journals[entity.uid] = journal
         return journal
 

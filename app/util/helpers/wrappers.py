@@ -2,7 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import functools
-from typing import Unpack, TypedDict, Callable, Concatenate, Any, override, overload, Self
+from typing import Unpack, TypedDict, Callable, Concatenate, Any, override, overload, Self, NotRequired
 from . import script_info
 from collections.abc import Sequence
 
@@ -10,30 +10,6 @@ from collections.abc import Sequence
 # MARK: Wrapper Property
 type Wrapped[**P, R] = Callable[P, R]
 type Wrapper[**P, R] = Callable[Concatenate[Wrapped[P,R], P], R]
-
-#class WrapperProperty[T : object, **P, R](property):
-#    def __init__(self, wrapped : Wrapped[T,P,R], wrapper : Wrapper[T,P,R]):
-#        self.wrapped = wrapped
-#        self.wrapper = wrapper
-#
-#    @overload
-#    def __get__(self, instance: None, owner: type[T], /) -> property: ...
-#    @overload
-#    def __get__(self, instance: T, owner: type[T] | None = None, /) -> BoundWrapped: ...
-#
-#    @override
-#    def __get__(self, instance : T | None, owner : type[T] | None = None, /) -> property | BoundWrapped:
-#        if instance is None:
-#            return self
-#        return functools.partial(self.wrapper, self.wrapped, instance)
-#
-#    @override
-#    def __set__(self, obj: Any, value: Any) -> None:
-#        raise AttributeError("Can't set classproperty descriptors")
-#
-#    @override
-#    def __delete__(self, obj: Any) -> None:
-#        raise AttributeError("Can't delete classproperty descriptors")
 
 
 # MARK: Wrapper Decorator
@@ -76,31 +52,38 @@ def before[**P, R](before : BeforeMethod[P,R]) -> BeforeDecorator[P,R]:
 
 
 # MARK: Before attribute check decorator
-class BeforeAttributeCheckDecorator[T : object, **P, R](BeforeDecorator[Concatenate[T,P],R]):
-    def __init__(self, attr : str | Sequence[str], desired : Any | Sequence[Any], message : str | None = None):
-        # pyright is unhappy with functools.partial here
-        #super().__init__(before=functools.partial(self.before_attribute_check, attr, desired, message))
-        mthd : Callable[Concatenate[str, Any, str | None, Wrapped[Concatenate[T,P],R], T, P], None] = self.before_attribute_check
-        @functools.wraps(mthd)
-        def _wrapped(*args, **kwargs) -> None:
-            return mthd(attr, desired, message, *args, **kwargs)
-        super().__init__(before=_wrapped)
+class BeforeAttributeCheckOptions[T : object, **P, R](TypedDict):
+    attribute : str | Sequence[str]
+    desired   : Any | Sequence[Any]
+    message   : NotRequired[str | None]
+    exception : NotRequired[type[Exception]]
 
-    @staticmethod
-    def before_attribute_check(attr : str | Sequence[str], desired : Any | Sequence[Any], message : str | None, wrapped : Wrapped[Concatenate[T,P],R], self : T, *args : P.args, **kwargs : P.kwargs) -> None:
+class BeforeAttributeCheckDecorator[T : object, **P, R](BeforeDecorator[Concatenate[T,P],R]):
+    def __init__(self, **options : Unpack[BeforeAttributeCheckOptions[T,P,R]]):
+        self.options = options
+        method : BeforeMethod[Concatenate[T,P],R] = self.before_attribute_check
+        super().__init__(before=method)
+
+    def before_attribute_check(self, wrapped : Wrapped[Concatenate[T,P],R], /, __p0 : T, *args : P.args, **kwargs : P.kwargs) -> None:
+        target = __p0 # We use __p0 to make pyright happy above
+        attr = self.options.get('attribute')
+        desired = self.options.get('desired')
+        message = self.options.get('message', None)
+        exception = self.options.get('exception', ValueError)
+
         if isinstance(attr, str):
-            if getattr(self, attr, None) != desired:
-                raise ValueError(f"{message or f"Attribute '{attr}' must be {desired}"} when calling {self.__class__.__name__}.{wrapped.__name__}")
+            if getattr(target, attr, None) != desired:
+                raise exception(f"{message or f"Attribute '{attr}' must be {desired}"} when calling {target.__class__.__name__}.{wrapped.__name__}")
         else:
             for a, d in zip(attr, desired):
-                if getattr(self, a, None) != d:
-                    raise ValueError(f"{message or f"Attribute '{a}' must be {d}"} when calling {self.__class__.__name__}.{wrapped.__name__}")
+                if getattr(target, a, None) != d:
+                    raise exception(f"{message or f"Attribute '{a}' must be {d}"} when calling {target.__class__.__name__}.{wrapped.__name__}")
 
 
 @overload
-def before_attribute_check(attr : str, desired : Any, message : str | None = None) -> BeforeAttributeCheckDecorator: ...
+def before_attribute_check(*, attribute : str, desired : Any, message : str | None = None, exception : type[Exception] = ValueError) -> BeforeAttributeCheckDecorator: ...
 @overload
-def before_attribute_check(attr : Sequence[str], desired : Sequence[Any], message : str | None = None) -> BeforeAttributeCheckDecorator: ...
+def before_attribute_check(*, attribute : Sequence[str], desired : Sequence[Any], message : str | None = None, exception : type[Exception] = ValueError) -> BeforeAttributeCheckDecorator: ...
 
-def before_attribute_check(attr : str | Sequence[str], desired : Any | Sequence[Any], message : str | None = None) -> BeforeAttributeCheckDecorator:
-    return BeforeAttributeCheckDecorator(attr, desired, message)
+def before_attribute_check[T : object, **P, R](**options : Unpack[BeforeAttributeCheckOptions[T,P,R]]) -> BeforeAttributeCheckDecorator[T,P,R]:
+    return BeforeAttributeCheckDecorator[T,P,R](**options)

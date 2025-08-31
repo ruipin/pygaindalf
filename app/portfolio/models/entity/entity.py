@@ -2,16 +2,17 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import sys
+import functools
 
 from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
-from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager
+from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack
 from abc import abstractmethod, ABCMeta
 from weakref import WeakValueDictionary
 from functools import cached_property
 
 from ....util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ....util.helpers import script_info
-from ....util.helpers.callguard import callguard_class
+from ....util.helpers.callguard import callguard_class, CallguardWrapped, CallguardOptions
 
 if TYPE_CHECKING:
     from ...journal.entity_journal import EntityJournal
@@ -19,18 +20,31 @@ if TYPE_CHECKING:
     from ...journal.session import Session
 
 from ..uid import Uid
+
+from .superseded import superseded_check
 from .audit import EntityAuditLog
 
 
+#SHORTCIRCUIT_ATTRIBUTES=(
+#    'uid',
+#    'initialized',
+#    'dirty',
+#    'superseded',
+#    'entity_log',
+#    'session_manager',
+#    'session',
+#    'instance_parent',
+#    'version',
+#    'journal',
+#)
 
-@callguard_class()
+@callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_skip_properties=True)
 class Entity(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
         validate_assignment=True,
     )
-
 
     # MARK: Uid
     uid : Uid = Field(default=None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
@@ -100,7 +114,7 @@ class Entity(LoggableHierarchicalModel):
     def by_uid[T : 'Entity'](cls : type[T], uid: Uid) -> T | None:
         result = cls._get_uid_storage().get(uid, None)
         if not isinstance(result, cls):
-            raise ValueError(f"UID storage returned an instance of {type(result).__name__} instead of {cls.__name__}.")
+            raise TypeError(f"UID storage returned an instance of {type(result).__name__} instead of {cls.__name__}.")
         return result
 
 
@@ -155,7 +169,7 @@ class Entity(LoggableHierarchicalModel):
         super().model_post_init(context)
 
         self.entity_log.on_create(self)
-        self._intialized = True
+        self._initialized = True
 
     def __del__(self):
         # No need to track deletion in finalizing state
@@ -207,31 +221,32 @@ class Entity(LoggableHierarchicalModel):
     # MARK: Journal
     @property
     def journal(self) -> 'EntityJournal':
-        if self.superseded:
-            raise RuntimeError("Cannot access the journal of a superseded entity.")
         return self.session.get_entity_journal(entity=self)
-
-    @property
-    def session(self) -> 'Session':
-        manager = self.session_manager
-        session = manager.session
-        if session is None:
-            raise RuntimeError("No active session found in the session manager.")
-
-        return session
 
     @cached_property
     def session_manager(self) -> 'SessionManager':
         parent = self.instance_parent
         if not isinstance(parent, Entity):
-            raise ValueError(f"Entity must have an instance parent of type Entity to access the journal manager. Found: {type(parent).__name__}.")
+            raise RuntimeError("Entity is not part of a session-managed hierarchy. Cannot determine session manager.")
 
         return parent.session_manager
 
+    @property
+    def session(self) -> 'Session':
+        session = self.session_manager.session
+        if session is None:
+            raise RuntimeError("No active session found in the session manager.")
+
+        return session
+
+    @staticmethod
+    def _is_entity_attribute(name: str) -> bool:
+        return hasattr(Entity, name) or name in Entity.model_fields or name in Entity.model_computed_fields
+
     @override
     def __getattribute__(self, name: str) -> Any:
-        # Short-circuit a few attributes to avoid recursion
-        if name.startswith('_') or name in ('initialized', 'session_manager', 'session', 'instance_parent'):
+        # Short-circuit private and 'Entity' attributes
+        if name.startswith('_') or Entity._is_entity_attribute(name):
             return super().__getattribute__(name)
 
         # Short-circuit if not yet initialized
@@ -239,7 +254,7 @@ class Entity(LoggableHierarchicalModel):
             return super().__getattribute__(name)
 
         # If not in a session, return the normal attribute
-        if self.superseded or not self.session_manager.in_session:
+        if self.superseded or not self.in_session:
             return super().__getattribute__(name)
 
         # Otherwise, use the journal to get the attribute
@@ -247,16 +262,16 @@ class Entity(LoggableHierarchicalModel):
 
     @override
     def __setattr__(self, name: str, value: Any) -> None:
-        # Short-circuit private attributes
-        if name.startswith('_'):
+        # Short-circuit private and 'Entity' attributes
+        if name.startswith('_') or Entity._is_entity_attribute(name):
             return super().__setattr__(name, value)
 
         # Short-circuit if not yet initialized
-        if not self._initialized:
+        if not self.initialized:
             return super().__setattr__(name, value)
 
         # If not in a session, set the normal attribute
-        if self.superseded or not self.session_manager.in_session:
+        if self.superseded or not self.in_session:
             return super().__setattr__(name, value)
 
         # Otherwise, use the journal to set the attribute
@@ -264,13 +279,15 @@ class Entity(LoggableHierarchicalModel):
 
     @property
     def dirty(self) -> bool:
-        if self.superseded:
-            return False
         return self.journal.dirty
 
     @property
-    def stale(self) -> bool:
-        return self.superseded or self.dirty
+    def in_session(self) -> bool:
+        try:
+            manager = self.session_manager
+        except:
+            return False
+        return manager.in_session
 
 
     # MARK: Utilities

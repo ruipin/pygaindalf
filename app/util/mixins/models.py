@@ -61,10 +61,6 @@ class HierarchicalModel(BaseModel, HierarchicalMixinMinimal):
     @model_validator(mode='after')
     def _validator_seed_parent_and_name(self) -> Any:
         for fldnm, fldinfo in self.__class__.model_fields.items():
-            fld = getattr(self, fldnm, None)
-            if fld is None:
-                continue
-
             extra = fldinfo.json_schema_extra if isinstance(fldinfo.json_schema_extra, dict) else None
 
             # Global propagation - class config
@@ -94,6 +90,11 @@ class HierarchicalModel(BaseModel, HierarchicalMixinMinimal):
             propagate_parent = bool(propagate_parent)
 
             if not propagate_name and not propagate_parent:
+                continue
+
+            # Get field value
+            fld = getattr(self, fldnm, None)
+            if fld is None:
                 continue
 
             # Do propagation

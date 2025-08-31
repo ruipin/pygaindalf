@@ -134,21 +134,31 @@ class CallguardOptions[T : object, **P, R](TypedDict):
     decorator         : NotRequired[CallguardWrappedDecorator[T,P,R] | None]
     decorator_factory : NotRequired[CallguardWrappedDecoratorFactory[T,P,R] | None]
 
+class CallguardGuardMethod[T : object, **P, R](Protocol):
+    @classmethod
+    def __call__(cls, method : T, **options : Unpack[CallguardOptions[T,P,R]]) -> T: ...
+
 
 class CallguardClassOptions[T : object, **P, R](TypedDict):
-    force                    : NotRequired[bool]
-    ignore_patterns          : NotRequired[Iterable[str | re.Pattern[str]]]
-    guard_private_methods    : NotRequired[bool]
-    guard_public_methods     : NotRequired[bool]
-    guard_dunder_methods     : NotRequired[bool]
-    guard_ignore_patterns    : NotRequired[Iterable[str | re.Pattern[str]]]
-    decorate_private_methods : NotRequired[bool]
-    decorate_public_methods  : NotRequired[bool]
-    decorate_dunder_methods  : NotRequired[bool]
-    decorate_ignore_patterns : NotRequired[Iterable[str | re.Pattern[str]]]
-    decorator                : NotRequired[CallguardWrappedDecorator[T,P,R]]
-    decorator_factory        : NotRequired[CallguardWrappedDecoratorFactory[T,P,R]]
-    allow_same_module        : NotRequired[bool]
+    force                         : NotRequired[bool]
+    ignore_patterns               : NotRequired[Iterable[str | re.Pattern[str]]]
+    guard_private_methods         : NotRequired[bool]
+    guard_public_methods          : NotRequired[bool]
+    guard_dunder_methods          : NotRequired[bool]
+    guard_skip_classmethods       : NotRequired[bool]
+    guard_skip_instancemethods    : NotRequired[bool]
+    guard_skip_properties         : NotRequired[bool]
+    guard_ignore_patterns         : NotRequired[Iterable[str | re.Pattern[str]]]
+    decorate_private_methods      : NotRequired[bool]
+    decorate_public_methods       : NotRequired[bool]
+    decorate_dunder_methods       : NotRequired[bool]
+    decorate_skip_classmethods    : NotRequired[bool]
+    decorate_skip_instancemethods : NotRequired[bool]
+    decorate_skip_properties      : NotRequired[bool]
+    decorate_ignore_patterns      : NotRequired[Iterable[str | re.Pattern[str]]]
+    decorator                     : NotRequired[CallguardWrappedDecorator[T,P,R]]
+    decorator_factory             : NotRequired[CallguardWrappedDecoratorFactory[T,P,R]]
+    allow_same_module             : NotRequired[bool]
 
 
 def _callguard_enabled(obj : Any = None) -> bool:
@@ -324,15 +334,15 @@ class CallguardPropertyDecorator[T : object, **P, R]:
         return self.guard(prop, **self.options)
 
     @staticmethod
-    def guard(prop : property, **callguard_options : Unpack[CallguardOptions[T,P,R]]) -> property:
-        if not _callguard_enabled(prop):
-            return prop
+    def guard(method : property, **callguard_options : Unpack[CallguardOptions[T,P,R]]) -> property:
+        if not _callguard_enabled(method):
+            return method
 
-        getter = prop.fget
-        setter = prop.fset
-        deleter = prop.fdel
+        getter = method.fget
+        setter = method.fset
+        deleter = method.fdel
 
-        orig_name = callguard_options.get('method_name', prop.__name__)
+        orig_name = callguard_options.get('method_name', method.__name__)
 
         callguard_options['method_name'] = f"{orig_name}"
         callguarded_getter  = CallguardCallableDecorator.guard(getter, **callguard_options) if getter else None
@@ -344,13 +354,13 @@ class CallguardPropertyDecorator[T : object, **P, R]:
         callguarded_deleter = CallguardCallableDecorator.guard(deleter, **callguard_options) if deleter else None
 
         if callguarded_getter is getter and callguarded_setter is setter and callguarded_deleter is deleter:
-            return prop
+            return method
 
         return property(
             callguarded_getter,
             callguarded_setter,
             callguarded_deleter,
-            prop.__doc__
+            method.__doc__
         )
 
 def callguard_property[T : object, **P, R](**callguard_options : Unpack[CallguardOptions[T,P,R]]) -> CallguardPropertyDecorator[T,P,R]:
@@ -453,6 +463,55 @@ class CallguardClassDecorator[T : object, **P, R]:
         return (guard, decorate)
 
     @classmethod
+    def _guard_attribute[_T](cls, *, class_options : CallguardClassOptions[T,P,R], value : _T, **options : Unpack[CallguardOptions[_T,P,R]]) -> _T | None:
+        guard_skip_classmethods      : bool = bool(class_options.get('guard_skip_classmethods'   , False))
+        decorate_skip_classmethods   : bool = bool(class_options.get('decorate_skip_classmethods', True ))
+
+        guard_skip_instancemethods   : bool = bool(class_options.get('guard_skip_instancemethods'   , False))
+        decorate_skip_instancemethods: bool = bool(class_options.get('decorate_skip_instancemethods', False))
+
+        guard_skip_properties        : bool = bool(class_options.get('guard_skip_properties'   , False))
+        decorate_skip_properties     : bool = bool(class_options.get('decorate_skip_properties', False))
+
+        guard_fn : CallguardGuardMethod[_T,P,R] | None = None
+
+        guard = True
+        decorate = True
+
+        if isinstance(value, staticmethod):
+            return value # Static methods can't be guarded, as they have no self/cls
+        elif isinstance(value, property):
+            guard = not guard_skip_properties
+            decorate = not decorate_skip_properties
+            guard_fn = typing_cast(CallguardGuardMethod[_T,P,R], CallguardPropertyDecorator.guard)
+        elif isinstance(value, classmethod):
+            guard = not guard_skip_classmethods
+            decorate = not decorate_skip_classmethods
+            guard_fn = typing_cast(CallguardGuardMethod[_T,P,R], CallguardClassmethodDecorator.guard)
+        elif isinstance(value, type):
+            return value # Classes are not recursively guarded
+        elif callable(value):
+            guard = not guard_skip_instancemethods
+            decorate = not decorate_skip_instancemethods
+            guard_fn = typing_cast(CallguardGuardMethod[_T,P,R], CallguardCallableDecorator.guard)
+        else:
+            LOG.debug(f"Skipping non-callable, non-property attribute {options.get('method_name', '<unknown>')} of type {type(value)}")
+            return value
+
+        if guard_fn is None:
+            raise ValueError(f"Cannot guard attribute of type {type(value)}")
+
+        if not guard:
+            options.update({'guard': False})
+        if not decorate:
+            options.update({
+                'decorator': None,
+                'decorator_factory': None,
+            })
+
+        return guard_fn(value, **options)
+
+    @classmethod
     def guard(cls, klass: type[T], **callguard_class_options: Unpack[CallguardClassOptions[T,P,R]]) -> type[T]:
         LOG.debug(f"Callguard: Guarding class {klass.__name__}")
 
@@ -539,28 +598,19 @@ class CallguardClassDecorator[T : object, **P, R]:
             if decorate and (decorator is None and decorator_factory is None):
                 raise ValueError("Cannot decorate methods without a custom decorator or factory")
 
-            callguard_options : CallguardOptions[T,P,R] = {
-                'check_module': name.startswith('__') or name.startswith(f"_{klass.__name__}__"),
-                'allow_same_module': allow_same_module,
-                'method_name': name,
-                'guard': guard,
-                'decorator': decorator if decorate else None,
-                'decorator_factory': decorator_factory if decorate else None,
-            }
-
             # Wrap the method/property
-            if isinstance(value, staticmethod):
-                pass # Static methods can't be guarded, as they have no self/cls
-            elif isinstance(value, property):
-                modifications[name] = CallguardPropertyDecorator.guard(value, **callguard_options)
-            elif isinstance(value, classmethod):
-                modifications[name] = CallguardClassmethodDecorator.guard(value, **callguard_options)
-            elif isinstance(value, type):
-                pass # Classes are not recursively guarded
-            elif callable(value):
-                modifications[name] = CallguardCallableDecorator.guard(value, **callguard_options)
-            else:
-                LOG.debug(f"Skipping non-callable, non-property attribute {name} of type {type(value)}")
+            modification = cls._guard_attribute(
+                class_options= callguard_class_options,
+                value= value,
+                check_module= name.startswith('__') or name.startswith(f"_{klass.__name__}__"),
+                allow_same_module= allow_same_module,
+                method_name= name,
+                guard= guard,
+                decorator= decorator if decorate else None,
+                decorator_factory= decorator_factory if decorate else None,
+            )
+            if modification is not value:
+                modifications[name] = modification
 
         # Apply modifications
         for name, value in modifications.items():
