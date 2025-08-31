@@ -123,7 +123,7 @@ class TestTransaction:
         from app.portfolio.models.uid import Uid
         bad_uid = Uid(namespace="Wrong", id="ORCL")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError):
             Transaction(
                 instrument_uid=bad_uid,
                 type=TransactionType.BUY,

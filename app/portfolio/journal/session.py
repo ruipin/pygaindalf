@@ -2,9 +2,10 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from pydantic import ConfigDict, Field, PrivateAttr, computed_field
+from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
 from typing import ClassVar, Any, override, TypedDict
 from datetime import datetime
+from ordered_set import OrderedSet
 
 from ...util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ...util.helpers.callguard import callguard_class
@@ -13,7 +14,7 @@ from ..models.uid import Uid, IncrementingUidFactory
 from ..models.entity.entity import Entity
 from ..models.entity.superseded import superseded_check
 
-from .entity_journal import EntityJournal
+from .entity import EntityJournal
 
 
 class SessionParams(TypedDict):
@@ -22,16 +23,25 @@ class SessionParams(TypedDict):
 
 
 @callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_ignore_patterns=('superseded','ended'))
-class Session(LoggableHierarchicalModel):
+class JournalSession(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
         validate_assignment=True,
     )
 
+    # MARK: Instance Parent
+    @field_validator('instance_parent', mode='before')
+    def _validate_instance_parent_is_session_manager(cls, v: Any) -> Any:
+        from .session_manager import SessionManager
+        if v is None or not isinstance(v, SessionManager):
+            raise TypeError("Session parent must be a SessionManager object")
+        return v
+
+
     # MARK: Uid
     _UID_FACTORY : ClassVar[IncrementingUidFactory] = IncrementingUidFactory()
-    uid : Uid = Field(default_factory=lambda data: Session._UID_FACTORY.next('Session'), validate_default=True, description="Unique identifier for this session.")
+    uid : Uid = Field(default_factory=lambda data: JournalSession._UID_FACTORY.next('JournalSession'), validate_default=True, description="Unique identifier for this session.")
 
     @computed_field
     @property
@@ -45,7 +55,7 @@ class Session(LoggableHierarchicalModel):
     start_time : datetime = Field(default_factory=datetime.now, init=False, description="Timestamp when the session started.")
 
 
-    # MARK: Superseded
+    # MARK: State
     _ended : bool = PrivateAttr(default=False)
     @property
     def ended(self) -> bool:
@@ -54,12 +64,67 @@ class Session(LoggableHierarchicalModel):
         except:
             return False
 
+    _in_commit : bool = PrivateAttr(default=False)
+    @property
+    def in_commit(self) -> bool:
+        try:
+            return getattr(self, '_in_commit', False)
+        except:
+            return False
+
     @property
     def superseded(self) -> bool:
         return self.ended
 
 
+    # MARK: Entity Journals
+    _entity_journals : dict[Entity, EntityJournal] = PrivateAttr(default_factory=dict)
+
+    @property
+    def dirty(self) -> bool:
+        return any(j.dirty for j in self._entity_journals.values())
+
+    def _add_entity_journal(self, entity: Entity) -> EntityJournal | None:
+        if self.ended:
+            raise RuntimeError("Cannot add an entity journal to an ended session.")
+
+        if self._in_commit:
+            return None
+
+        journal = EntityJournal(entity=entity)
+        self._entity_journals[entity] = journal
+        return journal
+
+    def get_entity_journal(self, *, uid : Uid | None = None, entity: Entity | None = None) -> EntityJournal | None:
+        if self.ended:
+            raise RuntimeError("Cannot get an entity journal from an ended session.")
+
+        if uid is None and entity is None:
+            raise ValueError("Either 'uid' or 'entity' must be provided to get an entity journal.")
+
+        if entity is None and uid is not None:
+            entity = Entity.by_uid(uid)
+        if entity is None:
+            raise ValueError(f"No entity found with UID '{uid}' to create a journal.")
+
+        journal = self._entity_journals.get(entity, None)
+        if journal is not None:
+            return journal
+
+        return self._add_entity_journal(entity)
+
+    def _clear(self):
+        self._entity_journals.clear()
+
+    def contains(self, uid: Uid) -> bool:
+        return uid in self._entity_journals
+
+    def __len__(self) -> int:
+        return len(self._entity_journals)
+
+
     # MARK: State machine
+
     @override
     def model_post_init(self, context : Any):
         super().model_post_init(context)
@@ -79,9 +144,14 @@ class Session(LoggableHierarchicalModel):
             return
 
         # TODO: Log commit
-        self.log.info("Committing session.")
+        self.log.info("Committing session...")
 
-        raise NotImplementedError("Session commit not implemented yet.")
+        self._in_commit = True
+        self._commit()
+        self._in_commit = False
+
+        self._clear()
+        self.log.info("Commit concluded.")
 
     def abort(self) -> None:
         if self.ended:
@@ -105,50 +175,43 @@ class Session(LoggableHierarchicalModel):
         # TODO: Log ended
 
         self._ended = True
+        self.log.debug("Session ended.")
 
 
-    # Entity Journals
-    _entity_journals : dict[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
+    # MARK: Commit
+    def _commit(self) -> None:
+        flattened = self._commit_flatten()
+        self._commit_apply(flattened)
+        self._commit_refresh_session_manager()
 
-    @property
-    def dirty(self) -> bool:
-        return any(j.dirty for j in self._entity_journals.values())
+    def _commit_flatten(self) -> OrderedSet[EntityJournal]:
+        """
+        Recursively travel the entity journal hierarchy, flattening it into a list of journals such that all dependencies are handled before dependents.
+        """
+        self.log.debug("Flattening entity journal hierarchy for commit.")
 
-    def _add_entity_journal(self, entity: Entity) -> EntityJournal:
-        if self.ended:
-            raise RuntimeError("Cannot add an entity journal to an ended session.")
+        journals = OrderedSet([])
 
-        journal = EntityJournal(entity_uid=entity.uid)
-        self._entity_journals[entity.uid] = journal
-        return journal
+        for ej in self._entity_journals.values():
+            ej.flatten_hierarchy(journals)
 
-    def get_entity_journal(self, *, uid : Uid | None = None, entity: Entity | None = None) -> EntityJournal:
-        if self.ended:
-            raise RuntimeError("Cannot get an entity journal from an ended session.")
+        return journals
 
-        if uid is None and entity is None:
-            raise ValueError("Either 'uid' or 'entity' must be provided to get an entity journal.")
+    def _commit_apply(self, flattened : OrderedSet[EntityJournal]) -> None:
+        """
+        Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions).
+        Where an entity holds references to child entities (e.g. lists/dicts), these references are refreshed.
+        """
+        self.log.debug(f"Committing flattened hierarchy: {flattened}")
 
-        if uid is None and entity is not None:
-            uid = entity.uid
-        if uid is None:
-            raise ValueError("Could not determine 'uid' from provided 'entity'.")
+        for journal in flattened:
+            journal.commit()
 
-        journal = self._entity_journals.get(uid, None)
-        if journal is not None:
-            return journal
+    def _commit_refresh_session_manager(self) -> None:
+        parent = self.instance_parent
 
-        if entity is None:
-            entity = Entity.by_uid(uid)
-        if entity is None:
-            raise ValueError(f"No entity found with UID '{uid}' to create a journal.")
-        return self._add_entity_journal(entity)
+        from .session_manager import SessionManager
+        if not isinstance(parent, SessionManager):
+            raise TypeError("Session parent must be a SessionManager object")
 
-    def _clear(self):
-        self._entity_journals.clear()
-
-    def contains(self, uid: Uid) -> bool:
-        return uid in self._entity_journals
-
-    def __len__(self) -> int:
-        return len(self._entity_journals)
+        parent.refresh_parent()

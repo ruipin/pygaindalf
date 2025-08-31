@@ -32,7 +32,7 @@ class Portfolio(IncrementingUidEntity):
     # MARK: Journal
     _session_manager : SessionManager = PrivateAttr(default_factory=SessionManager)
 
-    @cached_property
+    @property
     @override
-    def session_manager(self) -> SessionManager:
+    def session_manager(self) -> SessionManager: # pyright: ignore[reportIncompatibleVariableOverride] as we are overriding a cached_property with a property
         return self._session_manager

@@ -90,6 +90,10 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
     def from_entity(cls, entity: 'Entity') -> 'EntityAuditLog':
         return cls(entity.uid)
 
+    @property
+    def entity(self) -> 'Entity | None':
+        return (self._entity() if self._entity is not None else None)
+
 
     # MARK: Instance name/parent
     @property
@@ -186,7 +190,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             raise ValueError(f"Entity version {entity.version} does not match the expected version {self.next_version}. The version should be incremented when the entity is cloned as part of an update action.")
 
         diff = None
-        if entity != self._entity:
+        if entity is not self.entity:
             old_entity = self.instance_parent
 
             diff = self._diff(old_entity, entity)

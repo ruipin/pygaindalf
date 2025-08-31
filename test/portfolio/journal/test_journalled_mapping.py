@@ -3,7 +3,7 @@
 
 import pytest
 
-from app.portfolio.journal.journalled_mapping import JournalledMapping, JournalledMappingEditType
+from app.portfolio.journal.collections.mapping import JournalledMapping, JournalledMappingEditType
 
 
 @pytest.mark.journal

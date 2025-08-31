@@ -5,7 +5,7 @@ import sys
 import functools
 
 from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
-from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack
+from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack, cast as typing_cast
 from abc import abstractmethod, ABCMeta
 from weakref import WeakValueDictionary
 from functools import cached_property
@@ -15,28 +15,15 @@ from ....util.helpers import script_info
 from ....util.helpers.callguard import callguard_class, CallguardWrapped, CallguardOptions
 
 if TYPE_CHECKING:
-    from ...journal.entity_journal import EntityJournal
+    from ...journal.entity import EntityJournal
     from ...journal.session_manager import SessionManager
-    from ...journal.session import Session
+    from ...journal.session import JournalSession
 
 from ..uid import Uid
 
 from .superseded import superseded_check
 from .audit import EntityAuditLog
 
-
-#SHORTCIRCUIT_ATTRIBUTES=(
-#    'uid',
-#    'initialized',
-#    'dirty',
-#    'superseded',
-#    'entity_log',
-#    'session_manager',
-#    'session',
-#    'instance_parent',
-#    'version',
-#    'journal',
-#)
 
 @callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_skip_properties=True)
 class Entity(LoggableHierarchicalModel):
@@ -118,29 +105,6 @@ class Entity(LoggableHierarchicalModel):
         return result
 
 
-    # MARK: Instance Name
-    @classmethod
-    @abstractmethod
-    def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
-        raise NotImplementedError(f"{cls.__name__} must implement the 'calculate_instance_name_from_dict' method to generate a name for the instance.")
-
-    @classmethod
-    def calculate_instance_name_from_instance(cls, instance : 'Entity') -> str:
-        if not isinstance(instance, NamedProtocol):
-            raise TypeError(f"Expected instance of {cls.__name__}, got {type(instance).__name__}.")
-        if (name := instance.instance_name) is not None:
-            return name
-        raise ValueError(f"{cls.__name__} must have a valid instance name.")
-
-    @classmethod
-    def calculate_instance_name_from_arbitrary_data(cls, data : Any) -> str:
-        if isinstance(data, cls):
-            return cls.calculate_instance_name_from_instance(data)
-        if not isinstance(data, dict):
-            raise TypeError(f"Expected 'data' to be a dict or {cls.__name__}, got {type(data).__name__}.")
-        return cls.calculate_instance_name_from_dict(data)
-
-
     # MARK: Meta
     _initialized : bool = PrivateAttr(default=False)
     entity_log : EntityAuditLog = Field(default_factory=lambda data: EntityAuditLog(data['uid']), validate_default=True, repr=False, exclude=True, description="The audit log for this entity, which tracks changes made to it over time.")
@@ -173,7 +137,12 @@ class Entity(LoggableHierarchicalModel):
 
     def __del__(self):
         # No need to track deletion in finalizing state
-        if not sys.is_finalizing and not self.superseded:
+        if sys.is_finalizing:
+            return
+
+        self.log.debug(f"Entity __del__ called for {self}.")
+
+        if self.superseded:
             self.entity_log.on_delete(self, who='system', why='__del__')
 
     @computed_field
@@ -183,6 +152,15 @@ class Entity(LoggableHierarchicalModel):
         Indicates whether this entity instance has been superseded by another instance with an incremented version.
         """
         return self.entity_log.version > self.version
+
+    @property
+    def superseding[T : 'Entity'](self : T) -> T | None:
+        if not self.superseded:
+            return self
+        superseding = self.__class__.by_uid(self.uid)
+        if superseding is self:
+            raise RuntimeError("Entity is marked as superseded but no newer version found.")
+        return superseding
 
     @property
     def initialized(self) -> bool:
@@ -215,12 +193,41 @@ class Entity(LoggableHierarchicalModel):
         args['uid'    ] = self.uid
         args['version'] = self.entity_log.next_version
 
-        return self.__class__(**args)
+        # Sanity check - name won't change
+        from .named_entity import NamedEntity
+        is_named = False
+        if isinstance(self, NamedEntity):
+            if not isinstance(self, NamedProtocol):
+                raise TypeError("Entity is a NamedEntity but not a NamedProtocol.")
+            is_named = True
+            if (new_name := self.calculate_instance_name_from_dict(args)) != self.instance_name:
+                raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_name}'.")
+
+        # Update entity
+        new_entity = self.__class__(**args)
+
+        # Sanity check - name didn't change
+        if not isinstance(new_entity, self.__class__):
+            raise TypeError(f"Expected new entity to be an instance of {self.__class__.__name__}, got {type(new_entity).__name__}.")
+        if is_named:
+            if not isinstance(new_entity, NamedProtocol) or not isinstance(self, NamedProtocol):
+                raise TypeError("New entity or original entity is not a NamedProtocol but one was expected.")
+            if new_entity.instance_name != self.instance_name:
+                raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_entity.instance_name}'.")
+
+        # Return updated entity
+        return new_entity
 
 
     # MARK: Journal
     @property
     def journal(self) -> 'EntityJournal':
+        result = self.session.get_entity_journal(entity=self)
+        if result is None:
+            raise RuntimeError("Entity does not have an associated journal.")
+        return result
+
+    def get_journal(self) -> 'EntityJournal | None':
         return self.session.get_entity_journal(entity=self)
 
     @cached_property
@@ -232,7 +239,7 @@ class Entity(LoggableHierarchicalModel):
         return parent.session_manager
 
     @property
-    def session(self) -> 'Session':
+    def session(self) -> 'JournalSession':
         session = self.session_manager.session
         if session is None:
             raise RuntimeError("No active session found in the session manager.")
@@ -243,39 +250,69 @@ class Entity(LoggableHierarchicalModel):
     def _is_entity_attribute(name: str) -> bool:
         return hasattr(Entity, name) or name in Entity.model_fields or name in Entity.model_computed_fields
 
-    @override
-    def __getattribute__(self, name: str) -> Any:
-        # Short-circuit private and 'Entity' attributes
-        if name.startswith('_') or Entity._is_entity_attribute(name):
-            return super().__getattribute__(name)
+    @classmethod
+    def is_model_field(cls, field : str) -> bool:
+        return field in cls.model_fields
 
-        # Short-circuit if not yet initialized
-        if not self.initialized:
-            return super().__getattribute__(name)
+    @property
+    def original_instance_parent(self) -> Any:
+        return super().__getattribute__('instance_parent')
 
-        # If not in a session, return the normal attribute
-        if self.superseded or not self.in_session:
-            return super().__getattribute__(name)
+    # Overriding __getattribute__ causes type checkers to assume any attribute access might succeed.
+    # We don't plan to add/remove attributes, just proxy some of them to the journal.
+    # So we gate our override with `not TYPE_CHECKING` to avoid confusing type checkers while keeping runtime behavior.
+    if not TYPE_CHECKING:
+        @override
+        def __getattribute__(self, name: str) -> Any:
+            # We special-case instance_parent to ensure we always link to the latest version of our parent entity
+            if name == 'instance_parent':
+                parent = super().__getattribute__(name)
+                if isinstance(parent, Entity) and parent.superseded:
+                    return parent.superseding
+                return parent
 
-        # Otherwise, use the journal to get the attribute
-        return self.journal.get(name)
+            # Short-circuit cases
+            if (
+                # Short-circuit private and 'Entity' attributes
+                (name.startswith('_') or Entity._is_entity_attribute(name)) or
+                # Short-circuit if not yet initialized
+                (not self.initialized) or
+                # If this is not a model field
+                (not self.is_model_field(name)) or
+                # If not in a session, return the normal attribute
+                (self.superseded or not self.in_session)
+            ):
+                return super().__getattribute__(name)
+
+            # If there is no journal, return the normal attribute
+            journal = self.get_journal()
+            if journal is None:
+                return super().__getattribute__(name)
+
+            # Otherwise, use the journal to get the attribute
+            return journal.get(name)
 
     @override
     def __setattr__(self, name: str, value: Any) -> None:
-        # Short-circuit private and 'Entity' attributes
-        if name.startswith('_') or Entity._is_entity_attribute(name):
+        if (
+            # Short-circuit private and 'Entity' attributes
+            (name.startswith('_') or Entity._is_entity_attribute(name)) or
+            # Short-circuit if not yet initialized
+            (not self.initialized) or
+            # If this is not a model field
+            (not self.is_model_field(name)) or
+            # If not in a session, set the normal attribute
+            (self.superseded or not self.in_session)
+        ):
             return super().__setattr__(name, value)
 
-        # Short-circuit if not yet initialized
-        if not self.initialized:
-            return super().__setattr__(name, value)
-
-        # If not in a session, set the normal attribute
-        if self.superseded or not self.in_session:
+        # If there is no journal, set the normal attribute
+        journal = self.get_journal()
+        if journal is None:
             return super().__setattr__(name, value)
 
         # Otherwise, use the journal to set the attribute
-        self.journal.set(name, value)
+        journal.set(name, value)
 
     @property
     def dirty(self) -> bool:
@@ -293,4 +330,4 @@ class Entity(LoggableHierarchicalModel):
     # MARK: Utilities
     @override
     def __hash__(self):
-        return hash(self.uid)
+        return hash((self.uid, self.version))

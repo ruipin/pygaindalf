@@ -5,7 +5,7 @@ from typing import override, Any, Self, ClassVar
 from abc import ABCMeta, abstractmethod
 from pydantic import computed_field, Field, field_validator, model_validator
 
-from ....util.mixins import NamedMixinMinimal
+from ....util.mixins import NamedMixinMinimal, NamedProtocol
 
 from ..uid import Uid
 
@@ -24,13 +24,35 @@ class NamedEntity(Entity, NamedMixinMinimal, metaclass=ABCMeta):
 
         return Uid(namespace=cls.uid_namespace(data), id=instance_name)
 
+    @classmethod
+    @abstractmethod
+    def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
+        raise NotImplementedError(f"{cls.__name__} must implement the 'calculate_instance_name_from_dict' method to generate a name for the instance.")
+
+    @classmethod
+    def calculate_instance_name_from_instance(cls, instance : 'Entity') -> str:
+        if not isinstance(instance, NamedProtocol):
+            raise TypeError(f"Expected instance of {cls.__name__}, got {type(instance).__name__}.")
+        if (name := instance.instance_name) is not None:
+            return name
+        raise ValueError(f"{cls.__name__} must have a valid instance name.")
+
+    @classmethod
+    def calculate_instance_name_from_arbitrary_data(cls, data : Any) -> str:
+        if isinstance(data, cls):
+            return cls.calculate_instance_name_from_instance(data)
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected 'data' to be a dict or {cls.__name__}, got {type(data).__name__}.")
+        return cls.calculate_instance_name_from_dict(data)
+
     @model_validator(mode='after')
     def _validate_instance_name(self) -> Self:
         if self.__class__.STRICT_INSTANCE_NAME_VALIDATION:
-            instance_name = self.__class__.calculate_instance_name_from_instance(self)
             dict_name = self.__class__.calculate_instance_name_from_dict(self.__dict__)
+            instance_name = self.__class__.calculate_instance_name_from_instance(self)
             if instance_name != dict_name:
                 raise ValueError(f"Instance name '{instance_name}' does not match the calculated name from the dictionary '{dict_name}'.")
+
         return self
 
 

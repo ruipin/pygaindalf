@@ -3,7 +3,7 @@
 
 import pytest
 
-from app.portfolio.journal.journalled_sequence import (
+from app.portfolio.journal.collections.sequence import (
     JournalledSequence,
     JournalledSequenceEditType,
 )
