@@ -2,12 +2,10 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
-from typing import Any, Iterator, override
-from pydantic import Field, PrivateAttr, ValidationError
-from functools import cached_property
+from typing import Any, Iterator, override, ClassVar
+from pydantic import Field, PrivateAttr, ValidationError, BaseModel, InstanceOf, ConfigDict
 
-from requests import session
-
+from app.util.mixins.models import LoggableHierarchicalModel
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.journal.session import JournalSession
 from app.portfolio.journal.entity import EntityJournal
@@ -31,27 +29,33 @@ class SampleEntity(IncrementingUidEntity):
     data: list[int] = Field(default_factory=lambda: [10, 20].copy())
     note: str = Field(default="initial")
 
-    sample_session_manager: SessionManager = Field(default_factory=SessionManager)
+class SampleEntityManager(LoggableHierarchicalModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        validate_assignment=True,
+    )
 
-    @property
-    @override
-    def session_manager(self) -> SessionManager: # pyright: ignore[reportIncompatibleVariableOverride] as we are overriding a cached_property with a property
-        return object.__getattribute__(self, 'sample_session_manager')
+    entity : InstanceOf[SampleEntity] = Field(default_factory=lambda: SampleEntity(value=1))
+    session_manager : InstanceOf[SessionManager] = Field(default_factory=SessionManager)
+
+    def refresh_entities(self):
+        superseding = self.entity.superseding
+        assert superseding is not None
+        self.entity = superseding
 
 
 # --- Fixtures --------------------------------------------------------------------
 @pytest.fixture()
-def session_manager() -> SessionManager:
-    return SessionManager()
+def entity_manager() -> SampleEntityManager:
+    return SampleEntityManager()
 
+@pytest.fixture()
+def session_manager(entity_manager : SampleEntityManager) -> SessionManager:
+    return entity_manager.session_manager
 
 @pytest.fixture(scope='function')
-def entity(session_manager: SessionManager) -> SampleEntity:
-    # Provide deterministic fresh state
-    SampleEntity.reset_state()
-    entity = SampleEntity(sample_session_manager=session_manager, value=1)
-    session_manager.instance_parent = entity
-    return entity
+def entity(entity_manager: SampleEntityManager) -> SampleEntity:
+    return entity_manager.entity
 
 
 # --- Tests -----------------------------------------------------------------------
@@ -96,17 +100,17 @@ class TestSessionEntityJournal:
             meta_original = entity.journal.get_original_field("meta")
             assert isinstance(meta_original, dict)
             entity.meta = meta_original  # identity -> no update created
-            assert "meta" not in entity.journal._updates
+            assert not entity.journal.updated("meta")
 
             # Modify field with a different object
             new_meta = {"a": 10, "b": 2}
             entity.meta = new_meta
-            assert entity.journal._updates["meta"] is new_meta
+            assert entity.journal.get('meta') is new_meta
             assert entity.dirty is True
 
             # Revert to original identity -> clears update
             entity.meta = meta_original
-            assert "meta" not in entity.journal._updates
+            assert not entity.journal.updated("meta")
             assert entity.dirty is False
 
             s.abort()

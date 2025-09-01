@@ -12,7 +12,7 @@ from functools import cached_property
 
 from ....util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ....util.helpers import script_info
-from ....util.helpers.callguard import callguard_class, CallguardWrapped, CallguardOptions
+from ....util.helpers.callguard import CallguardClassOptions
 
 if TYPE_CHECKING:
     from ...journal.entity import EntityJournal
@@ -25,8 +25,11 @@ from .superseded import superseded_check
 from .audit import EntityAuditLog
 
 
-@callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_skip_properties=True)
 class Entity(LoggableHierarchicalModel):
+    __callguard_class_options__ = CallguardClassOptions['Entity'](
+        decorator=superseded_check, decorate_public_methods=True, decorate_skip_properties=True
+    )
+
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
@@ -34,7 +37,7 @@ class Entity(LoggableHierarchicalModel):
     )
 
     # MARK: Uid
-    uid : Uid = Field(default=None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
+    uid : Uid = Field(default_factory=lambda: None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
 
     _UID_STORAGE : 'ClassVar[MutableMapping[Uid, Entity]]' = WeakValueDictionary() # Class variable to store UIDs of all instances of this class. Used to check for duplicate UIDs.
 
@@ -133,7 +136,6 @@ class Entity(LoggableHierarchicalModel):
         super().model_post_init(context)
 
         self.entity_log.on_create(self)
-        self._initialized = True
 
     def __del__(self):
         # No need to track deletion in finalizing state
@@ -161,13 +163,6 @@ class Entity(LoggableHierarchicalModel):
         if superseding is self:
             raise RuntimeError("Entity is marked as superseded but no newer version found.")
         return superseding
-
-    @property
-    def initialized(self) -> bool:
-        try:
-            return getattr(self, '_initialized', False)
-        except:
-            return False
 
     def update[T : Entity](self : T, **kwargs: Any) -> T:
         """
@@ -233,8 +228,10 @@ class Entity(LoggableHierarchicalModel):
     @cached_property
     def session_manager(self) -> 'SessionManager':
         parent = self.instance_parent
-        if not isinstance(parent, Entity):
-            raise RuntimeError("Entity is not part of a session-managed hierarchy. Cannot determine session manager.")
+
+        from ...journal.session_manager import HasSessionManagerProtocol
+        if not isinstance(parent, HasSessionManagerProtocol):
+            raise RuntimeError(f"{self.__class__.__name__} is not part of a session-managed hierarchy (parent has type {parent.__class__}). Cannot determine session manager.")
 
         return parent.session_manager
 

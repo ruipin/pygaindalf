@@ -4,6 +4,7 @@
 import pytest
 from iso4217 import Currency
 
+from app.portfolio.manager import PortfolioManager
 from app.portfolio.portfolio import Portfolio
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.ledger import Ledger
@@ -12,10 +13,19 @@ from app.util.helpers.frozendict import frozendict
 import pydantic
 
 
+@pytest.fixture
+def portfolio_manager() -> PortfolioManager:
+    return PortfolioManager()
+
+@pytest.fixture
+def portfolio(portfolio_manager : PortfolioManager) -> Portfolio:
+    return portfolio_manager.portfolio
+
+
 @pytest.mark.portfolio
 class TestPortfolio:
-    def test_basic_initialization_and_audit(self):
-        p = Portfolio()
+    def test_basic_initialization_and_audit(self, portfolio : Portfolio):
+        p = portfolio
         assert p.uid.namespace == "Portfolio"
         assert p.uid.id == 1
         assert p.version == 1
@@ -25,15 +35,16 @@ class TestPortfolio:
         assert p.entity_log.next_version == 2
         assert p.ledgers == {}
 
-    def test_session_manager_cached_property(self):
-        p = Portfolio()
+    def test_session_manager_cached_property(self, portfolio_manager : PortfolioManager, portfolio : Portfolio):
+        p = portfolio
         sm1 = p.session_manager
         sm2 = p.session_manager
         assert sm1 is sm2  # cached_property
+        assert sm1 is portfolio_manager.session_manager
 
-    def test_add_ledger_by_reconstruction(self):
+    def test_add_ledger_by_reconstruction(self, portfolio : Portfolio):
         # Portfolio currently immutable; simulate adding ledger by cloning via update
-        p1 = Portfolio()
+        p1 = portfolio
         inst = Instrument(
             ticker="AAPL",
             currency=Currency("USD"),

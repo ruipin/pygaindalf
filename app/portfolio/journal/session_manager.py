@@ -4,15 +4,14 @@
 import contextlib
 
 from pydantic import ConfigDict, PrivateAttr, computed_field, field_validator
-from typing import Iterator, TypedDict, Unpack, Any
+from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable
 
 from ...util.mixins import LoggableHierarchicalModel
-from ...util.helpers.callguard import callguard_class, callguard_callable
 
 from .session import JournalSession, SessionParams
+from . import RefreshableEntitiesProtocol
 
 
-@callguard_class()
 class SessionManager(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -31,17 +30,16 @@ class SessionManager(LoggableHierarchicalModel):
             raise TypeError("Session parent must be a Entity object")
         return v
 
-    def refresh_parent(self) -> None:
+    def refresh_entities(self) -> None:
         parent = self.instance_parent
 
         from ..models.entity.entity import Entity
-        if not isinstance(parent, Entity):
-            raise TypeError("Session parent must be a Entity object")
-
-        if not parent.superseded:
-            return
-        self.instance_parent = parent.superseding
-
+        if isinstance(parent, RefreshableEntitiesProtocol):
+            parent.refresh_entities()
+        elif isinstance(parent, Entity):
+            if not parent.superseded:
+                return
+            self.instance_parent = parent.superseding
 
     # MARK: JournalSession
     def _start(self, **kwargs : Unpack[SessionParams]) -> JournalSession:
@@ -96,3 +94,10 @@ class SessionManager(LoggableHierarchicalModel):
     @property
     def session(self) -> JournalSession | None:
         return self._session if self.in_session else None
+
+
+
+@runtime_checkable
+class HasSessionManagerProtocol(Protocol):
+    @property
+    def session_manager(self) -> SessionManager: ...

@@ -3,8 +3,10 @@
 
 import pytest
 import functools
+import pydantic
 from typing import override, Self, Callable, Any, cast as typing_cast
 from app.util.helpers.callguard import (
+    CallguardClassOptions,
     callguard_callable,
     callguard_property,
     Callguard,
@@ -12,6 +14,8 @@ from app.util.helpers.callguard import (
     no_callguard,
     CallguardWrapped,
     CallguardHandlerInfo,
+    CallguardedModelMixin,
+    CallguardError
 )
 
 # ---------------------------------------------------------------------------
@@ -35,7 +39,7 @@ class MethodSample:
 class TestCallguardMethods:
     def test_private_method_direct_call_raises(self):
         obj = MethodSample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._secret()
         assert obj.invocations == []
 
@@ -67,7 +71,7 @@ class PropertySample:
 class TestCallguardProperties:
     def test_private_property_direct_access_raises(self):
         obj = PropertySample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             _ = obj._value_prop
 
     def test_private_property_internal_access_allowed(self):
@@ -95,7 +99,7 @@ class MixinSample(Callguard):
 class TestCallguardMixin:
     def test_callguard_mixin_enforces_private(self):
         obj = MixinSample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._hidden()
         assert obj.public() == "ok"
         assert obj.calls == ["_hidden"]
@@ -138,7 +142,7 @@ class DecoratedSample:
 class TestCallguardDecorator:
     def test_callguarded_decorator_enforces_private(self):
         obj = DecoratedSample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._hidden()
         assert obj.public() == "ok"
         assert obj.calls == ["_hidden"]
@@ -149,7 +153,7 @@ class TestCallguardDecorator:
 
     def test_callguarded_decorator_class_method(self):
         obj = DecoratedSample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._private_class_method()
         assert obj.class_method() == "class ok"
 
@@ -189,15 +193,15 @@ class TestCallguardInheritance:
         assert obj.normal() == "normal ok"
         assert obj.normal2() == "normal2 ok"
         assert obj.access_single_underscore_super() == "single underscore ok"
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._TestDoubleUnderscore__double_underscore() # pyright: ignore [reportAttributeAccessIssue]
         assert obj.access_double_underscore() == "double underscore ok"
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj.access_double_underscore_extended()
 
     def test_subclass_private_method(self):
         obj = TestDoubleUnderscoreExtended()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._subclass_private()
         assert obj.subclass_private_access() == "subclass private ok"
 
@@ -231,7 +235,7 @@ class TestCallguardInitSubclass:
         assert call_log[-1] is Derived
 
         d = Derived()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             d._hidden()
         assert d.public() == "ok"
 
@@ -301,7 +305,7 @@ class TestCallguardHandler:
                 assert first == second
                 PredicateSample.predicate_results.append(first)
                 if not first:
-                    raise RuntimeError("blocked")
+                    raise CallguardError("blocked")
                 return method(self, *args, **kwargs)
 
             def _private(self) -> str:
@@ -312,7 +316,7 @@ class TestCallguardHandler:
 
         obj = PredicateSample()
         # External direct call -> predicate False -> raises
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._private()
         assert PredicateSample.predicate_results[-1] is False
 
@@ -419,7 +423,7 @@ class TestCallguardFilter:
         obj = FilterSample()
 
         # _a_guarded is guarded -> external call blocked
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             obj._a_guarded()
 
         # _b_skipped not guarded -> external call allowed
@@ -468,7 +472,7 @@ class TestCallguardCustomDecorator:
 
         s = Sample()
         # External call blocked BEFORE wrapper executes
-        with pytest.raises(RuntimeError):  # external direct call blocked
+        with pytest.raises(CallguardError):  # external direct call blocked
             s._secret()
         # Internal call allowed and decorator executed
         assert s.public() == "wrapped:ok"
@@ -489,7 +493,7 @@ class TestCallguardCustomDecorator:
                 return self._val
 
         sp = SampleProp()
-        with pytest.raises(RuntimeError):  # blocked external access; decorator not invoked
+        with pytest.raises(CallguardError):  # blocked external access; decorator not invoked
             _ = sp._val
         # Internal access via method -> decorator increments int by 1
         assert sp.read() == 11
@@ -530,7 +534,7 @@ class TestCallguardCustomDecorator:
         # External direct call to public -> allowed, decorated
         assert ms.public() == "wrapped:pub:wrapped:inner"
         # External direct call to private -> blocked
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             ms._secret()
         # Internal call to private via helper method -> decorated
         assert ms.access_private() == "wrapped:wrapped:inner"
@@ -585,9 +589,9 @@ class TestCallguardAllowSameModule:
 
     def test_without_allow_same_module_blocks(self):
         n = NoAllowSameModuleSample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             n._secret()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             _external_call_no_allow(n)
         assert n.internal() == "ok"
 
@@ -623,7 +627,7 @@ class FactorySample:
 class TestCallguardDecoratorFactory:
     def test_decorator_factory_applied(self):
         f = FactorySample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             f._secret()
         assert f.public() == "wrapped:ok"
         assert len(_factory_calls) == 1
@@ -662,7 +666,7 @@ class AttrFactorySample:
 class TestCallguardClassDecoratorFactoryAttribute:
     def test_class_level_factory_attribute(self):
         a = AttrFactorySample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             a._hidden()
         assert a.access() == "wrapped:ok"
         assert _attr_factory_calls == ["_hidden"]
@@ -688,7 +692,7 @@ class GuardIgnoreSample:
 class TestCallguardGuardIgnorePatterns:
     def test_guard_ignore_patterns(self):
         g = GuardIgnoreSample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             g._will_guard()
         assert g._skip_guard() == "skipped"  # not guarded
         assert g.both() == ("guarded", "skipped")
@@ -718,9 +722,9 @@ class DecorateIgnoreSample:
 class TestCallguardDecorateIgnorePatterns:
     def test_decorate_ignore_patterns(self):
         d = DecorateIgnoreSample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             d._decorated()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             d._skip_decorate()
         assert d.call() == ("wrapped:ok", "ok2")
 
@@ -750,7 +754,7 @@ class TestCallguardGuardSkipOptions:
 
         s = Sample()
         # Instance private still guarded
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s._inst()
         # Classmethod private NOT guarded due to skip
         assert Sample._cm() == "c"
@@ -776,7 +780,7 @@ class TestCallguardGuardSkipOptions:
         # Instance private NOT guarded due to skip
         assert s2._inst() == "i"
         # Classmethod private still guarded
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             Sample2._cm()
         # Internal classmethod call allowed
         assert Sample2.call_cm() == "c"
@@ -804,7 +808,7 @@ class TestCallguardGuardSkipOptions:
         # Property private NOT guarded due to skip
         assert s3._val == 5
         # Private method still guarded
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s3._hidden()
         assert s3.call_hidden() == "h"
 
@@ -838,9 +842,9 @@ class TestCallguardDecorateSkipOptions:
 
         s = Sample()
         # External calls
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s._inst()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             Sample._cm()
         # Internal instance private decorated
         assert s.call_inst() == "wrapped:i"
@@ -870,9 +874,9 @@ class TestCallguardDecorateSkipOptions:
                 return cls._cm()
 
         s2 = Sample2()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             Sample2._cm()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s2._inst()
         # Instance private NOT decorated due to skip
         assert s2.call_inst() == "i"
@@ -903,11 +907,65 @@ class TestCallguardDecorateSkipOptions:
                 return self._hidden()
 
         s3 = Sample3()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s3._hidden()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             _ = s3._val
         # Property NOT decorated -> unchanged value
         assert s3.access() == 5
         # Private method decorated internally
         assert s3.call_hidden() == "wrapped:h"
+
+
+
+# ---------------------------------------------------------------------------
+# MARK: Pydantic model attributes
+# ---------------------------------------------------------------------------
+class ModelSample(CallguardedModelMixin, pydantic.BaseModel):
+    test       : int = pydantic.Field      (default=0)
+    _priv      : int = pydantic.PrivateAttr(default=1)
+    __dpriv    : int = pydantic.PrivateAttr(default=2)
+
+    def public(self) -> str:
+        return "public ok"
+
+class ModelSample2(ModelSample):
+    __callguard_class_options__ = CallguardClassOptions['ModelSample2'](
+        guard_public_methods=True
+    )
+
+    def public2(self) -> str:
+        return "public2 ok"
+
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardPydanticAttributes:
+    def test_pydantic_attributes_guarded(self):
+        t = ModelSample()
+
+        assert t.test == 0
+        with pytest.raises(CallguardError, match=r'Unauthorized call to [a-zA-Z._]+\._priv'):
+            t._priv
+        with pytest.raises(CallguardError, match=r'Unauthorized call to [a-zA-Z._]+\._ModelSample__dpriv'):
+            t._ModelSample__dpriv # pyright: ignore[reportAttributeAccessIssue]
+        assert t.public() == "public ok"
+
+        t.test = 10
+        assert t.test == 10
+        with pytest.raises(CallguardError, match=r'Unauthorized call to [a-zA-Z._]+\._priv'):
+            t._priv = 11
+        with pytest.raises(CallguardError, match=r'Unauthorized call to [a-zA-Z._]+\._ModelSample__dpriv'):
+            t._ModelSample__dpriv = 12 # pyright: ignore[reportAttributeAccessIssue]
+
+    def test_pydantic_redefine_options(self):
+        t2 = ModelSample2()
+
+        assert t2.test == 0
+        with pytest.raises(CallguardError, match=r'Unauthorized call to [a-zA-Z._]+\._priv'):
+            t2._priv
+        with pytest.raises(CallguardError, match=r'Unauthorized call to [a-zA-Z._]+\._ModelSample__dpriv'):
+            t2._ModelSample__dpriv # pyright: ignore[reportAttributeAccessIssue]
+        assert t2.public() == "public ok"
+
+        with pytest.raises(CallguardError, match=r'Unauthorized call to [a-zA-Z._]+\.public2'):
+            t2.public2()

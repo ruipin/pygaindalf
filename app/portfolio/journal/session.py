@@ -7,14 +7,15 @@ from typing import ClassVar, Any, override, TypedDict
 from datetime import datetime
 from ordered_set import OrderedSet
 
-from ...util.mixins import LoggableHierarchicalModel, NamedProtocol
-from ...util.helpers.callguard import callguard_class
+from ...util.mixins import LoggableHierarchicalModel
+from ...util.helpers.callguard import CallguardClassOptions
 
 from ..models.uid import Uid, IncrementingUidFactory
 from ..models.entity.entity import Entity
 from ..models.entity.superseded import superseded_check
 
 from .entity import EntityJournal
+from . import RefreshableEntitiesProtocol
 
 
 class SessionParams(TypedDict):
@@ -22,8 +23,13 @@ class SessionParams(TypedDict):
     reason : str
 
 
-@callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_ignore_patterns=('superseded','ended'))
 class JournalSession(LoggableHierarchicalModel):
+    __callguard_class_options__ = CallguardClassOptions['JournalSession'](
+        decorator=superseded_check,
+        decorate_public_methods=True,
+        decorate_ignore_patterns=('superseded','ended'),
+    )
+
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
@@ -182,7 +188,7 @@ class JournalSession(LoggableHierarchicalModel):
     def _commit(self) -> None:
         flattened = self._commit_flatten()
         self._commit_apply(flattened)
-        self._commit_refresh_session_manager()
+        self._commit_refresh_entities()
 
     def _commit_flatten(self) -> OrderedSet[EntityJournal]:
         """
@@ -197,21 +203,22 @@ class JournalSession(LoggableHierarchicalModel):
 
         return journals
 
-    def _commit_apply(self, flattened : OrderedSet[EntityJournal]) -> None:
+    def _commit_apply(self, flattened : OrderedSet[EntityJournal]) -> Entity | None:
         """
         Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions).
         Where an entity holds references to child entities (e.g. lists/dicts), these references are refreshed.
         """
         self.log.debug(f"Committing flattened hierarchy: {flattened}")
 
+        entity = None
         for journal in flattened:
-            journal.commit()
+            entity = journal.commit()
 
-    def _commit_refresh_session_manager(self) -> None:
+        # The last entity should always be the root of the entity hierarchy, as every other entity depends on it
+        return entity
+
+    def _commit_refresh_entities(self) -> None:
         parent = self.instance_parent
 
-        from .session_manager import SessionManager
-        if not isinstance(parent, SessionManager):
-            raise TypeError("Session parent must be a SessionManager object")
-
-        parent.refresh_parent()
+        if isinstance(parent, RefreshableEntitiesProtocol):
+            parent.refresh_entities()

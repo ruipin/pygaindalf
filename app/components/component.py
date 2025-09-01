@@ -18,14 +18,13 @@ from app.util.mixins import LoggableHierarchicalNamedMixin
 
 from ..util.config.inherit import FieldInherit
 from ..util.helpers.decimal import DecimalConfig, DecimalFactory
-from ..util.helpers.callguard import no_callguard, callguard_class, CALLGUARD_ENABLED, CallguardHandlerInfo, CallguardWrapped, CallguardOptions
+from ..util.helpers.callguard import CALLGUARD_ENABLED, callguard_class, CallguardOptions, CallguardWrapped
 
 from ..util.helpers import classproperty
 from ..util.config import BaseConfigModel
 
 
 # MARK: Base Component Configuration
-@callguard_class()
 class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
     package : str
 
@@ -156,8 +155,12 @@ type Entrypoint[T : ComponentBase, **P, R] = Callable[Concatenate[T,P], R]
 
 
 # MARK: Component Base Class
-@callguard_class(decorate_public_methods=True, ignore_patterns=('inside_entrypoint'))
+@callguard_class(
+    decorate_public_methods=True,
+    ignore_patterns=('inside_entrypoint'),
+)
 class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass=ABCMeta):
+
     # Decimal factory for precise calculations
     decimal : DecimalFactory
 
@@ -176,7 +179,7 @@ class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass
             return functools.partial(cls._handle_entrypoint, entrypoint)
 
     @classmethod
-    def _handle_entrypoint[**P, R](cls, entrypoint : Entrypoint[Self,P,R], self : Self, *args : P.args, **kwargs : P.kwargs) -> R:
+    def _handle_entrypoint[**P, R](cls, entrypoint : Entrypoint[Self,P,R], self : Self, /, *args : P.args, **kwargs : P.kwargs) -> R:
         # If we are already inside an entrypoint, call it directly
         if self.inside_entrypoint:
             return entrypoint(self, *args, **kwargs)

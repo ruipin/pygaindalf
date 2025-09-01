@@ -2,7 +2,7 @@
 # Copyright © 2025 pygaindalf
 
 import pytest
-from app.util.helpers.callguard import callguard_class
+from app.util.helpers.callguard import callguard_class, CallguardError
 from app.util.helpers.wrappers import wrapper, before, before_attribute_check
 
 
@@ -33,7 +33,7 @@ class TestCallguardWithWrappers:
                 return self._hidden()
 
         s = Sample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s._hidden()
         assert events == []
         assert s.public() == "W:ok"
@@ -56,7 +56,7 @@ class TestCallguardWithWrappers:
                 return self._a()
 
         s = Sample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s._a()
         assert events == []
         assert s.call() == "A"
@@ -78,7 +78,7 @@ class TestCallguardWithWrappers:
 
         s = Sample()
         # Direct external call blocked by callguard before attribute check executes
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s._do()
         # Internal call passes attribute check
         assert s.run() == 'ok'
@@ -97,7 +97,7 @@ class TestCallguardWithWrappers:
                 return self._do()
 
         s = Sample()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CallguardError):
             s._do()  # still blocked externally (callguard)
         # Internal call triggers attribute check and raises ValueError
         with pytest.raises(ValueError):

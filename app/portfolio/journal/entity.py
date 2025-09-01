@@ -2,17 +2,15 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from pydantic import ConfigDict, Field, PrivateAttr, computed_field, BaseModel, ModelWrapValidatorHandler, ValidationInfo, model_validator, PositiveInt, model_validator, field_validator
-from typing import Any, Literal, TYPE_CHECKING, ClassVar, override, get_origin, get_args
-from enum import Enum
+from pydantic import ConfigDict, Field, PrivateAttr, field_validator, InstanceOf
+from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args
 from ordered_set import OrderedSet
 import builtins
 
-from abc import ABCMeta
 from collections.abc import Sequence, Mapping, Set
 
 from ...util.mixins import LoggableHierarchicalModel
-from ...util.helpers.callguard import callguard_class
+from ...util.helpers.callguard import CallguardClassOptions
 
 from ..models.uid import Uid
 
@@ -24,8 +22,14 @@ from .collections.mapping import JournalledMapping
 from .collections.set import JournalledSet
 
 
-@callguard_class(decorator=superseded_check, decorate_public_methods=True, allow_same_module=True, decorate_ignore_patterns=('ended','superseded','dirty'))
 class EntityJournal(LoggableHierarchicalModel):
+    __callguard_class_options__ = CallguardClassOptions['EntityJournal'](
+        decorator=superseded_check,
+        decorate_public_methods=True,
+        allow_same_module=True,
+        decorate_ignore_patterns=('ended','superseded','dirty')
+    )
+
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
@@ -36,7 +40,7 @@ class EntityJournal(LoggableHierarchicalModel):
 
 
     # MARK: Entity
-    entity : Entity = Field(description="The entity associated with this journal entry.")
+    entity : InstanceOf[Entity] = Field(description="The entity associated with this journal entry.")
 
     @property
     def entity_uid(self) -> Uid:
@@ -50,8 +54,7 @@ class EntityJournal(LoggableHierarchicalModel):
     def __hash__(self) -> int:
         return hash((self.__class__.__name__, hash(self.entity)))
 
-    # We use a plain validator here as we do not want pydantic to recursively validate the entity - that would cause an infinite loop
-    @field_validator('entity', mode='plain')
+    @field_validator('entity', mode='before')
     def _validate_entity(entity : Any) -> Entity:
         if not isinstance(entity, Entity):
             raise TypeError(f"Expected Entity, got {type(entity).__name__}")
@@ -97,6 +100,9 @@ class EntityJournal(LoggableHierarchicalModel):
     def has_field(self, field : str) -> bool:
         # TODO: Should we use hasattr instead?
         return field in self.entity.__class__.model_fields or self.is_computed_field(field)
+
+    def updated(self, field : str) -> bool:
+        return field in self._updates
 
     def get_original_field(self, field : str) -> Any:
         if not self.has_field(field):
@@ -169,7 +175,9 @@ class EntityJournal(LoggableHierarchicalModel):
         if parent is None:
             return
         if not isinstance(parent, Entity):
-            raise TypeError("EntityJournal can only propagate when the parent is an Entity.")
+            if parent is self.entity.session_manager.instance_parent:
+                return
+            raise TypeError("EntityJournal can only propagate when the parent is an Entity or the SessionManager parent.")
 
         parent_journal = parent.journal
         parent_journal._update_child_dirty_state(self, dirty)

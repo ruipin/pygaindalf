@@ -10,7 +10,7 @@ from enum import Enum
 from collections.abc import Sequence, MutableMapping
 from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator
 
-from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal
+from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal, SingleInitializationModel
 from ....util.helpers import script_info
 from ....util.helpers.callguard import callguard_class
 
@@ -34,7 +34,7 @@ class EntityAuditType(Enum):
         return f"{self.__class__.__name__}.{self.name}"
 
 
-class EntityAudit(BaseModel):
+class EntityAudit(SingleInitializationModel):
     model_config = ConfigDict(
         extra='forbid',
         frozen=True,
@@ -96,6 +96,8 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
 
     # MARK: Instance name/parent
+    PROPAGATE_INSTANCE_NAME_FROM_PARENT : ClassVar[bool] = False
+
     @property
     def instance_name(self) -> str:
         return f"Audit@{str(self.entity_uid)}"

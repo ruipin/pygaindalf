@@ -27,12 +27,3 @@ class Portfolio(IncrementingUidEntity):
 #    def replace_transaction(self, old_tx_id: str, new_tx: Transaction): ...
 #    def log_audit(self, event: 'AuditEvent'): ...
 #    def view_builder(self) -> 'ViewBuilder': ...
-
-
-    # MARK: Journal
-    _session_manager : SessionManager = PrivateAttr(default_factory=SessionManager)
-
-    @property
-    @override
-    def session_manager(self) -> SessionManager: # pyright: ignore[reportIncompatibleVariableOverride] as we are overriding a cached_property with a property
-        return self._session_manager
