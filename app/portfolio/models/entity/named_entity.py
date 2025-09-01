@@ -55,6 +55,14 @@ class NamedEntity(Entity, NamedMixinMinimal, metaclass=ABCMeta):
 
         return self
 
+    @override
+    def __str__(self) -> str:
+        return super().__str__().replace('>', f" v{self.version}>")
+
+    @override
+    def __repr__(self) -> str:
+        return super().__repr__().replace('>', f" v{self.version}>")
+
 
 
 class ManualNamedEntity(NamedEntity, metaclass=ABCMeta):

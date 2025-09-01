@@ -63,8 +63,13 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
             if (parent := obj.instance_parent) is not None:
                 if parent is obj:
                     return
-                #if (uid := getattr(self, 'uid', None)) is None or (parent_uid := getattr(parent, 'uid', None)) is None or uid != parent_uid:
-                raise ValueError(f"Object {obj} already has a parent set: {obj.instance_parent}. Cannot overwrite with {self}.")
+
+                # Entity special case
+                from ...portfolio.models.entity.versioned_uid import VersionedUid
+                if isinstance(self, VersionedUid) and isinstance(parent, VersionedUid) and self.is_newer_version_than(parent):
+                    pass
+                else:
+                    raise ValueError(f"Object {obj} already has a parent set: {obj.instance_parent}. Cannot overwrite with {self}.")
             object.__setattr__(obj, 'instance_parent', self)
 
     def _seed_name_to_object(self, *, obj : Any, name : str) -> None:

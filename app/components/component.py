@@ -20,7 +20,7 @@ from ..util.config.inherit import FieldInherit
 from ..util.helpers.decimal import DecimalConfig, DecimalFactory
 from ..util.helpers.callguard import CALLGUARD_ENABLED, callguard_class, CallguardOptions, CallguardWrapped
 
-from ..util.helpers import classproperty
+from ..util.helpers import classproperty, generics
 from ..util.config import BaseConfigModel
 
 
@@ -104,18 +104,8 @@ class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMi
         """
         Introspects the class to find the configuration class.
         """
-        bases = types.get_original_bases(cls)
-        #print(cls.__name__, bases)
-        for base in bases:
-            args = typing_get_args(base)
-            for arg in args:
-                if isinstance(arg, TypeVar):
-                    return typing_cast(type[C], C)
-
-                if isinstance(arg, type) and issubclass(arg, BaseComponentConfig):
-                    return typing_cast(type[C], arg)
-
-        raise TypeError(f"Could not find a BaseComponentConfig subclass type argument in the bases of {cls.__name__}.")
+        arg = generics.get_parent_arg(cls, ComponentSubclassMeta, "C")
+        return typing_cast(type[C], arg)
 
 
     @classmethod
@@ -176,7 +166,10 @@ class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass
             entrypoint.__dict__['__component_entrypoint__'] = True
             return entrypoint
         else:
-            return functools.partial(cls._handle_entrypoint, entrypoint)
+            @functools.wraps(entrypoint)
+            def _entrypoint(self : Self, *args : P.args, **kwargs : P.kwargs) -> R:
+                return cls._handle_entrypoint(entrypoint, self, *args, **kwargs)
+            return _entrypoint
 
     @classmethod
     def _handle_entrypoint[**P, R](cls, entrypoint : Entrypoint[Self,P,R], self : Self, /, *args : P.args, **kwargs : P.kwargs) -> R:

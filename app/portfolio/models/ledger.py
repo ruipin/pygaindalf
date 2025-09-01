@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override, Any, Iterator
-from pydantic import Field, computed_field
-from collections.abc import Sequence
+from typing import (override, Any, Iterator, TYPE_CHECKING,
+    cast as typing_cast,
+)
+from pydantic import Field, computed_field, PrivateAttr
+from collections.abc import MutableSequence, Sequence
 
 from .instrument import Instrument
 from .entity import AutomaticNamedEntity
@@ -11,12 +13,27 @@ from .entity.instance_store import NamedInstanceStoreEntityMixin
 from .transaction import Transaction
 
 
-class Ledger(Sequence, NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
-    # MARK: Fields
+
+class Ledger(MutableSequence, NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
+    # MARK: Instrument
     instrument: Instrument = Field(description="The financial instrument associated with this ledger, such as a stock, bond, or currency.")
 
-    transactions : tuple[Transaction, ...] = Field(default_factory=tuple, repr=False, description="A list of transactions associated with this ledger.") # TODO: Maybe use a private list instead ?
+
+    # MARK: Transactions
+    # Make type checkers believe that the transactions sequence is mutable
+    if TYPE_CHECKING:
+        transactions_ : tuple[Transaction,...] = Field(default_factory=tuple, alias='transactions')
+        @property
+        def transactions(self) -> MutableSequence[Transaction]: ...
+        @transactions.setter
+        def transactions(self, value : MutableSequence[Transaction] | Sequence[Transaction]) -> None: ...
+    else:
+        transactions : tuple[Transaction,...] = Field(default_factory=tuple, description="A list of transactions associated with this ledger.")
+
+
+    # MARK: Annotations
     #annotations: 'LedgerAnnotations'
+
 
 
     # MARK: Instance Name
@@ -60,19 +77,26 @@ class Ledger(Sequence, NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
         return result
 
 
-    # MARK: List-like interface
+    # MARK: Sequence ABC
     @override
     def __getitem__(self, index):
         return self.transactions[index]
 
     @override
-    def __len__(self) -> int:
-        return len(self.transactions)
+    def __setitem__(self, index, value) -> None:
+        self.transactions[index] = value
 
     @override
-    def __iter__(self) -> Iterator[Transaction]: # pyright: ignore[reportIncompatibleMethodOverride]
-        return iter(self.transactions)
+    def __delitem__(self, index) -> None:
+        del self.transactions[index]
 
+    @override
+    def insert(self, index, value) -> None:
+        self.transactions.insert(index, value)
+
+    @override
+    def __len__(self) -> int:
+        return len(self.transactions)
 
     @computed_field(description="The number of transactions in the ledger.")
     @property
@@ -83,8 +107,6 @@ class Ledger(Sequence, NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
         """
         return len(self.transactions)
 
-
-    # MARK: Methods
-    #def add_transaction(self, tx: Transaction): ...
-    #def replace_transaction(self, old_tx_id: str, new_tx: Transaction): ...
-    #def edit_transaction(self, tx_id: str, actor: str): ...  # context manager
+    @override
+    def __repr__(self) -> str:
+        return super().__repr__().replace('>', f", transactions={repr(self.transactions)}>")

@@ -11,7 +11,7 @@ from app.portfolio.journal.collections.sequence import (
 
 @pytest.mark.journal
 @pytest.mark.portfolio
-@pytest.mark.journalled_data_structures
+@pytest.mark.journalled_collections
 class TestJournalledSequence:
     def test_no_edit_pass_through(self):
         original = [1, 2, 3]
@@ -120,4 +120,3 @@ class TestJournalledSequence:
         assert seq == [21, 300, 350, 40, 50]
         # Original must remain unchanged
         assert original == [10, 20, 30, 40, 50]
-

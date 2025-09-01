@@ -24,7 +24,6 @@ class WrapperDecorator[**P, R]:
     def decorate(wrapped : Wrapped[P,R], wrapper : Wrapper[P,R]) -> Wrapped[P,R]:
         # Can't use functools.partial as it breaks instance binding for classes
         # TODO: In Python 3.14 this might change, try again
-        #return functools.partial(wrapper, wrapped)
         #return functools.wraps(wrapped)(functools.partial(wrapper, wrapped))
         @functools.wraps(wrapped)
         def _wrapped(*args : P.args, **kwargs : P.kwargs) -> R:
@@ -36,16 +35,24 @@ def wrapper[**P, R](wrapper : Wrapper[P,R]) -> WrapperDecorator[P,R]:
 
 
 # MARK: Before Wrapper Decorator
+# TODO: If WrapperDecorator starts relying on functools.partial, we should inherit from WrapperDecorator instead
 type BeforeMethod[**P, R] = Callable[Concatenate[Wrapped[P,R],P], None]
 
-class BeforeDecorator[**P, R](WrapperDecorator[P,R]):
+class BeforeDecorator[**P, R]:
     def __init__(self, before : BeforeMethod[P,R]):
-        super().__init__(wrapper=functools.partial(self.before_wrapper, before))
+        self.before = before
+    #   super().__init__(wrapper=functools.partial(self.before_wrapper, before))
+
+    def __call__(self, method : Wrapped[P,R]) -> Wrapped[P,R]:
+        return self.decorate(wrapped=method, before=self.before)
 
     @staticmethod
-    def before_wrapper(before : BeforeMethod[P,R], wrapped : Wrapped[P,R], *args : P.args, **kwargs : P.kwargs) -> R:
-        before(wrapped, *args, **kwargs)
-        return wrapped(*args, **kwargs)
+    def decorate(wrapped : Wrapped[P,R], before : BeforeMethod[P,R]) -> Wrapped[P,R]:
+        @functools.wraps(wrapped)
+        def _wrapped(*args : P.args, **kwargs : P.kwargs) -> R:
+            before(wrapped, *args, **kwargs)
+            return wrapped(*args, **kwargs)
+        return _wrapped
 
 def before[**P, R](before : BeforeMethod[P,R]) -> BeforeDecorator[P,R]:
     return BeforeDecorator(before)

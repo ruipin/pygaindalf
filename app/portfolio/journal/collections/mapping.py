@@ -3,9 +3,16 @@
 
 import dataclasses
 
-from typing import override, overload, Iterator
+from pydantic_core import CoreSchema, core_schema
+from typing import (override, Iterator,
+    cast as typing_cast,
+)
 from enum import Enum
 from collections.abc import MutableMapping, Mapping
+
+from ....util.helpers.frozendict import frozendict, PydanticFrozenDictAnnotation
+
+from .collection import JournalledCollection
 
 
 class JournalledMappingEditType(Enum):
@@ -18,8 +25,32 @@ class JournalledMappingEdit[K,V]:
     key : K
     value : V | None
 
+type ImmutableMapping[K,V] = frozendict[K,V]
 
-class JournalledMapping[K,V](MutableMapping[K,V]):
+class JournalledMapping[K,V](JournalledCollection[ImmutableMapping[K,V], V], MutableMapping[K,V]):
+    # MARK: JournalledCollection ABC
+    @property
+    @override
+    def edited(self) -> bool:
+        return self._mapping is not None
+
+    @override
+    def make_immutable(self) -> ImmutableMapping[K,V]:
+        if self._mapping is not None:
+            return frozendict(self._mapping)
+        else:
+            original = self._original
+            if not isinstance(self._original, frozendict):
+                original = frozendict(original)
+            return typing_cast(ImmutableMapping[K,V], original)
+
+    @override
+    @classmethod
+    def get_core_schema(cls, source, handler) -> CoreSchema:
+        return PydanticFrozenDictAnnotation.__get_pydantic_core_schema__(source, handler)
+
+
+    # MARK: Functionality
     def __init__(self, original : Mapping[K,V]):
         self._original : Mapping[K,V] = original
         self._mapping : dict[K,V] | None = None
@@ -27,10 +58,6 @@ class JournalledMapping[K,V](MutableMapping[K,V]):
 
     def _append_journal(self, type : JournalledMappingEditType, key: K, value: V | None) -> None:
         self._journal.append(JournalledMappingEdit(type=type, key=key, value=value))
-
-    @property
-    def edited(self) -> bool:
-        return self._mapping is not None
 
     def _copy_on_write(self) -> None:
         if self._mapping is not None:
@@ -77,3 +104,15 @@ class JournalledMapping[K,V](MutableMapping[K,V]):
             return len(self._original)
         else:
             return len(self._mapping)
+
+    @override
+    def __str__(self) -> str:
+        if self._mapping is None:
+            return str(self._original)
+        return str(self._mapping)
+
+    @override
+    def __repr__(self) -> str:
+        if self._mapping is None:
+            return repr(self._original)
+        return repr(self._mapping)

@@ -8,7 +8,7 @@ from app.portfolio.journal.collections.mapping import JournalledMapping, Journal
 
 @pytest.mark.journal
 @pytest.mark.portfolio
-@pytest.mark.journalled_data_structures
+@pytest.mark.journalled_collections
 class TestJournalledMapping:
     def test_no_edit_pass_through(self):
         original = {"a":1, "b":2}

@@ -3,9 +3,14 @@
 
 import dataclasses
 
-from typing import override, overload, Iterable
+from pydantic_core import CoreSchema, core_schema
+from typing import (override, overload, Iterable,
+    cast as typing_cast,
+)
 from enum import Enum
 from collections.abc import MutableSequence, Sequence
+
+from .collection import JournalledCollection
 
 
 class JournalledSequenceEditType(Enum):
@@ -20,8 +25,36 @@ class JournalledSequenceEdit[T]:
     index: int | slice
     value: T | Iterable[T] | None
 
+type ImmutableSequence[T] = tuple[T,...]
 
-class JournalledSequence[T](MutableSequence[T]):
+class JournalledSequence[T](JournalledCollection[ImmutableSequence[T], T], MutableSequence[T]):
+    # MARK: JournalledCollection ABC
+    @property
+    @override
+    def edited(self) -> bool:
+        return self._sequence is not None
+
+    @override
+    def make_immutable(self) -> ImmutableSequence[T]:
+        if self._sequence is not None:
+            return tuple(self._sequence)
+        else:
+            original = self._original
+            if not isinstance(self._original, tuple):
+                original = tuple(original)
+            return typing_cast(ImmutableSequence[T], original)
+
+    @override
+    @classmethod
+    def get_core_schema(cls, source, handler) -> CoreSchema:
+        return core_schema.tuple_variable_schema(
+            core_schema.is_instance_schema(
+                cls.get_concrete_content_type()
+            )
+        )
+
+
+    # MARK : Functionality
     def __init__(self, original : Sequence[T]):
         self._original : Sequence[T] = original
         self._sequence : list[T] | None = None
@@ -31,8 +64,8 @@ class JournalledSequence[T](MutableSequence[T]):
         self._journal.append(JournalledSequenceEdit(type=type, index=index, value=value))
 
     @property
-    def edited(self) -> bool:
-        return self._sequence is not None
+    def original(self) -> Sequence[T]:
+        return self._original
 
     def _copy_on_write(self) -> None:
         if self._sequence is not None:
@@ -101,3 +134,15 @@ class JournalledSequence[T](MutableSequence[T]):
 
         self._append_journal(JournalledSequenceEditType.INSERT, index, value)
         self._sequence.insert(index, value)
+
+    @override
+    def __str__(self) -> str:
+        if self._sequence is None:
+            return str(self._original)
+        return str(self._sequence)
+
+    @override
+    def __repr__(self) -> str:
+        if self._sequence is None:
+            return repr(self._original)
+        return repr(self._sequence)

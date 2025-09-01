@@ -208,7 +208,7 @@ class JournalSession(LoggableHierarchicalModel):
         Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions).
         Where an entity holds references to child entities (e.g. lists/dicts), these references are refreshed.
         """
-        self.log.debug(f"Committing flattened hierarchy: {flattened}")
+        self.log.debug(f"Committing flattened hierarchy: ({', '.join(str(j.entity) for j in flattened)})")
 
         entity = None
         for journal in flattened:

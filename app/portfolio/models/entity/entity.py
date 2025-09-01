@@ -4,6 +4,7 @@
 import sys
 import functools
 
+from frozendict import frozendict
 from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
 from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack, cast as typing_cast
 from abc import abstractmethod, ABCMeta
@@ -35,6 +36,21 @@ class Entity(LoggableHierarchicalModel):
         frozen=True,
         validate_assignment=True,
     )
+
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+
+        # Collect field aliases into a single collection
+        aliases : dict[str,str] = dict()
+
+        for name, info in cls.model_fields.items():
+            if info.alias:
+                aliases[info.alias] = name
+
+        cls.model_field_aliases = frozendict(aliases)
+
+
 
     # MARK: Uid
     uid : Uid = Field(default_factory=lambda: None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
@@ -147,6 +163,13 @@ class Entity(LoggableHierarchicalModel):
         if self.superseded:
             self.entity_log.on_delete(self, who='system', why='__del__')
 
+    def is_newer_version_than(self, other : 'Entity') -> bool:
+        if not isinstance(other, Entity):
+            raise TypeError(f"Expected Entity, got {type(other)}")
+        if self.uid != other.uid:
+            raise ValueError(f"Cannot compare versions of entities with different UIDs: {self.uid} vs {other.uid}")
+        return self.version > other.version
+
     @computed_field
     @property
     def superseded(self) -> bool:
@@ -159,10 +182,7 @@ class Entity(LoggableHierarchicalModel):
     def superseding[T : 'Entity'](self : T) -> T | None:
         if not self.superseded:
             return self
-        superseding = self.__class__.by_uid(self.uid)
-        if superseding is self:
-            raise RuntimeError("Entity is marked as superseded but no newer version found.")
-        return superseding
+        return self.__class__.by_uid(self.uid)
 
     def update[T : Entity](self : T, **kwargs: Any) -> T:
         """
@@ -248,8 +268,20 @@ class Entity(LoggableHierarchicalModel):
         return hasattr(Entity, name) or name in Entity.model_fields or name in Entity.model_computed_fields
 
     @classmethod
+    def is_model_field_alias(cls, alias : str) -> bool:
+        return cls.model_field_aliases.get(alias, None) is not None
+
+    @classmethod
+    def resolve_field_alias(cls, alias : str) -> str:
+        return cls.model_field_aliases.get(alias, alias)
+
+    @classmethod
     def is_model_field(cls, field : str) -> bool:
         return field in cls.model_fields
+
+    @classmethod
+    def is_computed_field(cls, field : str) -> bool:
+        return field in cls.model_computed_fields
 
     @property
     def original_instance_parent(self) -> Any:

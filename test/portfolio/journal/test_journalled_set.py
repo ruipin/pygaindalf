@@ -16,7 +16,7 @@ from app.portfolio.journal.collections.set import (
 
 @pytest.mark.journal
 @pytest.mark.portfolio
-@pytest.mark.journalled_data_structures
+@pytest.mark.journalled_collections
 class TestJournalledSet:
     def test_no_edit_pass_through(self):
         original = {1, 2, 3}

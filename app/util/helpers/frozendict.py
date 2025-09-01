@@ -8,7 +8,7 @@ from frozendict import frozendict
 from pydantic_core import core_schema as core_schema
 
 
-class _PydanticFrozenDictAnnotation:
+class PydanticFrozenDictAnnotation:
 	@classmethod
 	def __get_pydantic_core_schema__(
 		cls, source_type: typing.Any, handler: pydantic.GetCoreSchemaHandler
@@ -32,4 +32,4 @@ class _PydanticFrozenDictAnnotation:
 
 _K = typing.TypeVar('_K')
 _V = typing.TypeVar('_V')
-FrozenDict = typing.Annotated[frozendict[_K, _V], _PydanticFrozenDictAnnotation]
+FrozenDict = typing.Annotated[frozendict[_K, _V], PydanticFrozenDictAnnotation]

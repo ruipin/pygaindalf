@@ -51,10 +51,10 @@ class TestPortfolio:
         )
         ledg = Ledger(instrument=inst)
 
-        p2 = p1.update(ledgers=frozendict({inst.uid: ledg}))
+        p2 = p1.update(ledgers=frozendict({ledg.uid: ledg}))
 
         assert p2 is not p1
         assert p1.superseded
         assert not p2.superseded
         assert p2.version == 2
-        assert p2.ledgers[inst.uid] is ledg
+        assert p2.ledgers[ledg.uid] is ledg

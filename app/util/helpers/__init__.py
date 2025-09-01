@@ -10,3 +10,4 @@ from .frozendict import FrozenDict
 from . import script_info
 from . import version as script_version
 from . import mro
+from . import generics
