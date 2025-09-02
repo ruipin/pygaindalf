@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import weakref
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
 from typing import ClassVar, Any, override, TypedDict
@@ -37,10 +38,11 @@ class JournalSession(LoggableHierarchicalModel):
     )
 
     # MARK: Instance Parent
-    @field_validator('instance_parent', mode='before')
+    @field_validator('instance_parent_weakref', mode='before')
     def _validate_instance_parent_is_session_manager(cls, v: Any) -> Any:
         from .session_manager import SessionManager
-        if v is None or not isinstance(v, SessionManager):
+        obj = v() if isinstance(v, weakref.ref) else v
+        if obj is None or not isinstance(obj, SessionManager):
             raise TypeError("Session parent must be a SessionManager object")
         return v
 

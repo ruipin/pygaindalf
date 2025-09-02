@@ -2,6 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import contextlib
+import weakref
 
 from pydantic import ConfigDict, PrivateAttr, computed_field, field_validator
 from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable
@@ -23,10 +24,11 @@ class SessionManager(LoggableHierarchicalModel):
 
 
     # MARK: Instance Parent
-    @field_validator('instance_parent', mode='before')
+    @field_validator('instance_parent_weakref', mode='before')
     def _validate_instance_parent_is_session_manager(cls, v: Any) -> Any:
         from ..models.entity.entity import Entity
-        if v is None or not isinstance(v, Entity):
+        obj = v() if isinstance(v, weakref.ref) else v
+        if obj is None or not isinstance(obj, Entity):
             raise TypeError("Session parent must be a Entity object")
         return v
 
@@ -46,7 +48,7 @@ class SessionManager(LoggableHierarchicalModel):
         if self.in_session:
             raise RuntimeError("A session is already active.")
 
-        session = self._session = JournalSession(instance_parent=self, **kwargs)
+        session = self._session = JournalSession(instance_parent=weakref.ref(self), **kwargs)
         return session
 
     def _commit(self) -> None:

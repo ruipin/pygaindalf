@@ -43,14 +43,15 @@ class Entity(LoggableHierarchicalModel):
 
         # Collect field aliases into a single collection
         aliases : dict[str,str] = dict()
+        reverse : dict[str,str] = dict()
 
         for name, info in cls.model_fields.items():
             if info.alias:
                 aliases[info.alias] = name
+                reverse[name] = info.alias
 
         cls.model_field_aliases = frozendict(aliases)
-
-
+        cls.model_field_reverse_aliases = frozendict(reverse)
 
     # MARK: Uid
     uid : Uid = Field(default_factory=lambda: None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
@@ -199,10 +200,11 @@ class Entity(LoggableHierarchicalModel):
 
         args = {}
         for field_name in self.__class__.model_fields.keys():
+            target_name = self.reverse_field_alias(field_name)
             if field_name in kwargs:
-                args[field_name] = kwargs[field_name]
+                args[target_name] = kwargs[field_name]
             else:
-                args[field_name] = getattr(self, field_name)
+                args[target_name] = getattr(self, field_name)
 
         args.update(kwargs)
         args['uid'    ] = self.uid
@@ -219,6 +221,7 @@ class Entity(LoggableHierarchicalModel):
                 raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_name}'.")
 
         # Update entity
+        print(args)
         new_entity = self.__class__(**args)
 
         # Sanity check - name didn't change
@@ -274,6 +277,10 @@ class Entity(LoggableHierarchicalModel):
     @classmethod
     def resolve_field_alias(cls, alias : str) -> str:
         return cls.model_field_aliases.get(alias, alias)
+
+    @classmethod
+    def reverse_field_alias(cls, name : str) -> str:
+        return cls.model_field_reverse_aliases.get(name, name)
 
     @classmethod
     def is_model_field(cls, field : str) -> bool:

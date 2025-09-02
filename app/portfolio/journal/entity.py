@@ -250,12 +250,12 @@ class EntityJournal(LoggableHierarchicalModel):
 
             annotation = info.annotation
             if annotation is None:
-                self.log.warning(f"Entity field '{attr}' has no annotation. Skipping entity refresh.")
                 continue
 
             origin = get_origin(annotation)
             if origin is None:
-                self.log.warning(f"Entity field '{attr}' has no origin. Skipping entity refresh.")
+                continue
+            if not isinstance(origin, type):
                 continue
 
             args = get_args(annotation)
@@ -332,7 +332,6 @@ class EntityJournal(LoggableHierarchicalModel):
                 if not update.edited:
                     continue
 
-            # TODO: Do we need to convert journalled collections to their original form or is pydantic smart enough to coerce them to the proper type?
             updates[attr] = update
 
         if not updates:

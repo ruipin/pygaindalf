@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from pdb import run
+import weakref
+
 from typing import override, runtime_checkable, Protocol, ClassVar
 from abc import abstractmethod, ABCMeta
 
@@ -144,7 +145,10 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
         Returns:
             HierarchicalProtocol | NamedProtocol | None: The parent object.
         """
-        return getattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, None)
+        parent = getattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, None)
+        if parent is None:
+            return None
+        return parent() if isinstance(parent, weakref.ref) else parent
 
     @instance_parent.setter
     def instance_parent(self, new_parent : HierarchicalProtocol | NamedProtocol | None) -> None:
@@ -160,7 +164,9 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
         if not self.__class__.ALLOW_CHANGING_INSTANCE_PARENT and self.instance_parent is not None:
             raise RuntimeError("Changing instance_parent is not allowed for this class.")
 
-        setattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, new_parent)
+        _new_parent = weakref.ref(new_parent) if new_parent is not None else None
+
+        setattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, _new_parent)
 
         from .loggable import LoggableMixin
         if isinstance(self, LoggableMixin):

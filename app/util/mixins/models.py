@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import warnings
+import weakref
+from ..helpers.weakref import WeakRef
 
 from pydantic import BaseModel, model_validator, Field, field_validator, PrivateAttr, ConfigDict
 from pydantic.fields import FieldInfo
-from typing import Any, Self, Annotated, override, ClassVar, final, TYPE_CHECKING
+from typing import Any, Self, Annotated, override, ClassVar, final, TYPE_CHECKING, cast as typing_cast
 
 from ..helpers.callguard import CallguardedModelMixin
 
@@ -43,14 +44,37 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
     PROPAGATE_INSTANCE_PARENT_FROM_PARENT : ClassVar[bool] = True
     PROPAGATE_INSTANCE_PARENT_TO_CHILDREN : ClassVar[bool] = True
 
-    instance_parent : object | None = Field(default=None, repr=False, exclude=True, description="Parent of this instance in the hierarchy. Can be None if this is a root instance.")
+    instance_parent_weakref : WeakRef[HierarchicalProtocol | NamedProtocol] | None = Field(default=None, repr=False, exclude=True, alias='instance_parent', description="Parent of this instance in the hierarchy. Can be None if this is a root instance.")
 
-    @field_validator('instance_parent', mode='after')
+    @field_validator('instance_parent_weakref', mode='after')
     @classmethod
-    def _validate_instance_parent(cls, obj : object | None) -> HierarchicalProtocol | NamedProtocol | None:
-        if obj is not None and not isinstance(obj, (HierarchicalProtocol | NamedProtocol)):
+    def _validate_instance_parent(cls, obj : object | None) -> weakref.ref[HierarchicalProtocol | NamedProtocol] | None:
+        if obj is None:
+            return obj
+
+        _obj = obj
+        if isinstance(obj, weakref.ref):
+            _obj = obj()
+        else:
+            obj = weakref.ref(obj)
+
+        if not isinstance(_obj, (HierarchicalProtocol | NamedProtocol)):
             raise TypeError(f"Expected HierarchicalProtocol | NamedProtocol | None, got {type(obj)}")
-        return obj
+
+        return typing_cast(weakref.ref, obj)
+
+    @property
+    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
+        parent = self.instance_parent_weakref
+        if parent is None:
+            return None
+        return parent() if isinstance(parent, weakref.ref) else parent
+
+    @instance_parent.setter
+    def instance_parent(self, new_parent : HierarchicalProtocol | NamedProtocol | None) -> None:
+        self.instance_parent_weakref = weakref.ref(new_parent) if new_parent is not None else None
+
+
 
     # NOTE: We use object.__setattr__ to avoid triggering Pydantic's validation which would raise an error if the object is not
     #       mutable.
@@ -70,7 +94,11 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
                     pass
                 else:
                     raise ValueError(f"Object {obj} already has a parent set: {obj.instance_parent}. Cannot overwrite with {self}.")
-            object.__setattr__(obj, 'instance_parent', self)
+
+            if isinstance(obj, HierarchicalModel):
+                object.__setattr__(obj, 'instance_parent_weakref', weakref.ref(self))
+            else:
+                object.__setattr__(obj, 'instance_parent', self)
 
     def _seed_name_to_object(self, *, obj : Any, name : str) -> None:
         if isinstance(obj, NamedMutableProtocol) and obj.instance_name != name:

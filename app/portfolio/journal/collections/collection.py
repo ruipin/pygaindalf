@@ -52,7 +52,6 @@ class JournalledCollection[T_Immutable : Collection, T_Value : Any](metaclass=AB
         return core_schema.no_info_before_validator_function(
             function= cls.coerce,
             schema= schema,
-            serialization=core_schema.model_ser_schema(cls.get_concrete_immutable_type(), schema),
         )
 
     @classmethod
