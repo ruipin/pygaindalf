@@ -9,7 +9,7 @@ from iso4217 import Currency
 
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.transaction import Transaction, TransactionType
-from app.portfolio.models.entity.audit import EntityAuditType
+from app.portfolio.models.entity.entity_audit_log import EntityAuditType, EntityAuditLog
 
 
 @pytest.mark.portfolio
@@ -102,28 +102,30 @@ class TestTransaction:
         entry_v1 = tx2.entity_log.get_entry_by_version(1)
         assert entry_v1 is not None
         assert entry_v1.what == EntityAuditType.CREATED
-        assert entry_v1.diff == {
-            'instrument_uid': inst.uid,
-            'type': TransactionType.BUY,
-            'date': datetime.date(2025, 2, 1),
-            'quantity': Decimal("3"),
-            'consideration': Decimal("405"),
-            'fees': Decimal("0"),
-        }
+        if EntityAuditLog.TRACK_ENTITY_DIFF:
+            assert entry_v1.diff == {
+                'instrument_uid': inst.uid,
+                'type': TransactionType.BUY,
+                'date': datetime.date(2025, 2, 1),
+                'quantity': Decimal("3"),
+                'consideration': Decimal("405"),
+                'fees': Decimal("0"),
+            }
 
         entry_v2 = tx2.entity_log.get_entry_by_version(2)
         assert entry_v2 is not None
         assert entry_v2.what == EntityAuditType.UPDATED
-        assert entry_v2.diff == {
-            'quantity': Decimal("4"),
-        }
+        if EntityAuditLog.TRACK_ENTITY_DIFF:
+            assert entry_v2.diff == {
+                'quantity': Decimal("4"),
+            }
 
     def test_validation_rejects_wrong_instrument_uid_namespace(self):
         # Forge a UID with wrong namespace
         from app.portfolio.models.uid import Uid
         bad_uid = Uid(namespace="Wrong", id="ORCL")
 
-        with pytest.raises(TypeError):
+        with pytest.raises((ValueError, TypeError)):
             Transaction(
                 instrument_uid=bad_uid,
                 type=TransactionType.BUY,

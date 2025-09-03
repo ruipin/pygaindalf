@@ -12,6 +12,8 @@ from .entity import AutomaticNamedEntity
 from .entity.instance_store import NamedInstanceStoreEntityMixin
 from .transaction import Transaction
 
+from .uid import Uid
+
 
 
 class Ledger(MutableSequence, NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
@@ -29,6 +31,9 @@ class Ledger(MutableSequence, NamedInstanceStoreEntityMixin, AutomaticNamedEntit
         def transactions(self, value : MutableSequence[Transaction] | Sequence[Transaction]) -> None: ...
     else:
         transactions : tuple[Transaction,...] = Field(default_factory=tuple, description="A list of transactions associated with this ledger.")
+    #transaction_uids : tuple[Uid] = Field(default_factory=tuple, description="A list of transaction Uids associated with this ledger.")
+
+
 
 
     # MARK: Annotations

@@ -6,7 +6,7 @@ import functools
 
 from frozendict import frozendict
 from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
-from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack, cast as typing_cast
+from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack, cast as typing_cast, Iterable
 from abc import abstractmethod, ABCMeta
 from weakref import WeakValueDictionary
 from functools import cached_property
@@ -19,11 +19,12 @@ if TYPE_CHECKING:
     from ...journal.entity import EntityJournal
     from ...journal.session_manager import SessionManager
     from ...journal.session import JournalSession
+    from ..store.entity_store import EntityStore
 
 from ..uid import Uid
 
 from .superseded import superseded_check
-from .audit import EntityAuditLog
+from .entity_audit_log import EntityAuditLog
 
 
 class Entity(LoggableHierarchicalModel):
@@ -53,15 +54,9 @@ class Entity(LoggableHierarchicalModel):
         cls.model_field_aliases = frozendict(aliases)
         cls.model_field_reverse_aliases = frozendict(reverse)
 
+
     # MARK: Uid
     uid : Uid = Field(default_factory=lambda: None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
-
-    _UID_STORAGE : 'ClassVar[MutableMapping[Uid, Entity]]' = WeakValueDictionary() # Class variable to store UIDs of all instances of this class. Used to check for duplicate UIDs.
-
-    if script_info.is_unit_test():
-        @classmethod
-        def reset_state(cls) -> None:
-            cls._UID_STORAGE.clear()
 
     @classmethod
     def uid_namespace(cls, data : dict[str, Any] | None = None) -> str:
@@ -97,32 +92,51 @@ class Entity(LoggableHierarchicalModel):
     @model_validator(mode='after')
     def _validate_uid_after(self, info: ValidationInfo) -> 'Entity':
         # Get a reference to the UID storage
-        uid_storage = self.__class__._get_uid_storage()
+        entity_store = self.__class__._get_entity_store()
 
         # If the entity already exists, we fail unless we are cloning the entity and incrementing the version
-        existing = uid_storage.get(self.uid, None)
+        existing = entity_store.get(self.uid, None)
         if existing and existing is not self:
             if (self.version <= existing.version):
                 raise ValueError(f"Duplicate UID detected: {self.uid} with versions {self.version} vs {existing.version}. Each entity must have a unique UID or increment the version.")
 
         # Store the entity in the UID storage
-        uid_storage[self.uid] = self
+        entity_store[self.uid] = self
 
         return self
 
-
     @classmethod
-    def _get_uid_storage(cls) -> 'MutableMapping[Uid, Entity]':
-        if (uid_storage := cls._UID_STORAGE) is None:
+    def _get_entity_store(cls) -> 'EntityStore':
+        from ..store.entity_store import EntityStore
+        if (uid_storage := EntityStore.get_global_store()) is None:
             raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
         return uid_storage
 
     @classmethod
     def by_uid[T : 'Entity'](cls : type[T], uid: Uid) -> T | None:
-        result = cls._get_uid_storage().get(uid, None)
+        result = cls._get_entity_store().get(uid, None)
+        if result is None:
+            return None
         if not isinstance(result, cls):
             raise TypeError(f"UID storage returned an instance of {type(result).__name__} instead of {cls.__name__}.")
         return result
+
+    def get_child_uids(self) -> Iterable[Uid]:
+        for attr in self.__class__.model_fields.keys():
+            value = getattr(self, attr, None)
+            if value is None:
+                continue
+
+            if isinstance(value, Uid):
+                yield value
+            elif isinstance(value, Entity):
+                yield value.uid
+            elif isinstance(value, Iterable) and not isinstance(value, (str, bytes, bytearray)):
+                for item in value:
+                    if isinstance(item, Uid):
+                        yield item
+                    elif isinstance(item, Entity):
+                        yield item.uid
 
 
     # MARK: Meta
@@ -221,7 +235,6 @@ class Entity(LoggableHierarchicalModel):
                 raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_name}'.")
 
         # Update entity
-        print(args)
         new_entity = self.__class__(**args)
 
         # Sanity check - name didn't change

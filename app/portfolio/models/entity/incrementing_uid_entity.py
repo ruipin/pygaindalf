@@ -14,28 +14,10 @@ from .entity import Entity
 
 
 class IncrementingUidEntity(AutomaticNamedEntity):
-    _UID_FACTORY : ClassVar[IncrementingUidFactory]
-
-    if script_info.is_unit_test():
-        @classmethod
-        @override
-        def reset_state(cls) -> None:
-            super().reset_state()
-            if hasattr(cls, '_UID_FACTORY'):
-                cls._UID_FACTORY.reset()
-
-    def __init_subclass__(cls) -> None:
-        """
-        Initialize the mixin for subclasses.
-        This ensures that the UID factory is created only once per class.
-        """
-        if getattr(cls, '_UID_FACTORY', None) is None:
-            cls._UID_FACTORY = IncrementingUidFactory()
-
     @classmethod
     @override
     def _calculate_uid(cls, data : dict[str, Any]) -> Uid:
-        return cls._UID_FACTORY.next(cls.uid_namespace(data))
+        return cls._get_entity_store().generate_next_uid(cls.uid_namespace(data))
 
     @classmethod
     @override

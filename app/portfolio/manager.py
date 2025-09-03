@@ -9,8 +9,10 @@ from requests import Session
 from ..util.mixins import LoggableHierarchicalModel
 
 from .models.uid import Uid
+from .models.store.entity_store import EntityStore
 from .portfolio import Portfolio
 from .journal.session_manager import SessionManager
+from .journal.session import JournalSession
 
 
 class PortfolioManager(LoggableHierarchicalModel):
@@ -20,7 +22,8 @@ class PortfolioManager(LoggableHierarchicalModel):
         validate_assignment=True,
     )
 
-    # MARK: Entity
+
+    # MARK: Portfolio
     portfolio : InstanceOf[Portfolio] = Field(default_factory=Portfolio, description="The portfolio instance this manager is for.")
 
     @property
@@ -45,13 +48,31 @@ class PortfolioManager(LoggableHierarchicalModel):
 
         return portfolio
 
-    def refresh_entities(self) -> None:
+
+    # MARK: Session Manager
+    session_manager : InstanceOf[SessionManager] = Field(default_factory=SessionManager, description="Session manager associated with this manager's portfolio")
+
+    def on_session_start(self, session : JournalSession) -> None:
+        pass
+
+    def on_session_end(self, session : JournalSession) -> None:
+        pass
+
+    def on_session_commit(self, session : JournalSession) -> None:
         superseding = self.portfolio.superseding
         if superseding is None:
             raise ValueError("Cannot refresh entities: portfolio has no superseding portfolio.")
         if superseding is not self.portfolio:
             self.portfolio = superseding
 
+        self.garbage_collect(who=session.actor, why=session.reason)
 
-    # MARK: Session Manager
-    session_manager : InstanceOf[SessionManager] = Field(default_factory=SessionManager, description="Session manager associated with this manager's portfolio")
+    def on_session_abort(self, session : JournalSession) -> None:
+        pass
+
+
+    # MARK: Entity Store
+    entity_store : InstanceOf[EntityStore] = Field(default_factory=EntityStore.get_global_store, description="The entity store associated with this manager's portfolio.")
+
+    def garbage_collect(self, who : str = 'system', why : str = 'garbage collect') -> None:
+        self.entity_store.mark_and_sweep(self.portfolio_uid, who=who, why=why)

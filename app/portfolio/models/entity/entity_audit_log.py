@@ -18,6 +18,7 @@ from ..uid import Uid
 
 if TYPE_CHECKING:
     from .entity import Entity  # Avoid circular import issues by using TYPE_CHECKING
+    from ..store.entity_store import EntityStore
 
 
 class EntityAuditType(Enum):
@@ -62,19 +63,18 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
     TRACK_ENTITY_DIFF = True
 
     entity_uid : Uid
-    _entity : 'weakref.ref[Entity] | None' = PrivateAttr(default=None)
     _entries : list[EntityAudit]
 
-
-    _INSTANCE_DICT : ClassVar[MutableMapping[Uid, 'EntityAuditLog']] = dict()
-    if script_info.is_unit_test():
-        @classmethod
-        def reset_state(cls) -> None:
-            cls._INSTANCE_DICT.clear()
+    @classmethod
+    def _get_entity_store(cls) -> 'EntityStore':
+        from ..store.entity_store import EntityStore
+        if (uid_storage := EntityStore.get_global_store()) is None:
+            raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
+        return uid_storage
 
     def __new__(cls, uid : Uid):
-        if (instance := cls._INSTANCE_DICT.get(uid, None)) is None:
-            cls._INSTANCE_DICT[uid] = instance = super(EntityAuditLog, cls).__new__(cls)
+        if (instance := cls._get_entity_store().get_audit_log(uid)) is None:
+            instance = super(EntityAuditLog, cls).__new__(cls)
             instance.__dict__['entity_uid'] = uid
         return instance
 
@@ -84,7 +84,6 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
         if not hasattr(self, '_entries'):
             self._entries = []
-            self._entity = None
 
     @classmethod
     def from_entity(cls, entity: 'Entity') -> 'EntityAuditLog':
@@ -92,7 +91,8 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
     @property
     def entity(self) -> 'Entity | None':
-        return (self._entity() if self._entity is not None else None)
+        from .entity import Entity
+        return Entity.by_uid(self.entity_uid)
 
 
     # MARK: Instance name/parent
@@ -108,8 +108,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         Returns the parent entity of this audit log, if it exists.
         If the entity is not set, returns None.
         """
-        entity = self._entity
-        return entity() if entity is not None else None
+        return self.entity
 
 
     # MARK: Pydantic schema
@@ -192,12 +191,11 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             raise ValueError(f"Entity version {entity.version} does not match the expected version {self.next_version}. The version should be incremented when the entity is cloned as part of an update action.")
 
         diff = None
-        if entity is not self.entity:
+        if self.entity is None or entity is not self.entity:
             old_entity = self.instance_parent
 
             diff = self._diff(old_entity, entity)
 
-            self._entity = weakref.ref(entity)
             self._reset_log_cache()
 
         self._add_entry(
@@ -225,7 +223,6 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         old_entity = self.instance_parent
         diff = self._diff(old_entity, None)
 
-        self._entity = None
         self._reset_log_cache()
 
         self._add_entry(

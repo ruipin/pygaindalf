@@ -76,7 +76,7 @@ class IncrementingUidFactory:
     _instance : ClassVar['IncrementingUidFactory']
     counters : dict[str, int]
 
-    def __new__(cls, namespace: str = 'DEFAULT'):
+    def __new__(cls):
         instance = getattr(cls, '_instance', None)
         if not instance:
             instance = cls._instance = super(IncrementingUidFactory, cls).__new__(cls)
@@ -87,7 +87,7 @@ class IncrementingUidFactory:
         if not hasattr(self, 'namespace'):
             self.counters = dict()
 
-    def next(self, namespace: str, increment : bool = True) -> Uid:
+    def next(self, namespace: str, /, *, increment : bool = True) -> Uid:
         # Warning: This method is not thread-safe.
         counter = self.counters.get(namespace, 1)
         uid = Uid(namespace=namespace, id=counter)

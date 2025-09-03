@@ -165,7 +165,6 @@ class TestSessionEntityJournal:
             s.commit()  # expected to apply changes & potentially allow continued session (future behavior)
 
             assert entity.superseded is True
-            print(entity.entity_log.entity)
 
             # Expectations once implemented:
             new_entity = SampleEntity.by_uid(entity.uid)

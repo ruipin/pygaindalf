@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-
+import functools
 
 from pydantic import Field, ValidatorFunctionWrapHandler, model_validator, PrivateAttr, field_validator, ValidationInfo, TypeAdapter
 from pydantic_core import PydanticUseDefault
-from typing import override, Any, ClassVar, Self, MutableMapping
+from typing import override, Any, ClassVar, Self, MutableMapping, cast as typing_cast
 
 from iso4217 import Currency
 
@@ -14,6 +14,8 @@ from ...util.helpers import script_info
 from .entity.instance_store import InstanceStoreEntityMixin
 from .entity import Entity
 from .entity import AutomaticNamedEntity
+from .store import StringUidMapping
+from .uid import Uid
 
 
 class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
@@ -24,16 +26,13 @@ class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
 
 
     # MARK: Instance Store Behaviour
-    BY_ISIN   : 'ClassVar[MutableMapping[str, Instrument]]' = dict()
-    BY_TICKER : 'ClassVar[MutableMapping[str, Instrument]]' = dict()
+    @classmethod
+    def _get_isin_store(cls) -> StringUidMapping:
+        return cls._get_entity_store().get_string_uid_mapping(f"{cls.__name__}_BY_ISIN")
 
-    if script_info.is_unit_test():
-        @classmethod
-        @override
-        def reset_state(cls) -> None:
-            super().reset_state()
-            cls.BY_ISIN.clear()
-            cls.BY_TICKER.clear()
+    @classmethod
+    def _get_ticket_store(cls) -> StringUidMapping:
+        return cls._get_entity_store().get_string_uid_mapping(f"{cls.__name__}_BY_TICKER")
 
     @classmethod
     def instance(cls, isin : str | None = None, ticker: str | None = None) -> 'Instrument | None':
@@ -43,8 +42,14 @@ class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
             return None
 
         # Check if an instance already exists for the given identifiers
-        by_isin = cls.BY_ISIN.get(isin, None) if isin else None
-        by_ticker = cls.BY_TICKER.get(ticker, None) if ticker else None
+        by_isin = cls._get_isin_store().get_entity(isin, fail=False) if isin else None
+        by_ticker = cls._get_ticket_store().get_entity(ticker, fail=False) if ticker else None
+
+        # Sanity check class instances
+        if by_isin is not None and not isinstance(by_isin, cls):
+            raise TypeError(f"Expected instance of {cls.__name__} for ISIN '{isin}', got {type(by_isin).__name__}.")
+        if by_ticker is not None and not isinstance(by_ticker, cls):
+            raise TypeError(f"Expected instance of {cls.__name__} for ticker '{ticker}', got {type(by_ticker).__name__}.")
 
         # Sanity check that the instruments match the identifiers
         if by_isin is not None and by_isin.isin != isin:
@@ -83,9 +88,9 @@ class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
             raise TypeError(f"Expected an instance of {cls.__name__}, got {type(instance).__name__}.")
 
         if instance.isin:
-            cls.BY_ISIN[instance.isin] = instance
+            cls._get_isin_store()[instance.isin] = instance.uid
         if instance.ticker:
-            cls.BY_TICKER[instance.ticker] = instance
+            cls._get_ticket_store()[instance.ticker] = instance.uid
 
 
     # MARK: Model Validation

@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from enum import StrEnum
 
-from ..models import Uid
+from .uid import Uid
 
 from .entity import IncrementingUidEntity
 from .instrument import Instrument

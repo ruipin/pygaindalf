@@ -6,8 +6,7 @@ import pytest
 from iso4217 import Currency
 
 from app.portfolio.models.instrument import Instrument
-from app.portfolio.models.entity.audit import EntityAuditType
-from app.portfolio.models import reset_state
+from app.portfolio.models.entity.entity_audit_log import EntityAuditType, EntityAuditLog
 
 
 @pytest.mark.portfolio
@@ -47,8 +46,6 @@ class TestInstrument:
         assert i3 is i1
 
     def test_reinitialization(self):
-        reset_state()
-
         i = Instrument.model_validate({
             "ticker": "AAPL",
             "currency": Currency("USD"),
@@ -76,6 +73,7 @@ class TestInstrument:
         )
 
         assert i1.currency == Currency('USD')
+        assert i1.version == 1
 
         # Update the instrument
         i2 = Instrument(
@@ -120,26 +118,29 @@ class TestInstrument:
         assert entry_v1 is not None
         assert entry_v1.what == EntityAuditType.CREATED
         assert entry_v1.version == 1
-        assert entry_v1.diff == {
-            'ticker'  : 'AAPL',
-            'currency': Currency('USD'),
-        }
+        if EntityAuditLog.TRACK_ENTITY_DIFF:
+            assert entry_v1.diff == {
+                'ticker'  : 'AAPL',
+                'currency': Currency('USD'),
+            }
 
         entry_v2 = i2.entity_log.get_entry_by_version(2)
         assert entry_v2 is not None
         assert entry_v2.what == EntityAuditType.UPDATED
         assert entry_v2.version == 2
-        assert entry_v2.diff == {
-            'currency': Currency('GBP'),
-        }
+        if EntityAuditLog.TRACK_ENTITY_DIFF:
+            assert entry_v2.diff == {
+                'currency': Currency('GBP'),
+            }
 
         entry_v3 = i2.entity_log.get_entry_by_version(3)
         assert entry_v3 is not None
         assert entry_v3.what == EntityAuditType.UPDATED
         assert entry_v3.version == 3
-        assert entry_v3.diff == {
-            'currency': Currency('EUR'),
-        }
+        if EntityAuditLog.TRACK_ENTITY_DIFF:
+            assert entry_v3.diff == {
+                'currency': Currency('EUR'),
+            }
 
         # 'Delete' the instrument
         entity_log = i3.entity_log
@@ -151,7 +152,8 @@ class TestInstrument:
         assert entry_v4 is not None
         assert entry_v4.what == EntityAuditType.DELETED
         assert entry_v4.version == 4
-        assert entry_v4.diff == {
-            'ticker'  : None,
-            'currency': None,
-        }
+        if EntityAuditLog.TRACK_ENTITY_DIFF:
+            assert entry_v4.diff == {
+                'ticker'  : None,
+                'currency': None,
+            }

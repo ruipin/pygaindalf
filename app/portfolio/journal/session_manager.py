@@ -5,12 +5,12 @@ import contextlib
 import weakref
 
 from pydantic import ConfigDict, PrivateAttr, computed_field, field_validator
-from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable
+from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable, Literal
 
 from ...util.mixins import LoggableHierarchicalModel
 
 from .session import JournalSession, SessionParams
-from . import RefreshableEntitiesProtocol
+from .owner_protocol import SessionManagerOwnerProtocol
 
 
 class SessionManager(LoggableHierarchicalModel):
@@ -32,16 +32,15 @@ class SessionManager(LoggableHierarchicalModel):
             raise TypeError("Session parent must be a Entity object")
         return v
 
-    def refresh_entities(self) -> None:
-        parent = self.instance_parent
+    def _get_owner(self) -> SessionManagerOwnerProtocol | None:
+        if not isinstance((parent := self.instance_parent), SessionManagerOwnerProtocol):
+            return None
+        return parent
 
-        from ..models.entity.entity import Entity
-        if isinstance(parent, RefreshableEntitiesProtocol):
-            parent.refresh_entities()
-        elif isinstance(parent, Entity):
-            if not parent.superseded:
-                return
-            self.instance_parent = parent.superseding
+    def call_owner_hook(self, hook_name: Literal['start'] | Literal['end'] | Literal['commit'] | Literal['abort'], *args: Any, **kwargs: Any) -> None:
+        if (owner := self._get_owner()) is not None:
+            getattr(owner, f"on_session_{hook_name}")(*args, **kwargs)
+
 
     # MARK: JournalSession
     def _start(self, **kwargs : Unpack[SessionParams]) -> JournalSession:
@@ -52,10 +51,16 @@ class SessionManager(LoggableHierarchicalModel):
         return session
 
     def _commit(self) -> None:
-        raise NotImplementedError("Journal commit not implemented yet.")
+        session = self._session
+        if session is None or session.ended:
+            return
+        session.commit()
 
     def _abort(self) -> None:
-        raise NotImplementedError("Journal abort not implemented yet.")
+        session = self._session
+        if session is None or session.ended:
+            return
+        session.abort()
 
     def _end(self) -> None:
         self._session = None
@@ -72,14 +77,12 @@ class SessionManager(LoggableHierarchicalModel):
             if self._session is not session:
                 raise RuntimeError("JournalSession is no longer valid.")
 
-            if not session.ended:
-                session.commit()
+            self._commit()
         except Exception as e:
             if self._session is not session:
                 raise RuntimeError("JournalSession is no longer valid.")
 
-            if not session.ended:
-                session.abort()
+            self._abort()
 
             raise e
         finally:

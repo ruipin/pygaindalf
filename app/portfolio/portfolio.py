@@ -13,7 +13,7 @@ from .models.ledger import Ledger
 from .models.instrument import Instrument
 from .models.uid import Uid
 
-from .models import IncrementingUidEntity
+from .models.entity import IncrementingUidEntity
 
 from .journal.session_manager import SessionManager
 from .journal.collections import JournalledMapping

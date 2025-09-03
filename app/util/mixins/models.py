@@ -98,7 +98,11 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
             if isinstance(obj, HierarchicalModel):
                 object.__setattr__(obj, 'instance_parent_weakref', weakref.ref(self))
             else:
-                object.__setattr__(obj, 'instance_parent', self)
+                # If there is no setter, python raises AttributeError
+                try:
+                    object.__setattr__(obj, 'instance_parent', self)
+                except AttributeError:
+                    pass
 
     def _seed_name_to_object(self, *, obj : Any, name : str) -> None:
         if isinstance(obj, NamedMutableProtocol) and obj.instance_name != name:

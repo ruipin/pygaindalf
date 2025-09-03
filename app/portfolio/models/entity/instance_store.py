@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import functools
 
 from pydantic import model_validator, BaseModel, ModelWrapValidatorHandler, PrivateAttr
 from typing import Any, Self, ClassVar, override
@@ -108,12 +109,11 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
 
 # MARK: Mixin for Named Instances
 class NamedInstanceStoreEntityMixin(InstanceStoreEntityMixin, metaclass=ABCMeta):
-    INSTANCES : ClassVar[dict[str, Entity]] = {}
-
-    if script_info.is_unit_test():
-        @classmethod
-        def reset_state(cls) -> None:
-            cls.INSTANCES.clear()
+    @classmethod
+    def _get_name_store(cls):
+        if not issubclass(cls, Entity):
+            raise TypeError(f"{cls.__name__} must inherit from Entity to use NamedInstanceStoreEntityMixin.")
+        return cls._get_entity_store().get_string_uid_mapping(cls.__name__)
 
     @classmethod
     @override
@@ -121,7 +121,8 @@ class NamedInstanceStoreEntityMixin(InstanceStoreEntityMixin, metaclass=ABCMeta)
         instance_name = cls.calculate_instance_name_from_dict(kwargs)
         if instance_name is None:
             return None
-        return cls.INSTANCES.get(instance_name, None)
+
+        return cls.instance(instance_name)
 
     @classmethod
     @override
@@ -130,11 +131,17 @@ class NamedInstanceStoreEntityMixin(InstanceStoreEntityMixin, metaclass=ABCMeta)
             raise TypeError(f"Expected an instance of a class implementing NamedProtocol, got {type(instance).__name__}.")
         if (name := instance.instance_name) is None:
             raise ValueError(f"{cls.__name__} must have a valid 'instance_name' to be added to the instance store.")
-        cls.INSTANCES[name] = instance
+        cls._get_name_store()[name] = instance.uid
 
     @classmethod
     def instance(cls, instance_name: str) -> Entity | None:
-        return cls.INSTANCES.get(instance_name)
+        if not issubclass(cls, Entity):
+            raise TypeError(f"{cls.__name__} must inherit from Entity to use NamedInstanceStoreEntityMixin.")
+
+        uid = cls._get_name_store().get(instance_name, None)
+        if uid is None:
+            return uid
+        return cls._get_entity_store()[uid]
 
     @classmethod
     @abstractmethod

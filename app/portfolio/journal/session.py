@@ -4,7 +4,7 @@
 import weakref
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
-from typing import ClassVar, Any, override, TypedDict
+from typing import ClassVar, Any, override, TypedDict, Literal
 from datetime import datetime
 from ordered_set import OrderedSet
 
@@ -16,7 +16,6 @@ from ..models.entity.entity import Entity
 from ..models.entity.superseded import superseded_check
 
 from .entity import EntityJournal
-from . import RefreshableEntitiesProtocol
 
 
 class SessionParams(TypedDict):
@@ -45,6 +44,13 @@ class JournalSession(LoggableHierarchicalModel):
         if obj is None or not isinstance(obj, SessionManager):
             raise TypeError("Session parent must be a SessionManager object")
         return v
+
+    def _call_parent_hook(self, hook_name: Literal['start'] | Literal['end'] | Literal['commit'] | Literal['abort'], *args: Any, **kwargs: Any) -> None:
+        from .session_manager import SessionManager
+        parent = self.instance_parent
+        if not isinstance(parent, SessionManager):
+            raise RuntimeError("Instance parent is not a SessionManager.")
+        parent.call_owner_hook(hook_name, self, *args, **kwargs)
 
 
     # MARK: Uid
@@ -142,6 +148,7 @@ class JournalSession(LoggableHierarchicalModel):
     def _start(self) -> None:
         # TODO: Log start
         self.log.info("Starting session.")
+        self._call_parent_hook('start')
 
     def commit(self) -> None:
         if self.ended:
@@ -160,6 +167,7 @@ class JournalSession(LoggableHierarchicalModel):
 
         self._clear()
         self.log.info("Commit concluded.")
+        self._call_parent_hook('commit')
 
     def abort(self) -> None:
         if self.ended:
@@ -172,6 +180,8 @@ class JournalSession(LoggableHierarchicalModel):
         # TODO: Log abort
 
         self._clear()
+        self.log.debug("Commit aborted.")
+        self._call_parent_hook('abort')
 
     def end(self) -> None:
         if self.ended:
@@ -184,13 +194,14 @@ class JournalSession(LoggableHierarchicalModel):
 
         self._ended = True
         self.log.debug("Session ended.")
+        self._call_parent_hook('end')
 
 
     # MARK: Commit
     def _commit(self) -> None:
         flattened = self._commit_flatten()
         self._commit_apply(flattened)
-        self._commit_refresh_entities()
+        self._call_parent_hook('commit')
 
     def _commit_flatten(self) -> OrderedSet[EntityJournal]:
         """
@@ -205,7 +216,7 @@ class JournalSession(LoggableHierarchicalModel):
 
         return journals
 
-    def _commit_apply(self, flattened : OrderedSet[EntityJournal]) -> Entity | None:
+    def _commit_apply(self, flattened : OrderedSet[EntityJournal]) -> None:
         """
         Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions).
         Where an entity holds references to child entities (e.g. lists/dicts), these references are refreshed.
@@ -214,13 +225,4 @@ class JournalSession(LoggableHierarchicalModel):
 
         entity = None
         for journal in flattened:
-            entity = journal.commit()
-
-        # The last entity should always be the root of the entity hierarchy, as every other entity depends on it
-        return entity
-
-    def _commit_refresh_entities(self) -> None:
-        parent = self.instance_parent
-
-        if isinstance(parent, RefreshableEntitiesProtocol):
-            parent.refresh_entities()
+            journal.commit()

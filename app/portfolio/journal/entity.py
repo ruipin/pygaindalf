@@ -190,7 +190,7 @@ class EntityJournal(LoggableHierarchicalModel):
         """
         Propagate whether we are dirty to the parent entity's journal
         """
-        self.log.debug("Propagate: entity=%s dirty=%s", self.entity, self.dirty)
+        #self.log.debug("Propagate: entity=%s dirty=%s", self.entity, self.dirty)
 
         # Check if the dirty state has changed since the last time we propagated to our parent journal
         has_updates = bool(self._updates)
@@ -319,7 +319,7 @@ class EntityJournal(LoggableHierarchicalModel):
         if not self.dirty:
             return self.entity
 
-        self.log.debug("Committing journal for entity %s (v%d)", self.entity, self.entity.version)
+        #self.log.debug("Committing journal for entity %s", self.entity)
 
         # Trigger entity refresh
         self._refresh_entity_collections()
@@ -337,14 +337,14 @@ class EntityJournal(LoggableHierarchicalModel):
         if not updates:
             return self.entity
 
-        self.log.debug("Updates to apply to entity %s: %s", self.entity, repr(updates))
+        #self.log.debug("Updates to apply to entity %s: %s", self.entity, repr(updates))
 
         # Update the entity
         new_entity = self._new_entity = self.entity.update(
             **updates
         )
 
-        self.log.debug("New entity created: %s (v%d)", new_entity, new_entity.version)
+        #self.log.debug("New entity created: %s (v%d)", new_entity, new_entity.version)
 
         # TODO: How do we handle updating instance_parent when the parent gets superseded?
         #       Maybe propagate the change to all children entities here?
