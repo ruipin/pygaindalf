@@ -3,14 +3,13 @@
 
 import pytest
 
-from app.portfolio.journal.collections.sequence import (
+from app.portfolio.collections.journalled.sequence import (
     JournalledSequence,
     JournalledSequenceEditType,
 )
 
 
-@pytest.mark.journal
-@pytest.mark.portfolio
+@pytest.mark.portfolio_collections
 @pytest.mark.journalled_collections
 class TestJournalledSequence:
     def test_no_edit_pass_through(self):
@@ -71,7 +70,7 @@ class TestJournalledSequence:
         assert js._sequence is not None
         assert list(js._sequence) == [5, 15]
 
-    def test_slice_get_not_supported(self):
+    def test_slice_get(self):
         original = [1, 2, 3]
         js = JournalledSequence(original)
 

@@ -33,7 +33,7 @@ class TestPortfolio:
         assert len(p.entity_log) == 1
         assert p.entity_log.exists is True
         assert p.entity_log.next_version == 2
-        assert p.ledgers == {}
+        assert p.ledgers == set()
 
     def test_session_manager_cached_property(self, portfolio_manager : PortfolioManager, portfolio : Portfolio):
         p = portfolio
@@ -49,12 +49,12 @@ class TestPortfolio:
             ticker="AAPL",
             currency=Currency("USD"),
         )
-        ledg = Ledger(instrument=inst)
+        ledg = Ledger(instrument_uid=inst.uid)
 
-        p2 = p1.update(ledgers=frozendict({ledg.uid: ledg}))
+        p2 = p1.update(ledger_uids={ledg.uid})
 
         assert p2 is not p1
         assert p1.superseded
         assert not p2.superseded
         assert p2.version == 2
-        assert p2.ledgers[ledg.uid] is ledg
+        assert ledg in p2

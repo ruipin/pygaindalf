@@ -18,7 +18,7 @@ from app.util.mixins import LoggableHierarchicalNamedMixin
 
 from ..util.config.inherit import FieldInherit
 from ..util.helpers.decimal import DecimalConfig, DecimalFactory
-from ..util.helpers.callguard import CALLGUARD_ENABLED, callguard_class, CallguardOptions, CallguardWrapped
+from ..util.callguard import CALLGUARD_ENABLED, callguard_class, CallguardOptions, CallguardWrapped
 
 from ..util.helpers import classproperty, generics
 from ..util.config import BaseConfigModel

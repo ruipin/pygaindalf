@@ -21,7 +21,7 @@ class TestLedger:
             "currency": Currency("USD"),
         })
         ledg = Ledger.model_validate({
-            "instrument": inst,
+            "instrument_uid": inst.uid,
         })
 
         # Name and linkage
@@ -61,8 +61,8 @@ class TestLedger:
         )
 
         ledg = Ledger(
-            instrument=inst,
-            transactions=(tx1, tx2),
+            instrument_uid=inst.uid,
+            transaction_uids=(tx1.uid, tx2.uid),
         )
 
         assert len(ledg) == 2
@@ -76,8 +76,8 @@ class TestLedger:
             ticker="TSLA",
             currency=Currency("USD"),
         )
-        ledg1 = Ledger(instrument=inst)
+        ledg1 = Ledger(instrument_uid=inst.uid)
         # Reinitialize with same instrument (should reuse)
-        ledg2 = Ledger(instrument=inst)
+        ledg2 = Ledger(instrument_uid=inst.uid)
 
         assert ledg1 is ledg2

@@ -51,13 +51,15 @@ class JournalledSet[T](JournalledCollection[ImmutableSet[T], T], MutableSet[T]):
         )
 
     # MARK: Functionality
-    def __init__(self, original : Set[T]):
+    def __init__(self, original : Set[T], /, **kwargs):
+        super().__init__(**kwargs)
         self._original : Set[T] = original
         self._set : set[T] | None = None
         self._journal : list[JournalledSetEdit[T]] = []
 
     def _append_journal(self, type : JournalledSetEditType, value : T) -> None:
         self._journal.append(JournalledSetEdit(type=type, value=value))
+        self._on_edit()
 
     def _copy_on_write(self) -> None:
         if self._set is not None:
@@ -80,8 +82,8 @@ class JournalledSet[T](JournalledCollection[ImmutableSet[T], T], MutableSet[T]):
         if self._set is None:
             raise RuntimeError("Set should have been copied on write")
 
-        self._append_journal(JournalledSetEditType.ADD, value)
         self._set.add(value)
+        self._append_journal(JournalledSetEditType.ADD, value)
 
     @override
     def discard(self, value : T) -> None:
@@ -93,8 +95,8 @@ class JournalledSet[T](JournalledCollection[ImmutableSet[T], T], MutableSet[T]):
         if self._set is None:
             raise RuntimeError("Set should have been copied on write")
 
-        self._append_journal(JournalledSetEditType.DISCARD, value)
         self._set.discard(value)
+        self._append_journal(JournalledSetEditType.DISCARD, value)
 
     @override
     def __iter__(self) -> Iterator[T]:

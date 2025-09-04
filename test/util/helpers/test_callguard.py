@@ -5,11 +5,11 @@ import pytest
 import functools
 import pydantic
 from typing import override, Self, Callable, Any, cast as typing_cast
-from app.util.helpers.callguard import (
+from app.util.callguard import (
     CallguardClassOptions,
     callguard_callable,
     callguard_property,
-    Callguard,
+    CallguardMixin,
     callguard_class,
     no_callguard,
     CallguardWrapped,
@@ -82,7 +82,7 @@ class TestCallguardProperties:
 # ---------------------------------------------------------------------------
 # MARK: Mixin sample
 # ---------------------------------------------------------------------------
-class MixinSample(Callguard):
+class MixinSample(CallguardMixin):
     def __init__(self) -> None:
         self.calls: list[str] = []
 

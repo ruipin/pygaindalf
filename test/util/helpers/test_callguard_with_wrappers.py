@@ -2,7 +2,7 @@
 # Copyright © 2025 pygaindalf
 
 import pytest
-from app.util.helpers.callguard import callguard_class, CallguardError
+from app.util.callguard import callguard_class, CallguardError
 from app.util.helpers.wrappers import wrapper, before, before_attribute_check
 
 

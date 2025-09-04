@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import typing, types
+import typing, types, itertools
 
 
 # MARK: Definitions
@@ -52,7 +52,7 @@ def has_arg(cls : type | GenericAlias, name : str) -> bool:
 
 
 # MARK: get_arg / get_concrete_arg
-def get_arg(cls : GenericAlias, name : str) -> typing.TypeVar | type:
+def get_arg(cls : GenericAlias, name : str) -> typing.TypeVar | type | GenericAlias:
     # Get index and TypeVar for the named generic argument
     (index, generic) = get_arg_info(cls, name)
     bound = generic.__bound__
@@ -67,8 +67,14 @@ def get_arg(cls : GenericAlias, name : str) -> typing.TypeVar | type:
     if isinstance(arg, typing.TypeVar):
         return arg
 
-    if bound is not None and not issubclass(arg, bound):
-        raise GenericsError(f"{cls.__name__}.{name} type argument is not a subclass of its bound {bound}")
+    if isinstance(bound, (str, typing.ForwardRef)):
+        return arg
+    if bound is not None:
+        arg_origin = arg if isinstance(arg, type) else typing.get_origin(arg)
+        if arg_origin is None:
+            raise ValueError(f"{cls.__name__}.{name} type argument is not a generic type, got {arg}")
+        if not issubclass(arg_origin, bound):
+            raise GenericsError(f"{cls.__name__}.{name} type argument is not a subclass of its bound {bound}")
 
     return arg
 
@@ -76,7 +82,10 @@ def get_concrete_arg(cls : GenericAlias, name : str) -> type:
     arg = get_arg(cls, name)
     if isinstance(arg, typing.TypeVar):
         raise GenericsError(f"Could not resolve {cls.__name__}.{name} type argument to a concrete type")
-    return arg
+    origin = arg if isinstance(arg, type) else typing.get_origin(arg)
+    if origin is None:
+        raise GenericsError(f"{cls.__name__}.{name} type argument is not a generic type, got {arg}")
+    return origin
 
 
 
@@ -104,7 +113,7 @@ def get_bases_between[T : type](cls : T, parent : T, result : list[T] | None = N
 
 
 # MARK: get_parent_arg / get_concrete_parent_arg
-def get_parent_arg[T : type](cls : T, parent : T, name : str) -> T | typing.TypeVar:
+def get_parent_arg[T : type](cls : T, parent : T, name : str) -> T | typing.TypeVar | GenericAlias:
     bases = get_bases_between(cls, parent)
     if not bases:
         raise GenericsError(f"{cls.__name__} is not a subclass of {parent.__name__}")
@@ -132,5 +141,8 @@ def get_parent_arg[T : type](cls : T, parent : T, name : str) -> T | typing.Type
 def get_concrete_parent_arg[T : type](cls : T, parent : T, name : str) -> type:
     arg = get_parent_arg(cls, parent, name)
     if isinstance(arg, typing.TypeVar):
-        raise GenericsError(f"Could not resolve {cls.__name__}'s {parent.__name__}.{name} type argument to a concrete type")
-    return arg
+        raise GenericsError(f"Could not resolve {cls.__name__}.{name} type argument to a concrete type")
+    origin = arg if isinstance(arg, type) else typing.get_origin(arg)
+    if origin is None:
+        raise GenericsError(f"{cls.__name__}.{name} type argument is not a generic type, got {arg}")
+    return origin

@@ -10,7 +10,7 @@ from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable
 from ...util.mixins import LoggableHierarchicalModel
 
 from .session import JournalSession, SessionParams
-from .owner_protocol import SessionManagerOwnerProtocol
+from .protocols import SessionManagerHooksProtocol
 
 
 class SessionManager(LoggableHierarchicalModel):
@@ -32,8 +32,8 @@ class SessionManager(LoggableHierarchicalModel):
             raise TypeError("Session parent must be a Entity object")
         return v
 
-    def _get_owner(self) -> SessionManagerOwnerProtocol | None:
-        if not isinstance((parent := self.instance_parent), SessionManagerOwnerProtocol):
+    def _get_owner(self) -> SessionManagerHooksProtocol | None:
+        if not isinstance((parent := self.instance_parent), SessionManagerHooksProtocol):
             return None
         return parent
 

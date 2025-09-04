@@ -94,7 +94,7 @@ class AutomaticNamedEntity(NamedEntity, metaclass=ABCMeta):
     def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
         raise NotImplementedError(f"{cls.__name__} must implement the 'calculate_instance_name_from_dict' method to generate a name for the instance.")
 
-    @computed_field
+    @computed_field(description="The instance name, or class name if not set.")
     @property
     def instance_name(self) -> str:
         """

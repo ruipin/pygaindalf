@@ -10,7 +10,7 @@ from collections import deque
 
 from ....util.mixins import LoggableHierarchicalMixin
 from ....util.helpers import script_info
-from ....util.helpers.callguard import callguard_class
+from ....util.callguard import callguard_class
 
 from ..entity import Entity
 from ..entity.entity_audit_log import EntityAuditLog

@@ -55,13 +55,15 @@ class JournalledSequence[T](JournalledCollection[ImmutableSequence[T], T], Mutab
 
 
     # MARK : Functionality
-    def __init__(self, original : Sequence[T]):
+    def __init__(self, original : Sequence[T], /, **kwargs):
+        super().__init__(**kwargs)
         self._original : Sequence[T] = original
         self._sequence : list[T] | None = None
         self._journal : list[JournalledSequenceEdit[T]] = []
 
     def _append_journal(self, type : JournalledSequenceEditType, index: int | slice, value: T | Iterable[T] | None) -> None:
         self._journal.append(JournalledSequenceEdit(type=type, index=index, value=value))
+        self._on_edit()
 
     @property
     def original(self) -> Sequence[T]:
@@ -108,8 +110,8 @@ class JournalledSequence[T](JournalledCollection[ImmutableSequence[T], T], Mutab
         if self._sequence is None:
             raise RuntimeError("Sequence should have been copied on write")
 
-        self._append_journal(JournalledSequenceEditType.SETITEM, index, value)
         self._sequence[index] = value # pyright: ignore[reportArgumentType, reportCallIssue] as the overloads are enough to ensure type safety
+        self._append_journal(JournalledSequenceEditType.SETITEM, index, value)
 
     @overload
     def __delitem__(self, index: int) -> None: ...
@@ -122,8 +124,8 @@ class JournalledSequence[T](JournalledCollection[ImmutableSequence[T], T], Mutab
         if self._sequence is None:
             raise RuntimeError("Sequence should have been copied on write")
 
-        self._append_journal(JournalledSequenceEditType.DELITEM, index, None)
         del self._sequence[index]
+        self._append_journal(JournalledSequenceEditType.DELITEM, index, None)
 
     @override
     def insert(self, index: int, value: T) -> None:
@@ -132,8 +134,8 @@ class JournalledSequence[T](JournalledCollection[ImmutableSequence[T], T], Mutab
         if self._sequence is None:
             raise RuntimeError("Sequence should have been copied on write")
 
-        self._append_journal(JournalledSequenceEditType.INSERT, index, value)
         self._sequence.insert(index, value)
+        self._append_journal(JournalledSequenceEditType.INSERT, index, value)
 
     @override
     def __str__(self) -> str:

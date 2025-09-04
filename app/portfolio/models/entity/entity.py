@@ -13,7 +13,7 @@ from functools import cached_property
 
 from ....util.mixins import LoggableHierarchicalModel, NamedProtocol
 from ....util.helpers import script_info
-from ....util.helpers.callguard import CallguardClassOptions
+from ....util.callguard import CallguardClassOptions
 
 if TYPE_CHECKING:
     from ...journal.entity import EntityJournal
@@ -121,6 +121,15 @@ class Entity(LoggableHierarchicalModel):
             raise TypeError(f"UID storage returned an instance of {type(result).__name__} instead of {cls.__name__}.")
         return result
 
+    @classmethod
+    def narrow_to_uid[T : 'Entity'](cls : type[T], value : T | Uid) -> Uid:
+        if isinstance(value, Uid):
+            return value
+        elif isinstance(value, cls):
+            return value.uid
+        else:
+            raise TypeError(f"Value must be a {cls.__name__} or Uid, got {type(value)}")
+
     def get_child_uids(self) -> Iterable[Uid]:
         for attr in self.__class__.model_fields.keys():
             value = getattr(self, attr, None)
@@ -185,7 +194,7 @@ class Entity(LoggableHierarchicalModel):
             raise ValueError(f"Cannot compare versions of entities with different UIDs: {self.uid} vs {other.uid}")
         return self.version > other.version
 
-    @computed_field
+    @computed_field(description="Indicates whether this entity instance has been superseded by another instance with an incremented version.")
     @property
     def superseded(self) -> bool:
         """
@@ -362,6 +371,9 @@ class Entity(LoggableHierarchicalModel):
 
         # Otherwise, use the journal to set the attribute
         journal.set(name, value)
+
+    #def on_journal_field_edit(self, session: 'JournalSession', field: str) -> None:
+    #    self.log.debug(f"Entity {self} field '{field}' edited in session {session}.")
 
     @property
     def dirty(self) -> bool:

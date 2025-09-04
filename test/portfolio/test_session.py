@@ -9,8 +9,8 @@ from app.util.mixins.models import LoggableHierarchicalModel
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.journal.session import JournalSession
 from app.portfolio.journal.entity import EntityJournal
-from app.portfolio.journal.collections.sequence import JournalledSequence
-from app.portfolio.journal.collections.mapping import JournalledMapping
+from app.portfolio.collections.journalled.sequence import JournalledSequence
+from app.portfolio.collections.journalled.mapping import JournalledMapping
 from app.portfolio.models.entity.incrementing_uid_entity import IncrementingUidEntity
 from app.portfolio.models.entity.superseded import SupersededError
 

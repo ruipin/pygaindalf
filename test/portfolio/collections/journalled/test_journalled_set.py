@@ -8,14 +8,13 @@ Follows the style of existing JournalledSequence and JournalledMapping tests.
 
 import pytest
 
-from app.portfolio.journal.collections.set import (
+from app.portfolio.collections.journalled.set import (
     JournalledSet,
     JournalledSetEditType,
 )
 
 
-@pytest.mark.journal
-@pytest.mark.portfolio
+@pytest.mark.portfolio_collections
 @pytest.mark.journalled_collections
 class TestJournalledSet:
     def test_no_edit_pass_through(self):

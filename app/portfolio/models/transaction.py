@@ -34,7 +34,7 @@ class TransactionType(StrEnum):
 
 
 class Transaction(IncrementingUidEntity):
-    instrument_uid : Uid             = Field(description="The UID of the instrument associated with this transaction.")
+    instrument_uid : Uid             = Field(description="The UID of the instrument associated with this transaction.", json_schema_extra={"propagate": False})
     type           : TransactionType = Field(description="The type of transaction.")
     date           : datetime.date   = Field(description="The date of the transaction.")
     quantity       : Decimal         = Field(description="The quantity involved in the transaction.")
@@ -68,10 +68,9 @@ class Transaction(IncrementingUidEntity):
         Returns the namespace for the UID.
         This can be overridden in subclasses to provide a custom namespace.
         """
-        if data is None:
-            raise ValueError(f"{cls.__name__}.uid_namespace requires data to generate a UID namespace.")
-
         core_uid_namespace = super().uid_namespace(data)
+        if data is None:
+            return core_uid_namespace
 
         if (instrument_uid := data.get('instrument_uid', None)) is None:
             raise ValueError(f"{cls.__name__}.uid_namespace requires 'instrument_uid' in data to generate a UID namespace.")

@@ -9,7 +9,7 @@ from datetime import datetime
 from ordered_set import OrderedSet
 
 from ...util.mixins import LoggableHierarchicalModel
-from ...util.helpers.callguard import CallguardClassOptions
+from ...util.callguard import CallguardClassOptions
 
 from ..models.uid import Uid, IncrementingUidFactory
 from ..models.entity.entity import Entity
@@ -57,7 +57,7 @@ class JournalSession(LoggableHierarchicalModel):
     _UID_FACTORY : ClassVar[IncrementingUidFactory] = IncrementingUidFactory()
     uid : Uid = Field(default_factory=lambda data: JournalSession._UID_FACTORY.next('JournalSession'), validate_default=True, description="Unique identifier for this session.")
 
-    @computed_field
+    @computed_field(description="A human-readable name for this session, derived from its UID.")
     @property
     def instance_name(self) -> str:
         return str(self.uid)
@@ -138,7 +138,6 @@ class JournalSession(LoggableHierarchicalModel):
 
 
     # MARK: State machine
-
     @override
     def model_post_init(self, context : Any):
         super().model_post_init(context)
@@ -207,7 +206,7 @@ class JournalSession(LoggableHierarchicalModel):
         """
         Recursively travel the entity journal hierarchy, flattening it into a list of journals such that all dependencies are handled before dependents.
         """
-        self.log.debug("Flattening entity journal hierarchy for commit.")
+        #self.log.debug("Flattening entity journal hierarchy for commit...")
 
         journals = OrderedSet([])
 

@@ -7,8 +7,14 @@ if TYPE_CHECKING:
     from .session import JournalSession
     from ..models.entity import Entity
 
+
 @runtime_checkable
-class SessionManagerOwnerProtocol(Protocol):
+class JournalHooksProtocol(Protocol):
+    def on_journal_field_edit(self, session: 'JournalSession', field: str) -> None: ...
+
+
+@runtime_checkable
+class SessionManagerHooksProtocol(Protocol):
     def on_session_start(self, session: 'JournalSession') -> None: ...
     def on_session_end(self, session: 'JournalSession') -> None: ...
     def on_session_commit(self, session: 'JournalSession') -> None: ...

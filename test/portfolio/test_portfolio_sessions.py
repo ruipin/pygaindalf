@@ -13,14 +13,14 @@ from decimal import Decimal
 
 import pytest
 from iso4217 import Currency
+from collections.abc import MutableSequence
 
 from app.portfolio.manager import PortfolioManager
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.transaction import Transaction, TransactionType
-from app.portfolio.journal.collections.sequence import JournalledSequence
-from app.portfolio.journal.collections.mapping import JournalledMapping
-from app.util.helpers.frozendict import frozendict
+from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
+from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
 
 
 # --- Fixtures --------------------------------------------------------------------
@@ -42,73 +42,75 @@ def session_manager(portfolio_manager: PortfolioManager):
 @pytest.mark.session
 class TestPortfolioSessions:
     def test_add_ledgers_commit(self, portfolio, session_manager):
-        assert portfolio.ledgers == {}
+        assert portfolio.ledgers == set()
 
         inst1 = Instrument(ticker="AAPL", currency=Currency("USD"))
-        ledg1 = Ledger(instrument=inst1)
+        ledg1 = Ledger(instrument_uid=inst1.uid)
 
         inst2 = Instrument(ticker="MSFT", currency=Currency("USD"))
-        ledg2 = Ledger(instrument=inst2)
+        ledg2 = Ledger(instrument_uid=inst2.uid)
 
         with session_manager(actor="tester", reason="add-ledgers") as s:
-            # Access mapping via session (wrapped JournalledMapping)
-            ledgers_map = portfolio.ledgers
-            ledgers_map[ledg1.uid] = ledg1
-            ledgers_map[ledg2.uid] = ledg2
+            # Access set via session (wrapped Journalled Set proxy)
+            ledgers_set = portfolio.ledgers
+            ledgers_set.add(ledg1)
+            ledgers_set.add(ledg2)
             assert portfolio.dirty is True
             assert s.dirty is True
 
         # Session auto-commits on exit -> portfolio superseded
         p_new = portfolio.superseding
         assert p_new is not None and p_new is not portfolio
-        assert ledg1.uid in p_new.ledgers and ledg2.uid in p_new.ledgers
-        assert p_new.ledgers[ledg1.uid] is ledg1
-        assert p_new.ledgers[ledg2.uid] is ledg2
+        # Membership only; set holds ledgers
+        assert ledg1 in p_new.ledgers and ledg2 in p_new.ledgers
+        # Retrieve via portfolio __getitem__ using Instrument or Uid
+        assert p_new[inst1] is ledg1
+        assert p_new[inst2.uid] is ledg2
 
     def test_add_and_remove_ledger_abort(self, portfolio, session_manager):
         inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
-        ledg = Ledger(instrument=inst)
+        ledg = Ledger(instrument_uid=inst.uid)
 
         with session_manager(actor="tester", reason="add-then-abort") as s:
-            ledgers_map = portfolio.ledgers
-            ledgers_map[inst.uid] = ledg
-            assert inst.uid in ledgers_map
+            ledgers_set = portfolio.ledgers
+            ledgers_set.add(ledg)
+            assert ledg in ledgers_set
             assert portfolio.dirty
             s.abort()  # abort edits
             assert not s.dirty
             # Still inside context, but edits cleared
-            assert inst.uid not in portfolio.ledgers
+            assert ledg not in portfolio.ledgers
 
         # After context, portfolio unchanged
-        assert inst.uid not in portfolio.ledgers
+        assert ledg not in portfolio.ledgers
 
     def test_remove_existing_ledger_commit(self, portfolio, session_manager, portfolio_manager):
         # Seed a ledger through update (no session needed for initial construction)
         inst = Instrument(ticker="ORCL", currency=Currency("USD"))
-        ledg = Ledger(instrument=inst)
-        p2 = portfolio.update(ledgers=frozendict({ledg.uid: ledg}))
-        assert ledg.uid in p2.ledgers
+        ledg = Ledger(instrument_uid=inst.uid)
+        p2 = portfolio.update(ledger_uids={ledg.uid})
+        assert ledg in p2.ledgers
 
         # Update manager to point to latest portfolio version so session sees it
         portfolio_manager.portfolio = p2
 
         with session_manager(actor="tester", reason="remove-ledger"):
-            mapping = p2.ledgers
-            del mapping[ledg.uid]
-            assert ledg.uid not in mapping
+            ledgers_set = p2.ledgers
+            ledgers_set.discard(ledg)
+            assert ledg not in ledgers_set
 
         p3 = p2.superseding
-        assert p3 is not None and inst.uid not in p3.ledgers
+        assert p3 is not None and ledg not in p3.ledgers
 
     def test_add_transactions_and_reorder_commit(self, portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="TSLA", currency=Currency("USD"))
-        ledg = Ledger(instrument=inst)
-        p2 = portfolio.update(ledgers=frozendict({ledg.uid: ledg}))
+        ledg = Ledger(instrument_uid=inst.uid)
+        p2 = portfolio.update(ledger_uids={ledg.uid})
 
         portfolio_manager.portfolio = p2
 
         with session_manager(actor="tester", reason="tx-add-reorder") as s:
-            # Create three tx
+            # Create three txns
             t1 = Transaction(
                 instrument_uid=inst.uid,
                 type=TransactionType.BUY,
@@ -132,6 +134,8 @@ class TestPortfolioSessions:
             )
 
             # Access ledger transactions (JournalledSequence)
+            assert ledg.in_session
+            assert isinstance(ledg.transaction_uids, MutableSequence)
             tx_seq = ledg.transactions
             assert len(tx_seq) == 0
             tx_seq.insert(0, t1)
@@ -147,7 +151,7 @@ class TestPortfolioSessions:
         # After auto-commit, get superseding portfolio & ledger
         p3 = p2.superseding
         assert p3 is not None
-        new_ledger = p3.ledgers[ledg.uid]
+        new_ledger = p3[ledg.uid]
         assert new_ledger is not ledg
         assert list(new_ledger.transactions) == [t3, t2, t1]
 
@@ -167,8 +171,8 @@ class TestPortfolioSessions:
             quantity=Decimal("3"),
             consideration=Decimal("1500"),
         )
-        ledg = Ledger(instrument=inst, transactions=(t1, t2))
-        p2 = portfolio.update(ledgers=frozendict({ledg.uid: ledg}))
+        ledg = Ledger(instrument_uid=inst.uid, transaction_uids=(t1.uid, t2.uid))
+        p2 = portfolio.update(ledger_uids={ledg.uid})
 
         portfolio_manager.portfolio = p2
 
@@ -184,7 +188,8 @@ class TestPortfolioSessions:
             assert list(ledg.transactions) == [t1, t2]
 
         # After abort session exit, no change
-        assert list(p2.ledgers[ledg.uid].transactions) == [t1, t2]
+        # Retrieve original ledger via indexing
+        assert list(p2[ledg.uid].transactions) == [t1, t2]
 
     def test_reorder_transactions_commit(self, portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="IBM", currency=Currency("USD"))
@@ -209,8 +214,8 @@ class TestPortfolioSessions:
             quantity=Decimal("3"),
             consideration=Decimal("330"),
         )
-        ledg = Ledger(instrument=inst, transactions=(t1, t2, t3))
-        p2 = portfolio.update(ledgers=frozendict({ledg.uid: ledg}))
+        ledg = Ledger(instrument_uid=inst.uid, transaction_uids=(t1.uid, t2.uid, t3.uid))
+        p2 = portfolio.update(ledger_uids={ledg.uid})
 
         portfolio_manager.portfolio = p2
         assert portfolio_manager.portfolio is p2
@@ -223,6 +228,6 @@ class TestPortfolioSessions:
 
         p3 = p2.superseding
         assert p3 is not None
-        new_ledger = p3.ledgers[ledg.uid]
+        new_ledger = p3[ledg.uid]
         assert list(new_ledger.transactions) == [t3, t2, t1]
 

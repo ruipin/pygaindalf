@@ -5,15 +5,14 @@ import dataclasses
 import types
 from abc import ABCMeta, abstractmethod
 from collections.abc import Collection
-from typing import (Any, TypeVar, Self, Protocol, runtime_checkable,
-    get_args as typing_get_args,
-    cast as typing_cast,
-    get_origin as typing_get_origin,
-)
+from typing import Any, Self, Protocol, runtime_checkable, Literal
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
+from ....util.mixins import HierarchicalNamedMixin
 from ....util.helpers import generics
+
+from .protocols import JournalledCollectionHooksProtocol
 
 
 @runtime_checkable
@@ -22,7 +21,15 @@ class GetPydanticCoreSchemaProtocol(Protocol):
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema: ...
 
 
-class JournalledCollection[T_Immutable : Collection, T_Value : Any](metaclass=ABCMeta):
+class JournalledCollection[T_Immutable : Collection, T_Value : Any](HierarchicalNamedMixin, metaclass=ABCMeta):
+    def _call_parent_hook(self, hook_name : Literal['edit'], *args, **kwargs) -> None:
+        parent = self.instance_parent
+        if parent is not None and isinstance(parent, JournalledCollectionHooksProtocol):
+            getattr(parent, f"on_journalled_collection_{hook_name}")(self, *args, **kwargs)
+
+    def _on_edit(self) -> None:
+        self._call_parent_hook("edit")
+
     @property
     @abstractmethod
     def edited(self) -> bool:

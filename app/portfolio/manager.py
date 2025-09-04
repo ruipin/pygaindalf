@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from pydantic import Field, field_validator, ConfigDict, InstanceOf
+from pydantic import Field, field_validator, ConfigDict, InstanceOf, PrivateAttr, computed_field
 from typing import Any, override
 
 from requests import Session
+
+from ..util.callguard import callguard_property
 
 from ..util.mixins import LoggableHierarchicalModel
 
@@ -13,6 +15,7 @@ from .models.store.entity_store import EntityStore
 from .portfolio import Portfolio
 from .journal.session_manager import SessionManager
 from .journal.session import JournalSession
+
 
 
 class PortfolioManager(LoggableHierarchicalModel):
@@ -30,13 +33,16 @@ class PortfolioManager(LoggableHierarchicalModel):
     def portfolio_uid(self) -> Uid:
         return self.portfolio.uid
 
-    @property
-    def version(self) -> int:
-        return self.portfolio.version
+    @portfolio_uid.setter
+    def portfolio_uid(self, value : Uid) -> None:
+        portfolio = Portfolio.by_uid(value)
+        if portfolio is None:
+            raise ValueError(f"No Portfolio found with uid {value}")
+        self.portfolio = portfolio
 
     @override
     def __hash__(self) -> int:
-        return hash((self.__class__.__name__, hash(self.portfolio)))
+        return hash((self.__class__.__name__, hash(self.portfolio_uid)))
 
     @field_validator('portfolio', mode='before')
     def _validate_portfolio(portfolio : Any) -> Portfolio:
@@ -62,6 +68,7 @@ class PortfolioManager(LoggableHierarchicalModel):
         superseding = self.portfolio.superseding
         if superseding is None:
             raise ValueError("Cannot refresh entities: portfolio has no superseding portfolio.")
+
         if superseding is not self.portfolio:
             self.portfolio = superseding
 

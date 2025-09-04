@@ -4,7 +4,7 @@
 import pytest
 
 from app.portfolio.models.entity.superseded import superseded_check
-from app.util.helpers.callguard import callguard_class
+from app.util.callguard import callguard_class
 
 
 @pytest.mark.helpers

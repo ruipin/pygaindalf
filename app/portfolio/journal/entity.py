@@ -3,23 +3,23 @@
 
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, InstanceOf
-from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args
+from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args, Literal
 from ordered_set import OrderedSet
 import builtins
 
 from collections.abc import Sequence, Mapping, Set
 
 from ...util.mixins import LoggableHierarchicalModel
-from ...util.helpers.callguard import CallguardClassOptions
+from ...util.callguard import CallguardClassOptions
 
 from ..models.uid import Uid
 
 from ..models.entity.entity import Entity
 from ..models.entity.superseded import superseded_check
 
-from .collections.sequence import JournalledSequence
-from .collections.mapping import JournalledMapping
-from .collections.set import JournalledSet
+from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet
+
+from .protocols import JournalHooksProtocol
 
 
 class EntityJournal(LoggableHierarchicalModel):
@@ -67,6 +67,12 @@ class EntityJournal(LoggableHierarchicalModel):
     @override
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}:{self.entity!r}>"
+
+    def _call_entity_hook(self, hook_name : Literal['field_edit'], *args: Any, **kwargs: Any) -> None:
+        entity = self.entity
+        if isinstance(entity, JournalHooksProtocol):
+            getattr(entity, f"on_journal_{hook_name}")(self, *args, **kwargs)
+
 
     # MARK: Superseded
     _ended : bool = PrivateAttr(default=False)
@@ -145,6 +151,7 @@ class EntityJournal(LoggableHierarchicalModel):
             self._updates[field] = value
 
         self.propagate()
+        self._call_entity_hook('field_edit', field)
 
         return value
 
@@ -159,17 +166,18 @@ class EntityJournal(LoggableHierarchicalModel):
         if not self.is_computed_field(field) and self.can_modify(field):
             new = original
             if isinstance(original, Sequence) and not isinstance(original, (str, bytes)):
-                new = JournalledSequence(original)
+                new = JournalledSequence(original, instance_parent=self, instance_name=field)
             elif isinstance(original, Mapping):
-                new = JournalledMapping(original)
-            # TODO: set
+                new = JournalledMapping(original, instance_parent=self, instance_name=field)
             elif isinstance(original, Set):
-                raise NotImplementedError("JournalledSet not implemented yet.")
+                new = JournalledSet(original, instance_parent=self, instance_name=field)
 
             return self.set(field, new)
 
         return original
 
+    def on_journalled_collection_edit(self, collection : JournalledCollection) -> None:
+        self._call_entity_hook('field_edit', collection.instance_name)
 
     # MARK: Propagation
     _dirty_children : 'builtins.set[EntityJournal]' = PrivateAttr(default_factory=builtins.set)
@@ -211,6 +219,7 @@ class EntityJournal(LoggableHierarchicalModel):
 
         # Cache the last propagated dirty state
         self._propagated_has_updates = has_updates
+
 
 
     # MARK: Commit
@@ -261,11 +270,11 @@ class EntityJournal(LoggableHierarchicalModel):
             args = get_args(annotation)
 
             if issubclass(origin, Sequence):
-                self.log.debug("Refreshing entity sequence '%s'", attr)
-
                 if len(args) != 1 or not issubclass(args[0], Entity):
                     self.log.warning(f"Entity field '{attr}' is annotated as a sequence but the item type is not an Entity. Skipping entity refresh.")
                     continue
+
+                self.log.debug("Refreshing entity sequence '%s'", attr)
 
                 for i, entity in enumerate(field):
                     if not isinstance(entity, Entity):
@@ -279,10 +288,10 @@ class EntityJournal(LoggableHierarchicalModel):
 
 
             elif issubclass(origin, Mapping):
-                self.log.debug("Refreshing entity mapping '%s'", attr)
-
                 if len(args) != 2 or not issubclass(args[1], Entity):
                     continue
+
+                self.log.debug("Refreshing entity mapping '%s'", attr)
 
                 if issubclass(args[0], Uid):
                     for dirty in self._dirty_children:
@@ -301,10 +310,10 @@ class EntityJournal(LoggableHierarchicalModel):
                             field[key] = entity.superseding
 
             elif issubclass(origin, Set):
-                self.log.debug("Refreshing entity set '%s'", attr)
-
                 if len(args) != 1 or not issubclass(args[0], Entity):
                     continue
+
+                self.log.debug("Refreshing entity set '%s'", attr)
 
                 for item in field:
                     if not isinstance(item, Entity):

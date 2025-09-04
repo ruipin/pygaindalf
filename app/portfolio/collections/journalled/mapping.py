@@ -3,7 +3,7 @@
 
 import dataclasses
 
-from pydantic_core import CoreSchema, core_schema
+from pydantic_core import CoreSchema
 from typing import (override, Iterator,
     cast as typing_cast,
 )
@@ -51,13 +51,15 @@ class JournalledMapping[K,V](JournalledCollection[ImmutableMapping[K,V], V], Mut
 
 
     # MARK: Functionality
-    def __init__(self, original : Mapping[K,V]):
+    def __init__(self, original : Mapping[K,V], /, **kwargs):
+        super().__init__(**kwargs)
         self._original : Mapping[K,V] = original
         self._mapping : dict[K,V] | None = None
         self._journal : list[JournalledMappingEdit[K,V]] = []
 
     def _append_journal(self, type : JournalledMappingEditType, key: K, value: V | None) -> None:
         self._journal.append(JournalledMappingEdit(type=type, key=key, value=value))
+        self._on_edit()
 
     def _copy_on_write(self) -> None:
         if self._mapping is not None:
@@ -78,8 +80,8 @@ class JournalledMapping[K,V](JournalledCollection[ImmutableMapping[K,V], V], Mut
         if self._mapping is None:
             raise RuntimeError("Mapping should have been copied on write")
 
-        self._append_journal(JournalledMappingEditType.SETITEM, key, value)
         self._mapping[key] = value
+        self._append_journal(JournalledMappingEditType.SETITEM, key, value)
 
     @override
     def __delitem__(self, key: K) -> None:
@@ -88,8 +90,8 @@ class JournalledMapping[K,V](JournalledCollection[ImmutableMapping[K,V], V], Mut
         if self._mapping is None:
             raise RuntimeError("Mapping should have been copied on write")
 
-        self._append_journal(JournalledMappingEditType.DELITEM, key, None)
         del self._mapping[key]
+        self._append_journal(JournalledMappingEditType.DELITEM, key, None)
 
     @override
     def __iter__(self) -> Iterator[K]:

@@ -3,11 +3,10 @@
 
 import pytest
 
-from app.portfolio.journal.collections.mapping import JournalledMapping, JournalledMappingEditType
+from app.portfolio.collections.journalled.mapping import JournalledMapping, JournalledMappingEditType
 
 
-@pytest.mark.journal
-@pytest.mark.portfolio
+@pytest.mark.portfolio_collections
 @pytest.mark.journalled_collections
 class TestJournalledMapping:
     def test_no_edit_pass_through(self):

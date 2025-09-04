@@ -9,7 +9,7 @@ from collections.abc import Mapping, MutableMapping, Set, Sequence
 
 from ....util.mixins import LoggableHierarchicalMixin, FinalNamedProtocol
 from ....util.helpers import script_info
-from ....util.helpers.callguard import callguard_class
+from ....util.callguard import callguard_class
 
 from ..entity import Entity
 from ..uid import Uid

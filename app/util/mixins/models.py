@@ -7,8 +7,9 @@ from ..helpers.weakref import WeakRef
 from pydantic import BaseModel, model_validator, Field, field_validator, PrivateAttr, ConfigDict
 from pydantic.fields import FieldInfo
 from typing import Any, Self, Annotated, override, ClassVar, final, TYPE_CHECKING, cast as typing_cast
+from collections.abc import Sequence, Mapping, Set
 
-from ..helpers.callguard import CallguardedModelMixin
+from ..callguard.pydantic_model import CallguardedModelMixin
 
 from . import HierarchicalMutableProtocol, NamedMutableProtocol, HierarchicalMixinMinimal, NamedMixinMinimal, LoggableMixin, HierarchicalProtocol, NamedProtocol
 
@@ -93,7 +94,7 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
                 if isinstance(self, VersionedUid) and isinstance(parent, VersionedUid) and self.is_newer_version_than(parent):
                     pass
                 else:
-                    raise ValueError(f"Object {obj} already has a parent set: {obj.instance_parent}. Cannot overwrite with {self}.")
+                    raise ValueError(f"Object {obj} already has a parent: {obj.instance_parent}. Cannot overwrite with {self}.")
 
             if isinstance(obj, HierarchicalModel):
                 object.__setattr__(obj, 'instance_parent_weakref', weakref.ref(self))
@@ -117,6 +118,12 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
     def _seed_parent_and_name_to_object(self, *, obj : Any, name : str, propagate_name : bool, propagate_parent : bool) -> None:
         if not getattr(obj.__class__, 'PROPAGATE_FROM_PARENT', True):
             return
+
+        from ...portfolio.models.uid import Uid
+        if isinstance(obj, Uid):
+            from ...portfolio.models.entity import Entity
+            obj = Entity.by_uid(obj)
+
         if propagate_parent:
             self._seed_parent_to_object(obj=obj)
         if propagate_name:
@@ -166,20 +173,19 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
             return
 
         # Do propagation
-        if isinstance(fld, list):
+        if isinstance(fld, (HierarchicalMutableProtocol, NamedMutableProtocol)):
+            self._seed_parent_and_name_to_object(obj=fld, name=fldnm, propagate_name=propagate_name, propagate_parent=propagate_parent)
+        elif isinstance(fld, (Sequence, Set)) and not isinstance(fld, (str, bytes, bytearray)):
             for i, item in enumerate(fld):
                 self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}[{i}]", propagate_name=propagate_name, propagate_parent=propagate_parent)
-        elif isinstance(fld, dict):
+        elif isinstance(fld, Mapping):
             for key, item in fld.items():
                 self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}.{key}", propagate_name=propagate_name, propagate_parent=propagate_parent)
-        else:
-            self._seed_parent_and_name_to_object(obj=fld, name=fldnm, propagate_name=propagate_name, propagate_parent=propagate_parent)
 
     @model_validator(mode='after')
     def _validator_seed_parent_and_name(self) -> Any:
         for fldnm, fldinfo in self.__class__.model_fields.items():
             self._seed_parent_and_name_to_field(fldnm, fldinfo)
-
         return self
 
     if not TYPE_CHECKING:
