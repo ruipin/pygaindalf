@@ -62,13 +62,33 @@ class Uid:
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __lt__(self, other) -> bool:
+        if not isinstance(other, Uid):
+            return NotImplemented
+        return self.as_tuple() < other.as_tuple()
+
+    def __le__(self, other) -> bool:
+        if not isinstance(other, Uid):
+            return NotImplemented
+        return self.as_tuple() <= other.as_tuple()
+
+    def __gt__(self, other) -> bool:
+        if not isinstance(other, Uid):
+            return NotImplemented
+        return self.as_tuple() > other.as_tuple()
+
+    def __ge__(self, other) -> bool:
+        if not isinstance(other, Uid):
+            return NotImplemented
+        return self.as_tuple() >= other.as_tuple()
+
     @override
     def __str__(self):
         return f"{self.namespace}{UID_SEPARATOR}{self.id_as_str}"
 
     @override
     def __repr__(self):
-        return f"Uid(namespace={self.namespace}, id={self.id})"
+        return f"<Uid: {self!s}>"
 
 
 # MARK: Incrementing Uid Factory

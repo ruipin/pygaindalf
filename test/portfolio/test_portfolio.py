@@ -5,9 +5,9 @@ import pytest
 from iso4217 import Currency
 
 from app.portfolio.manager import PortfolioManager
-from app.portfolio.portfolio import Portfolio
+from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.instrument import Instrument
-from app.portfolio.models.ledger import Ledger
+from app.portfolio.models.ledger.ledger import Ledger
 from app.util.helpers.frozendict import frozendict
 
 import pydantic

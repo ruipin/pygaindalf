@@ -4,13 +4,13 @@
 from typing import TYPE_CHECKING, override, Iterator
 from collections.abc import Set, MutableSet
 
-from ...models.uid import Uid
-from .collection import UidProxyCollection
+from ....models.uid import Uid
+from ..collection import UidProxyCollection
 
-from ...models.entity import Entity
+from ....models.entity import Entity
 
 
-class UidProxySet[T : Entity](MutableSet[T], UidProxyCollection[T, Set[Uid], MutableSet[Uid]]):
+class GenericUidProxySet[T : Entity, T_Collection : Set[Uid], T_Mut_Collection : MutableSet[Uid]](MutableSet[T], UidProxyCollection[T, T_Collection, T_Mut_Collection]):
     @override
     def __contains__(self, value : object) -> bool:
         if isinstance(value, self.get_concrete_proxy_type()):
@@ -26,6 +26,10 @@ class UidProxySet[T : Entity](MutableSet[T], UidProxyCollection[T, Set[Uid], Mut
         self._get_mut_field().discard(value.uid)
 
     @override
+    def clear(self) -> None:
+        self._get_mut_field().clear()
+
+    @override
     def __iter__(self) -> Iterator[T]:
         proxy_type = self.get_concrete_proxy_type()
 
@@ -38,11 +42,3 @@ class UidProxySet[T : Entity](MutableSet[T], UidProxyCollection[T, Set[Uid], Mut
     @override
     def __len__(self):
         return len(self._get_field())
-
-    @override
-    def __str__(self) -> str:
-        return str(self._get_field())
-
-    @override
-    def __repr__(self) -> str:
-        return f"<UidProxySet: {self._get_field()!r}>"

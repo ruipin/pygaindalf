@@ -171,14 +171,14 @@ class TestGenericHelpers:
     # MARK: Bound violations
     #-------------------------------------------------------------------------------
     def test_get_arg_bound_violation(self):
-        with pytest.raises(GenericsError) as ei:
+        with pytest.raises(TypeError) as ei:
             get_arg(Base[str, str], "U")  # pyright: ignore[reportInvalidTypeArguments]
-        assert "Base.U type argument is not a subclass of its bound <class 'int'>" == str(ei.value)
+        assert "Base.U type argument <str> is not a subclass of its bound <int>" == str(ei.value)
 
     def test_get_concrete_arg_bound_violation(self):
-        with pytest.raises(GenericsError) as ei:
+        with pytest.raises(TypeError) as ei:
             get_concrete_arg(Base[str, str], "U")  # pyright: ignore[reportInvalidTypeArguments]
-        assert "Base.U type argument is not a subclass of its bound <class 'int'>" == str(ei.value)
+        assert "Base.U type argument <str> is not a subclass of its bound <int>" == str(ei.value)
 
     #-------------------------------------------------------------------------------
     # MARK: Non-generic / incorrectly used bases

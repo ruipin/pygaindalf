@@ -5,4 +5,4 @@
 from .collection import JournalledCollection
 from .sequence   import JournalledSequence
 from .mapping    import JournalledMapping
-from .set        import JournalledSet
+from .set        import *

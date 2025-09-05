@@ -13,12 +13,12 @@ from decimal import Decimal
 
 import pytest
 from iso4217 import Currency
-from collections.abc import MutableSequence
+from collections.abc import MutableSet
 
 from app.portfolio.manager import PortfolioManager
 from app.portfolio.models.instrument import Instrument
-from app.portfolio.models.ledger import Ledger
-from app.portfolio.models.transaction import Transaction, TransactionType
+from app.portfolio.models.ledger.ledger import Ledger
+from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
 from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
 
@@ -65,7 +65,7 @@ class TestPortfolioSessions:
         assert ledg1 in p_new.ledgers and ledg2 in p_new.ledgers
         # Retrieve via portfolio __getitem__ using Instrument or Uid
         assert p_new[inst1] is ledg1
-        assert p_new[inst2.uid] is ledg2
+        assert p_new[inst2] is ledg2
 
     def test_add_and_remove_ledger_abort(self, portfolio, session_manager):
         inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
@@ -102,7 +102,7 @@ class TestPortfolioSessions:
         p3 = p2.superseding
         assert p3 is not None and ledg not in p3.ledgers
 
-    def test_add_transactions_and_reorder_commit(self, portfolio, session_manager, portfolio_manager):
+    def test_add_transactions_commit_and_ordering(self, portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="TSLA", currency=Currency("USD"))
         ledg = Ledger(instrument_uid=inst.uid)
         p2 = portfolio.update(ledger_uids={ledg.uid})
@@ -112,40 +112,36 @@ class TestPortfolioSessions:
         with session_manager(actor="tester", reason="tx-add-reorder") as s:
             # Create three txns
             t1 = Transaction(
-                instrument_uid=inst.uid,
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 1),
                 quantity=Decimal("10"),
                 consideration=Decimal("1000"),
             )
             t2 = Transaction(
-                instrument_uid=inst.uid,
                 type=TransactionType.SELL,
                 date=datetime.date(2025, 1, 2),
                 quantity=Decimal("4"),
                 consideration=Decimal("420"),
             )
             t3 = Transaction(
-                instrument_uid=inst.uid,
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 3),
                 quantity=Decimal("6"),
                 consideration=Decimal("630"),
             )
 
-            # Access ledger transactions (JournalledSequence)
+            # Access ledger transactions (now a MutableSet with ordered view)
             assert ledg.in_session
-            assert isinstance(ledg.transaction_uids, MutableSequence)
-            tx_seq = ledg.transactions
-            assert len(tx_seq) == 0
-            tx_seq.insert(0, t1)
-            tx_seq.insert(1, t2)
-            tx_seq.insert(2, t3)
-            assert list(tx_seq) == [t1, t2, t3]
-
-            # Reorder: move last to front
-            tx_seq[0], tx_seq[2] = tx_seq[2], tx_seq[0]
-            assert list(tx_seq) == [t3, t2, t1]
+            assert isinstance(ledg.transaction_uids, MutableSet)
+            tx_set = ledg.transactions
+            assert len(tx_set) == 0
+            # Add transactions (order determined by date automatically)
+            tx_set.add(t2)
+            tx_set.add(t3)
+            tx_set.add(t1)
+            # Ordering should be by date ascending -> t1, t2, t3
+            assert len(tx_set) == 3
+            assert list(tx_set) == [t1, t2, t3]
             assert s.dirty and ledg.dirty and p2.dirty
 
         # After auto-commit, get superseding portfolio & ledger
@@ -153,34 +149,34 @@ class TestPortfolioSessions:
         assert p3 is not None
         new_ledger = p3[ledg.uid]
         assert new_ledger is not ledg
-        assert list(new_ledger.transactions) == [t3, t2, t1]
+        # Persisted ordering by date
+        assert list(new_ledger.transactions) == [t1, t2, t3]
 
     def test_remove_transaction_abort(self, portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="NVDA", currency=Currency("USD"))
         t1 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 2, 1),
             quantity=Decimal("5"),
             consideration=Decimal("2500"),
         )
         t2 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 2, 2),
             quantity=Decimal("3"),
             consideration=Decimal("1500"),
         )
-        ledg = Ledger(instrument_uid=inst.uid, transaction_uids=(t1.uid, t2.uid))
+        ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
         p2 = portfolio.update(ledger_uids={ledg.uid})
 
         portfolio_manager.portfolio = p2
 
         with session_manager(actor="tester", reason="tx-remove-abort") as s:
-            tx_seq = ledg.transactions
-            assert list(tx_seq) == [t1, t2]
-            del tx_seq[0]
-            assert list(tx_seq) == [t2]
+            tx_set = ledg.transactions
+            # Date ordering t1 (Feb 1) then t2 (Feb 2)
+            assert list(tx_set) == [t1, t2]
+            tx_set.discard(t1)
+            assert list(tx_set) == [t2]
             assert s.dirty
             s.abort()
             assert not s.dirty
@@ -194,40 +190,41 @@ class TestPortfolioSessions:
     def test_reorder_transactions_commit(self, portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="IBM", currency=Currency("USD"))
         t1 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 3, 1),
             quantity=Decimal("1"),
             consideration=Decimal("100"),
         )
         t2 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 3, 2),
             quantity=Decimal("2"),
             consideration=Decimal("210"),
         )
         t3 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 3, 3),
             quantity=Decimal("3"),
             consideration=Decimal("330"),
         )
-        ledg = Ledger(instrument_uid=inst.uid, transaction_uids=(t1.uid, t2.uid, t3.uid))
+        ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid, t3.uid})
         p2 = portfolio.update(ledger_uids={ledg.uid})
 
         portfolio_manager.portfolio = p2
         assert portfolio_manager.portfolio is p2
 
-        with session_manager(actor="tester", reason="reorder-commit"):
+        with session_manager(actor="tester", reason="ordering-commit"):
             seq = ledg.transactions
-            # Reverse order
-            seq[0], seq[2] = seq[2], seq[0]
-            assert list(seq) == [t3, t2, t1]
+            # Initial ordering should be by date: t1, t2, t3
+            assert list(seq) == [t1, t2, t3]
+            # Removing and re-adding should preserve date ordering
+            seq.discard(t2)
+            assert list(seq) == [t1, t3]
+            seq.add(t2)
+            assert list(seq) == [t1, t2, t3]
 
         p3 = p2.superseding
         assert p3 is not None
         new_ledger = p3[ledg.uid]
-        assert list(new_ledger.transactions) == [t3, t2, t1]
+        assert list(new_ledger.transactions) == [t1, t2, t3]
 

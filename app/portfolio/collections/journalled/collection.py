@@ -1,27 +1,40 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import dataclasses
-import types
 from abc import ABCMeta, abstractmethod
 from collections.abc import Collection
-from typing import Any, Self, Protocol, runtime_checkable, Literal
+from typing import Any, Self, Literal, cast as typing_cast, override
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 from ....util.mixins import HierarchicalNamedMixin
 from ....util.helpers import generics
+from ....util.callguard import callguard_class
 
 from .protocols import JournalledCollectionHooksProtocol
 
 
-@runtime_checkable
-class GetPydanticCoreSchemaProtocol(Protocol):
+#@callguard_class()
+class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : Collection, T_Immutable : Collection, T_Journal : object](HierarchicalNamedMixin, metaclass=ABCMeta):
+    # MARK: Generics
     @classmethod
-    def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema: ...
+    def get_concrete_value_type(cls, source : type[Self] | None = None) -> type[T_Value]:
+        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Value")
+
+    @classmethod
+    def get_concrete_mutable_type(cls, source : type[Self] | None = None) -> type[T_Mutable]:
+        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Mutable")
+
+    @classmethod
+    def get_concrete_immutable_type(cls, source : type[Self] | None = None) -> type[T_Immutable]:
+        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Immutable")
+
+    @classmethod
+    def get_concrete_journal_type(cls, source : type[Self] | None = None) -> type[T_Journal]:
+        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Journal")
 
 
-class JournalledCollection[T_Immutable : Collection, T_Value : Any](HierarchicalNamedMixin, metaclass=ABCMeta):
+    # MARK: Hooks
     def _call_parent_hook(self, hook_name : Literal['edit'], *args, **kwargs) -> None:
         parent = self.instance_parent
         if parent is not None and isinstance(parent, JournalledCollectionHooksProtocol):
@@ -30,14 +43,58 @@ class JournalledCollection[T_Immutable : Collection, T_Value : Any](Hierarchical
     def _on_edit(self) -> None:
         self._call_parent_hook("edit")
 
-    @property
-    @abstractmethod
-    def edited(self) -> bool:
-        raise NotImplementedError("Subclasses must implement 'edited' property")
+    def __init__(self, original : T_Original, /, **kwargs):
+        super().__init__(**kwargs)
+        self._original  : T_Original = original
+        self._container : T_Mutable | None = None
+        self._journal   : list[T_Journal] = []
 
-    @abstractmethod
+
+    # MARK: JournalledCollection ABC
+    def _get_container(self) -> T_Immutable:
+        container = self._container
+        return typing_cast(T_Immutable, container if container is not None else self._original)
+
+    def _get_mut_container(self) -> T_Mutable:
+        self._copy_on_write()
+        return typing_cast(T_Mutable, self._container)
+
+    def _copy_on_write(self) -> None:
+        if self._container is None:
+            self._container = self.get_concrete_mutable_type()(self._original) # pyright: ignore[reportCallIssue] as the bounds are not specific enough but we know this is allowed
+
+    @property
+    def original(self) -> T_Original:
+        return self._original
+
+    @property
+    def edited(self) -> bool:
+        return self._container is not None
+
+    def __len__(self):
+        return len(self._get_container())
+
+    @override
+    def __str__(self) -> str:
+        return str(self._get_container())
+
+    @override
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}: {self._get_container()!r})>"
+
+
+    # MARK: Pydantic
     def make_immutable(self) -> T_Immutable:
-        raise NotImplementedError("Subclasses must implement 'make_immutable' method")
+        immutable_type = self.get_concrete_immutable_type()
+
+        if self._container is not None:
+            return immutable_type(self._container) # pyright: ignore[reportCallIssue] as the bounds are not specific enough but we know this is allowed
+        else:
+            original = self._original
+            if not isinstance(self._original, immutable_type):
+                return immutable_type(original) # pyright: ignore[reportCallIssue] as the bounds are not specific enough but we know this is allowed
+            else:
+                return typing_cast(T_Immutable, original)
 
     @classmethod
     @abstractmethod
@@ -45,20 +102,12 @@ class JournalledCollection[T_Immutable : Collection, T_Value : Any](Hierarchical
         raise NotImplementedError("Subclasses must implement 'get_core_schema' method")
 
     @classmethod
-    def get_concrete_immutable_type(cls) -> type[T_Immutable]:
-        return generics.get_concrete_parent_arg(cls, JournalledCollection, "T_Immutable")
-
-    @classmethod
-    def get_concrete_content_type(cls) -> type[T_Value]:
-        return generics.get_concrete_parent_arg(cls, JournalledCollection, "T_Value")
-
-    @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
         assert cls is source
         schema = cls.get_core_schema(source, handler)
-        return core_schema.no_info_before_validator_function(
+        return core_schema.no_info_plain_validator_function(
             function= cls.coerce,
-            schema= schema,
+            json_schema_input_schema= schema,
         )
 
     @classmethod
@@ -67,16 +116,5 @@ class JournalledCollection[T_Immutable : Collection, T_Value : Any](Hierarchical
             return value.make_immutable()
 
         concrete = cls.get_concrete_immutable_type()
-        if isinstance(value, concrete):
-            return value
 
         return concrete(value) # pyright: ignore[reportCallIssue]
-
-    @classmethod
-    def _pydantic_serialize(cls, value: Any, info: core_schema.SerializationInfo) -> str:
-        if isinstance(value, cls):
-            return str(value)
-        elif isinstance(value, str):
-            return value
-        else:
-            raise TypeError(f"Expected a ConfigFilePath or string, got {type(value).__name__}")

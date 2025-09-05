@@ -8,8 +8,8 @@ from decimal import Decimal
 from iso4217 import Currency
 
 from app.portfolio.models.instrument import Instrument
-from app.portfolio.models.ledger import Ledger
-from app.portfolio.models.transaction import Transaction, TransactionType
+from app.portfolio.models.ledger.ledger import Ledger
+from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 
 
 @pytest.mark.portfolio
@@ -39,21 +39,19 @@ class TestLedger:
         assert ledg.entity_log.exists is True
         assert ledg.entity_log.next_version == 2
 
-    def test_ledger_with_transactions_sequence_interface(self):
+    def test_ledger_with_transactions_set_interface(self):
         inst = Instrument(
             ticker="AAPL",
             currency=Currency("USD"),
         )
-        # Manually construct transactions (ledger currently immutable, so we just build tuple)
+        # Manually construct transactions (ledger currently immutable, so we just build iterable)
         tx1 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
             quantity=Decimal("10"),
             consideration=Decimal("1500"),
         )
         tx2 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.SELL,
             date=datetime.date(2025, 1, 5),
             quantity=Decimal("4"),
@@ -62,14 +60,42 @@ class TestLedger:
 
         ledg = Ledger(
             instrument_uid=inst.uid,
-            transaction_uids=(tx1.uid, tx2.uid),
+            # Provide a set (primary expected input type now)
+            transaction_uids={tx1.uid, tx2.uid},
         )
 
         assert len(ledg) == 2
         assert ledg.length == 2
+        # OrderedViewSet sorts by transaction date; tx1 earlier than tx2
         assert ledg[0] is tx1
         assert ledg[1] is tx2
         assert list(iter(ledg)) == [tx1, tx2]
+
+    def test_ledger_with_transactions_iterable_sequence_input(self):
+        """Validate that non-set iterables (e.g. sequence/tuple) are accepted and coerced."""
+        inst = Instrument(
+            ticker="NFLX",
+            currency=Currency("USD"),
+        )
+        tx1 = Transaction(
+            type=TransactionType.BUY,
+            date=datetime.date(2025, 4, 1),
+            quantity=Decimal("1"),
+            consideration=Decimal("500"),
+        )
+        tx2 = Transaction(
+            type=TransactionType.BUY,
+            date=datetime.date(2025, 4, 2),
+            quantity=Decimal("2"),
+            consideration=Decimal("1000"),
+        )
+        # Supply a tuple (sequence) to test broader Iterable support
+        ledg = Ledger(
+            instrument_uid=inst.uid,
+            transaction_uids=(tx1.uid, tx2.uid),
+        )
+        assert len(ledg) == 2
+        assert ledg[0] is tx1 and ledg[1] is tx2
 
     def test_ledger_uid_and_instance_name_stable(self):
         inst = Instrument(

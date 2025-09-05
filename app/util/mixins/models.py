@@ -51,11 +51,13 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
     @classmethod
     def _validate_instance_parent(cls, obj : object | None) -> weakref.ref[HierarchicalProtocol | NamedProtocol] | None:
         if obj is None:
-            return obj
+            return None
 
         _obj = obj
         if isinstance(obj, weakref.ref):
             _obj = obj()
+            if _obj is None:
+                return None
         else:
             obj = weakref.ref(obj)
 
@@ -94,7 +96,7 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
                 if isinstance(self, VersionedUid) and isinstance(parent, VersionedUid) and self.is_newer_version_than(parent):
                     pass
                 else:
-                    raise ValueError(f"Object {obj} already has a parent: {obj.instance_parent}. Cannot overwrite with {self}.")
+                    raise ValueError(f"{type(obj).__name__} {obj} already has a parent: {obj.instance_parent}. Cannot overwrite with {self}.")
 
             if isinstance(obj, HierarchicalModel):
                 object.__setattr__(obj, 'instance_parent_weakref', weakref.ref(self))
@@ -112,7 +114,7 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
             if (current := obj.instance_name) is not None:
                 if current == name:
                     return
-                raise ValueError(f"Object {obj} already has a name set: {obj.instance_name}. Cannot overwrite with {name}.")
+                raise ValueError(f"{type(obj).__name__} {obj} already has a name set: {obj.instance_name}. Cannot overwrite with {name}.")
             object.__setattr__(obj, 'instance_name', name)
 
     def _seed_parent_and_name_to_object(self, *, obj : Any, name : str, propagate_name : bool, propagate_parent : bool) -> None:

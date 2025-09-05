@@ -64,16 +64,12 @@ class UidProxySequence[T : Entity](MutableSequence[T], UidProxyCollection[T, Seq
         del self._get_mut_field()[index]
 
     @override
+    def clear(self) -> None:
+        self._get_mut_field().clear()
+
+    @override
     def insert(self, index: int, value: T) -> None:
         if not isinstance(value, (proxy_type := self.get_concrete_proxy_type())):
             raise NotImplementedError(f"Value must have type {proxy_type.__name__}")
 
         self._get_mut_field().insert(index, value.uid)
-
-    @override
-    def __str__(self) -> str:
-        return str(self._get_field())
-
-    @override
-    def __repr__(self) -> str:
-        return f"<UidProxySequence: {self._get_field()!r}>"

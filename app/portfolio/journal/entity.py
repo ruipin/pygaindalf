@@ -17,7 +17,8 @@ from ..models.uid import Uid
 from ..models.entity.entity import Entity
 from ..models.entity.superseded import superseded_check
 
-from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet
+from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet, JournalledOrderedViewSet
+from ..collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
 
 from .protocols import JournalHooksProtocol
 
@@ -72,6 +73,9 @@ class EntityJournal(LoggableHierarchicalModel):
         entity = self.entity
         if isinstance(entity, JournalHooksProtocol):
             getattr(entity, f"on_journal_{hook_name}")(self, *args, **kwargs)
+
+    def instance_name(self) -> str:
+        return f"EntityJournal({self.entity.uid})"
 
 
     # MARK: Superseded
@@ -155,6 +159,23 @@ class EntityJournal(LoggableHierarchicalModel):
 
         return value
 
+    def _wrap_field(self, field : str, original : Any) -> Any:
+        new = original
+
+        if isinstance(original, OrderedViewFrozenSet):
+            journalled_type = original.get_journalled_type()
+            new = journalled_type(original, instance_parent=self, instance_name=field)
+        elif isinstance(original, Sequence) and not isinstance(original, (str, bytes)):
+            new = JournalledSequence(original, instance_parent=self, instance_name=field)
+        elif isinstance(original, Mapping):
+            new = JournalledMapping(original, instance_parent=self, instance_name=field)
+        elif isinstance(original, Set):
+            new = JournalledSet(original, instance_parent=self, instance_name=field)
+        else:
+            return original
+
+        return self.set(field, new)
+
     def get(self, field : str) -> Any:
         field = self.entity.resolve_field_alias(field)
 
@@ -162,19 +183,7 @@ class EntityJournal(LoggableHierarchicalModel):
             return self._updates[field]
 
         original = self.get_original_field(field)
-
-        if not self.is_computed_field(field) and self.can_modify(field):
-            new = original
-            if isinstance(original, Sequence) and not isinstance(original, (str, bytes)):
-                new = JournalledSequence(original, instance_parent=self, instance_name=field)
-            elif isinstance(original, Mapping):
-                new = JournalledMapping(original, instance_parent=self, instance_name=field)
-            elif isinstance(original, Set):
-                new = JournalledSet(original, instance_parent=self, instance_name=field)
-
-            return self.set(field, new)
-
-        return original
+        return self._wrap_field(field, original)
 
     def on_journalled_collection_edit(self, collection : JournalledCollection) -> None:
         self._call_entity_hook('field_edit', collection.instance_name)

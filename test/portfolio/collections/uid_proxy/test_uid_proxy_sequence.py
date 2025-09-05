@@ -9,7 +9,7 @@ import datetime as dt
 
 from app.portfolio.collections.uid_proxy import UidProxySequence
 from app.portfolio.models.entity import IncrementingUidEntity
-from app.portfolio.models.transaction import Transaction, TransactionType
+from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.uid import Uid
 from iso4217 import Currency
@@ -33,7 +33,6 @@ class Holder(IncrementingUidEntity):
 class TestUidProxySequence:
     def _make_tx(self, instr, qty=1, cons=1, ttype=TransactionType.BUY):
         return Transaction(
-            instrument_uid=instr.uid,
             type=ttype,
             date=dt.date.today(),
             quantity=Decimal(qty),

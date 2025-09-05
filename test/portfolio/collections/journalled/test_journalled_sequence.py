@@ -18,14 +18,14 @@ class TestJournalledSequence:
         assert js.edited is False
         assert len(js) == len(original)
         assert js[0] == 1  # pass-through before edits
-        assert js._sequence is None  # copy not yet made
+        assert js._container is None  # copy not yet made
 
     def test_setitem_triggers_copy_and_journal(self):
         original = [1, 2, 3]
         js = JournalledSequence(original)
         js[1] = 42
         assert js.edited is True
-        assert js._sequence is not None
+        assert js._container is not None
         assert original[1] == 2  # original unchanged
         assert js[1] == 42
         assert len(js._journal) == 1
@@ -67,8 +67,8 @@ class TestJournalledSequence:
             JournalledSequenceEditType.SETITEM,
             JournalledSequenceEditType.DELITEM,
         ]
-        assert js._sequence is not None
-        assert list(js._sequence) == [5, 15]
+        assert js._container is not None
+        assert list(js._container) == [5, 15]
 
     def test_slice_get(self):
         original = [1, 2, 3]
@@ -85,8 +85,8 @@ class TestJournalledSequence:
         original = [1, 2, 3, 4]
         js = JournalledSequence(original)
         js[1:3] = [9, 9]
-        assert js._sequence is not None
-        assert list(js._sequence) == [1, 9, 9, 4]
+        assert js._container is not None
+        assert list(js._container) == [1, 9, 9, 4]
         assert js._journal[0].type is JournalledSequenceEditType.SETITEM
         assert isinstance(js._journal[0].index, slice)
 
@@ -114,7 +114,7 @@ class TestJournalledSequence:
         assert j3.value == [300, 350]
 
         # Final sequence state
-        seq = js._sequence
+        seq = js._container
         assert seq is not None
         assert seq == [21, 300, 350, 40, 50]
         # Original must remain unchanged

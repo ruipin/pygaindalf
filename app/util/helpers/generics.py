@@ -46,7 +46,7 @@ def has_arg(cls : type | GenericAlias, name : str) -> bool:
     try:
         get_arg(cls, name)
         return True
-    except GenericsError:
+    except GenericsError as e:
         return False
 
 
@@ -70,11 +70,10 @@ def get_arg(cls : GenericAlias, name : str) -> typing.TypeVar | type | GenericAl
     if isinstance(bound, (str, typing.ForwardRef)):
         return arg
     if bound is not None:
-        arg_origin = arg if isinstance(arg, type) else typing.get_origin(arg)
-        if arg_origin is None:
-            raise ValueError(f"{cls.__name__}.{name} type argument is not a generic type, got {arg}")
-        if not issubclass(arg_origin, bound):
-            raise GenericsError(f"{cls.__name__}.{name} type argument is not a subclass of its bound {bound}")
+        arg_origin = typing.get_origin(arg) or arg
+        bound_origin = typing.get_origin(bound) or bound
+        if not issubclass(arg_origin, bound_origin):
+            raise TypeError(f"{cls.__name__}.{name} type argument <{arg.__name__}> is not a subclass of its bound <{bound.__name__}>")
 
     return arg
 
@@ -84,7 +83,7 @@ def get_concrete_arg(cls : GenericAlias, name : str) -> type:
         raise GenericsError(f"Could not resolve {cls.__name__}.{name} type argument to a concrete type")
     origin = arg if isinstance(arg, type) else typing.get_origin(arg)
     if origin is None:
-        raise GenericsError(f"{cls.__name__}.{name} type argument is not a generic type, got {arg}")
+        raise GenericsError(f"{cls.__name__}.{name} type argument is not a generic type, got <{arg.__name__}>")
     return origin
 
 

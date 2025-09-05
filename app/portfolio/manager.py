@@ -12,7 +12,7 @@ from ..util.mixins import LoggableHierarchicalModel
 
 from .models.uid import Uid
 from .models.store.entity_store import EntityStore
-from .portfolio import Portfolio
+from .models.portfolio import Portfolio
 from .journal.session_manager import SessionManager
 from .journal.session import JournalSession
 

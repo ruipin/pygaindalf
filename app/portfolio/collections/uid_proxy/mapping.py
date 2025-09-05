@@ -41,11 +41,3 @@ class UidProxyMapping[K, V : Entity](MutableMapping[K,V], UidProxyCollection[V, 
     @override
     def __len__(self):
         return len(self._get_field())
-
-    @override
-    def __str__(self) -> str:
-        return str(self._get_field())
-
-    @override
-    def __repr__(self) -> str:
-        return f"<UidProxyMapping: {self._get_field()!r}>"

@@ -14,7 +14,7 @@ class TestJournalledMapping:
         jm = JournalledMapping(original)
         assert jm.edited is False
         assert jm["a"] == 1
-        assert jm._mapping is None
+        assert jm._container is None
         assert len(jm) == 2
 
     def test_setitem_triggers_copy_and_journal(self):
@@ -22,7 +22,7 @@ class TestJournalledMapping:
         jm = JournalledMapping(original)
         jm["a"] = 10
         assert jm.edited is True
-        assert jm._mapping is not None
+        assert jm._container is not None
         assert original["a"] == 1
         assert jm["a"] == 10
         assert len(jm._journal) == 1

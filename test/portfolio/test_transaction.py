@@ -8,7 +8,7 @@ import pytest
 from iso4217 import Currency
 
 from app.portfolio.models.instrument import Instrument
-from app.portfolio.models.transaction import Transaction, TransactionType
+from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 from app.portfolio.models.entity.entity_audit_log import EntityAuditType, EntityAuditLog
 
 
@@ -16,13 +16,7 @@ from app.portfolio.models.entity.entity_audit_log import EntityAuditType, Entity
 @pytest.mark.transaction
 class TestTransaction:
     def test_basic_initialization_sets_uid_namespace_and_audit(self):
-        inst = Instrument(
-            ticker="AAPL",
-            currency=Currency("USD"),
-        )
-
         tx = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
             quantity=Decimal("10"),
@@ -30,14 +24,9 @@ class TestTransaction:
             fees=Decimal("5"),
         )
 
-        # UID namespace encodes instrument name
-        assert tx.uid.namespace == f"Transaction-{inst.instance_name}"
+        assert tx.uid.namespace == f"Transaction"
         assert tx.uid.id == 1  # first transaction for this instrument namespace
         assert tx.instance_name == str(tx.uid)
-
-        # Instrument linkage via computed property
-        assert tx.instrument is inst
-        assert tx.instrument_uid == inst.uid
 
         # Audit basics
         assert tx.version == 1
@@ -53,21 +42,19 @@ class TestTransaction:
         )
 
         tx1 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 2),
             quantity=Decimal("5"),
             consideration=Decimal("750"),
         )
         tx2 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.SELL,
             date=datetime.date(2025, 1, 3),
             quantity=Decimal("2"),
             consideration=Decimal("320"),
         )
 
-        assert tx1.uid.namespace == tx2.uid.namespace == f"Transaction-MSFT"
+        assert tx1.uid.namespace == tx2.uid.namespace == f"Transaction"
         assert tx1.uid.id == 1
         assert tx2.uid.id == 2
 
@@ -81,7 +68,6 @@ class TestTransaction:
             currency=Currency("USD"),
         )
         tx1 = Transaction(
-            instrument_uid=inst.uid,
             type=TransactionType.BUY,
             date=datetime.date(2025, 2, 1),
             quantity=Decimal("3"),
@@ -104,7 +90,6 @@ class TestTransaction:
         assert entry_v1.what == EntityAuditType.CREATED
         if EntityAuditLog.TRACK_ENTITY_DIFF:
             assert entry_v1.diff == {
-                'instrument_uid': inst.uid,
                 'type': TransactionType.BUY,
                 'date': datetime.date(2025, 2, 1),
                 'quantity': Decimal("3"),
@@ -119,17 +104,3 @@ class TestTransaction:
             assert entry_v2.diff == {
                 'quantity': Decimal("4"),
             }
-
-    def test_validation_rejects_wrong_instrument_uid_namespace(self):
-        # Forge a UID with wrong namespace
-        from app.portfolio.models.uid import Uid
-        bad_uid = Uid(namespace="Wrong", id="ORCL")
-
-        with pytest.raises((ValueError, TypeError)):
-            Transaction(
-                instrument_uid=bad_uid,
-                type=TransactionType.BUY,
-                date=datetime.date(2025, 3, 1),
-                quantity=Decimal("1"),
-                consideration=Decimal("100"),
-            )

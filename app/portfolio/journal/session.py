@@ -92,7 +92,7 @@ class JournalSession(LoggableHierarchicalModel):
 
 
     # MARK: Entity Journals
-    _entity_journals : dict[Entity, EntityJournal] = PrivateAttr(default_factory=dict)
+    _entity_journals : dict[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
 
     @property
     def dirty(self) -> bool:
@@ -106,24 +106,24 @@ class JournalSession(LoggableHierarchicalModel):
             return None
 
         journal = EntityJournal(entity=entity)
-        self._entity_journals[entity] = journal
+        self._entity_journals[entity.uid] = journal
         return journal
 
-    def get_entity_journal(self, *, uid : Uid | None = None, entity: Entity | None = None) -> EntityJournal | None:
+    def get_entity_journal(self, entity: Entity) -> EntityJournal | None:
         if self.ended:
             raise RuntimeError("Cannot get an entity journal from an ended session.")
 
-        if uid is None and entity is None:
-            raise ValueError("Either 'uid' or 'entity' must be provided to get an entity journal.")
+        if entity.superseded:
+            return None
 
-        if entity is None and uid is not None:
-            entity = Entity.by_uid(uid)
-        if entity is None:
-            raise ValueError(f"No entity found with UID '{uid}' to create a journal.")
-
-        journal = self._entity_journals.get(entity, None)
+        journal = self._entity_journals.get(entity.uid, None)
         if journal is not None:
-            return journal
+            if journal.entity is not entity:
+                if not journal.entity.superseded:
+                    raise RuntimeError("Entity journal already exists for a different version of this entity. Use the latest version instead.")
+                del self._entity_journals[entity.uid]
+            else:
+                return journal
 
         return self._add_entity_journal(entity)
 

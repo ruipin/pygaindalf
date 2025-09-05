@@ -5,4 +5,4 @@
 from .collection import UidProxyCollection
 from .sequence   import UidProxySequence
 from .mapping    import UidProxyMapping
-from .set        import UidProxySet
+from .set        import *

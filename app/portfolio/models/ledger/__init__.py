@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-
-from .journalled import *
-from .uid_proxy import *
-from .ordered_view import *
+from .ledger import Ledger
+from .ledger_proxy import *
+from .ledger_uid_set import *

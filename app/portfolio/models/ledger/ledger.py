@@ -1,27 +1,26 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override, Any, overload, Iterable, TYPE_CHECKING
+import datetime
+
+from typing import override, Any, overload, TYPE_CHECKING, Iterator, Iterable
 from functools import cached_property
 from pydantic import Field, computed_field, field_validator
-from collections.abc import Sequence, MutableSequence
+from collections.abc import Set, MutableSet, Sequence
 
-from ..collections.uid_proxy.sequence import UidProxySequence
+from ...collections.uid_proxy import UidProxyOrderedViewSet, UidProxySequence
+from ...collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
 
-from .instrument import Instrument
-from .entity import AutomaticNamedEntity
-from .entity.instance_store import NamedInstanceStoreEntityMixin
-from .transaction import Transaction
+from ..instrument import Instrument
+from ..entity import AutomaticNamedEntity
+from ..entity.instance_store import NamedInstanceStoreEntityMixin
+from ..transaction import Transaction, OrderedViewFrozenTransactionUidSet, UidProxyOrderedViewTransactionSet
 
-from .uid import Uid
-
-
-# Specialize explicitly in order for type introspection to work
-class UidProxyTransactionSequence(UidProxySequence[Transaction]):
-    pass
+from ..uid import Uid
 
 
-class Ledger(MutableSequence[Transaction], NamedInstanceStoreEntityMixin, AutomaticNamedEntity):
+
+class Ledger(NamedInstanceStoreEntityMixin, AutomaticNamedEntity, MutableSet[Transaction]):
     # MARK: Instrument
     instrument_uid: Uid = Field(description="The financial instrument associated with this ledger, such as a stock, bond, or currency.")
 
@@ -40,37 +39,6 @@ class Ledger(MutableSequence[Transaction], NamedInstanceStoreEntityMixin, Automa
         if entity is None:
             raise ValueError(f"No instrument found for UID {self.instrument_uid}.")
         return entity
-
-
-    # MARK: Transactions
-    # Make type checkers believe that the transaction_uids tuple is mutable
-    if TYPE_CHECKING:
-        transaction_uids_ : tuple[Uid,...] = Field(default_factory=tuple, alias='transaction_uids')
-        @property
-        def transaction_uids(self) -> MutableSequence[Uid]: ...
-        @transaction_uids.setter
-        def ledgers(self, value : MutableSequence[Uid] | Sequence[Uid]) -> None: ...
-    else:
-        transaction_uids : tuple[Uid,...] = Field(default_factory=tuple, description="A list of transaction Uids associated with this ledger.")
-
-    @field_validator('transaction_uids', mode='before')
-    @classmethod
-    def _validate_transaction_uids(cls, value : Any):
-        if not isinstance(value, Sequence):
-            raise TypeError(f"Expected 'transaction_uids' to be a Sequence, got {type(value).__name__}.")
-
-        transaction_ns = Transaction.uid_namespace()
-        for uid in value:
-            if not isinstance(uid, Uid):
-                raise TypeError(f"Expected 'transaction_uids' elements to be Uid instances, got {type(uid).__name__}.")
-            if not uid.namespace.startswith(transaction_ns):
-                raise ValueError(f"Invalid transaction UID namespace: expected it to start with '{transaction_ns}', got '{uid.namespace}'.")
-
-        return value
-
-    @cached_property
-    def transactions(self) -> MutableSequence[Transaction]:
-        return UidProxyTransactionSequence(owner=self, field='transaction_uids')
 
 
 
@@ -118,46 +86,68 @@ class Ledger(MutableSequence[Transaction], NamedInstanceStoreEntityMixin, Automa
 
 
 
-    # MARK: MutableSequence ABC
-    @overload
-    def __getitem__(self, index: int) -> Transaction: ...
-    @overload
-    def __getitem__(self, index: slice) -> MutableSequence[Transaction]: ...
-    @override
-    def __getitem__(self, index) -> Transaction | MutableSequence[Transaction]:
-        return self.transactions[index]
+    # MARK: Transactions
+    # Make type checkers believe that the transaction_uids tuple is mutable
+    if TYPE_CHECKING:
+        transaction_uids_ : Iterable[Uid] = Field(default_factory=OrderedViewFrozenTransactionUidSet, alias='transaction_uids')
+        @property
+        def transaction_uids(self) -> OrderedViewSet[Uid]: ...
+        @transaction_uids.setter
+        def transaction_uids(self, value : MutableSet[Uid] | Set[Uid]) -> None: ...
+    else:
+        transaction_uids : OrderedViewFrozenTransactionUidSet = Field(default_factory=OrderedViewFrozenTransactionUidSet, description="A set of transaction Uids associated with this ledger.")
 
-    @overload
-    def __setitem__(self, index: int, value: Transaction) -> None: ...
-    @overload
-    def __setitem__(self, index: slice, value: Iterable[Transaction]) -> None: ...
-    @override
-    def __setitem__(self, index: int | slice, value: Transaction | Iterable[Transaction]) -> None:
-        self.transactions[index] = value # pyright: ignore[reportCallIssue, reportArgumentType] as the overloads make this type safe
+    @cached_property
+    def transactions(self) -> UidProxyOrderedViewTransactionSet:
+        return UidProxyOrderedViewTransactionSet(owner=self, field='transaction_uids')
 
-    @overload
-    def __delitem__(self, index: int) -> None: ...
-    @overload
-    def __delitem__(self, index: slice) -> None: ...
+
+    # MARK: Custom __getitem__
+    def __getitem__(self, index : int | Uid) -> Transaction:
+        if isinstance(index, int):
+            return self.transactions[index]
+
+        elif isinstance(index, Uid):
+            if index not in self.transaction_uids:
+                raise KeyError(f"Transaction with UID {index} not found in ledger")
+            if (transaction := Transaction.by_uid(index)) is None:
+                raise KeyError(f"Transaction with UID {index} not found")
+            return transaction
+
+        else:
+            raise KeyError(f"Index must be an int or Uid, got {type(index).__name__}")
+
+
+    # MARK: MutableSet ABC
     @override
-    def __delitem__(self, index: int | slice) -> None:
-        del self.transaction_uids[index]
+    def __contains__(self, value : object) -> bool:
+        if not isinstance(value, (Transaction, Uid)):
+            return False
+        return Transaction.narrow_to_uid(value) in self.transaction_uids
 
     @override
-    def insert(self, index: int, value: Transaction) -> None:
-        self.transaction_uids.insert(index, value.uid)
+    def add(self, value : Transaction | Uid) -> None:
+        self.transaction_uids.add(Transaction.narrow_to_uid(value))
 
     @override
-    def __len__(self) -> int:
+    def discard(self, value : Transaction | Uid) -> None:
+        self.transaction_uids.discard(Transaction.narrow_to_uid(value))
+
+    @override
+    def __iter__(self) -> Iterator[Transaction]: # pyright: ignore[reportIncompatibleMethodOverride] since we are overriding the pydantic.BaseModel iterator on purpose
+        # TODO: Wrap an ordered view
+        for uid in self.transaction_uids:
+            transaction = Transaction.by_uid(uid)
+            if transaction is None:
+                raise KeyError(f"Transaction with UID {uid} not found")
+            yield transaction
+
+    @override
+    def __len__(self):
         return len(self.transaction_uids)
 
-    @computed_field(description="The number of transactions in the ledger.")
     @property
     def length(self) -> int:
-        """
-        Returns the number of transactions in the ledger.
-        This is a computed property that provides the length of the transactions list.
-        """
         return len(self.transaction_uids)
 
     @override

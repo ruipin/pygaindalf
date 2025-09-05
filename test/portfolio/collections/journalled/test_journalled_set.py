@@ -23,14 +23,14 @@ class TestJournalledSet:
         assert js.edited is False
         assert 1 in js  # membership before edits
         assert len(js) == len(original)
-        assert js._set is None  # copy not yet made
+        assert js._container is None  # copy not yet made
 
     def test_add_triggers_copy_and_journal(self):
         original = {1, 2}
         js = JournalledSet(original)
         js.add(3)
         assert js.edited is True
-        assert js._set is not None
+        assert js._container is not None
         assert 3 in js
         assert 3 not in original  # original unchanged
         assert len(js._journal) == 1
@@ -42,7 +42,7 @@ class TestJournalledSet:
         js = JournalledSet(original)
         js.add(2)  # already present
         assert js.edited is False  # no copy-on-write
-        assert js._set is None
+        assert js._container is None
         assert len(js._journal) == 0
 
     def test_discard_triggers_copy_and_journal(self):
@@ -50,7 +50,7 @@ class TestJournalledSet:
         js = JournalledSet(original)
         js.discard(2)
         assert js.edited is True
-        assert js._set is not None
+        assert js._container is not None
         assert 2 not in js
         assert 2 in original  # original unchanged
         assert len(js._journal) == 1
@@ -62,7 +62,7 @@ class TestJournalledSet:
         js = JournalledSet(original)
         js.discard(5)  # not present
         assert js.edited is False
-        assert js._set is None
+        assert js._container is None
         assert len(js._journal) == 0
 
     def test_multiple_edits_order(self):
@@ -77,8 +77,8 @@ class TestJournalledSet:
             JournalledSetEditType.DISCARD,
             JournalledSetEditType.ADD,
         ]
-        assert js._set is not None
-        assert set(js._set) == {2, 3, 4}
+        assert js._container is not None
+        assert set(js._container) == {2, 3, 4}
         assert original == {1, 2}
 
     def test_iteration_reflects_changes_and_original_unchanged(self):
@@ -87,7 +87,7 @@ class TestJournalledSet:
         js.add(40)
         js.discard(20)
         assert js.edited is True
-        assert js._set is not None
+        assert js._container is not None
         assert set(iter(js)) == {10, 30, 40}
         # Original set not modified
         assert original == {10, 20, 30}
