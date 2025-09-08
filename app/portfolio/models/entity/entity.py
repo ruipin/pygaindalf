@@ -72,7 +72,7 @@ class Entity(LoggableHierarchicalModel):
 
     @model_validator(mode='before')
     @classmethod
-    def _validate_uid_before(cls, data: Any, info: ValidationInfo) -> 'Entity':
+    def _validate_uid_before(cls, data: Any, info: ValidationInfo) -> Self:
         if (uid := data.get('uid', None)) is None:
             uid = {}
 
@@ -90,7 +90,7 @@ class Entity(LoggableHierarchicalModel):
         return data
 
     @model_validator(mode='after')
-    def _validate_uid_after(self, info: ValidationInfo) -> 'Entity':
+    def _validate_uid_after(self, info: ValidationInfo) -> Self:
         # Get a reference to the UID storage
         entity_store = self.__class__._get_entity_store()
 
@@ -106,14 +106,14 @@ class Entity(LoggableHierarchicalModel):
         return self
 
     @classmethod
-    def _get_entity_store(cls) -> 'EntityStore':
+    def _get_entity_store(cls) -> EntityStore:
         from ..store.entity_store import EntityStore
         if (uid_storage := EntityStore.get_global_store()) is None:
             raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
         return uid_storage
 
     @classmethod
-    def by_uid[T : 'Entity'](cls : type[T], uid: Uid) -> T | None:
+    def by_uid[T : Entity](cls : type[T], uid: Uid) -> T | None:
         result = cls._get_entity_store().get(uid, None)
         if result is None:
             return None
@@ -122,7 +122,7 @@ class Entity(LoggableHierarchicalModel):
         return result
 
     @classmethod
-    def narrow_to_uid[T : 'Entity'](cls : type[T], value : T | Uid) -> Uid:
+    def narrow_to_uid[T : Entity](cls : type[T], value : T | Uid) -> Uid:
         if isinstance(value, Uid):
             return value
         elif isinstance(value, cls):
@@ -187,7 +187,7 @@ class Entity(LoggableHierarchicalModel):
         if self.superseded:
             self.entity_log.on_delete(self, who='system', why='__del__')
 
-    def is_newer_version_than(self, other : 'Entity') -> bool:
+    def is_newer_version_than(self, other : Entity) -> bool:
         if not isinstance(other, Entity):
             raise TypeError(f"Expected Entity, got {type(other)}")
         if self.uid != other.uid:
@@ -203,7 +203,7 @@ class Entity(LoggableHierarchicalModel):
         return self.entity_log.version > self.version
 
     @property
-    def superseding[T : 'Entity'](self : T) -> T | None:
+    def superseding[T : Entity](self : T) -> T | None:
         if not self.superseded:
             return self
         return self.__class__.by_uid(self.uid)
@@ -261,17 +261,17 @@ class Entity(LoggableHierarchicalModel):
 
     # MARK: Journal
     @property
-    def journal(self) -> 'EntityJournal':
+    def journal(self) -> EntityJournal:
         result = self.session.get_entity_journal(entity=self)
         if result is None:
             raise RuntimeError("Entity does not have an associated journal.")
         return result
 
-    def get_journal(self) -> 'EntityJournal | None':
+    def get_journal(self) -> EntityJournal | None:
         return self.session.get_entity_journal(entity=self)
 
     @cached_property
-    def session_manager(self) -> 'SessionManager':
+    def session_manager(self) -> SessionManager:
         parent = self.instance_parent
 
         from ...journal.session_manager import HasSessionManagerProtocol
@@ -281,7 +281,7 @@ class Entity(LoggableHierarchicalModel):
         return parent.session_manager
 
     @property
-    def session(self) -> 'JournalSession':
+    def session(self) -> JournalSession:
         session = self.session_manager.session
         if session is None:
             raise RuntimeError("No active session found in the session manager.")

@@ -34,7 +34,7 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
     def _get_container(self) -> Collection[T]:
         raise NotImplementedError("Subclasses must implement _get_container method.")
 
-    def _sort_key(self, item : T) -> 'SupportsRichComparison':
+    def _sort_key(self, item : T) -> SupportsRichComparison:
         return typing_cast('SupportsRichComparison', item)
 
     @property
@@ -42,7 +42,7 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
         return False
 
     @instance_lru_cache
-    def sort(self, key : Callable[[T], 'SupportsRichComparison'] | None = None, reverse : bool | None = None) -> Sequence[T]:
+    def sort(self, key : Callable[[T], SupportsRichComparison] | None = None, reverse : bool | None = None) -> Sequence[T]:
         if key is None:
             key = self._sort_key
         if reverse is None:
@@ -126,6 +126,6 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
 
     # MARK: Journalled Ordered View
     @classmethod
-    def get_journalled_type(cls) -> 'type[JournalledOrderedViewSet]':
+    def get_journalled_type(cls) -> type[JournalledOrderedViewSet]:
         from ..journalled.set.ordered_view_set import JournalledOrderedViewSet
         return JournalledOrderedViewSet

@@ -22,14 +22,14 @@ REVERSE_LEVELS : dict[int, str] = {v: k for k, v in LEVELS.items()}
 
 
 class LoggingLevel:
-    CRITICAL : 'LoggingLevel'
-    ERROR    : 'LoggingLevel'
-    WARNING  : 'LoggingLevel'
-    INFO     : 'LoggingLevel'
-    DEBUG    : 'LoggingLevel'
-    INFO     : 'LoggingLevel'
-    NOTSET   : 'LoggingLevel'
-    OFF      : 'LoggingLevel'
+    CRITICAL : LoggingLevel
+    ERROR    : LoggingLevel
+    WARNING  : LoggingLevel
+    INFO     : LoggingLevel
+    DEBUG    : LoggingLevel
+    INFO     : LoggingLevel
+    NOTSET   : LoggingLevel
+    OFF      : LoggingLevel
 
     def __init__(self, value: int):
         if not isinstance(value, int):
@@ -80,12 +80,11 @@ class LoggingLevel:
         return core_schema.with_info_after_validator_function(
             function= cls.validate,
             schema= core_schema.union_schema([core_schema.int_schema(), core_schema.str_schema(), core_schema.bool_schema(), core_schema.none_schema()]),
-            field_name=handler.field_name,
             serialization=core_schema.plain_serializer_function_ser_schema(cls.serialize, info_arg=True),
         )
 
     @classmethod
-    def validate(cls, value : Any, info : core_schema.ValidationInfo) -> 'LoggingLevel':
+    def validate(cls, value : Any, info : core_schema.ValidationInfo) -> LoggingLevel:
         # Handle 'None' value as a special case - rely on field default value
         if value is None:
             raise PydanticUseDefault()

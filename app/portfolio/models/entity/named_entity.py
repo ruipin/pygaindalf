@@ -30,7 +30,7 @@ class NamedEntity(Entity, NamedMixinMinimal, metaclass=ABCMeta):
         raise NotImplementedError(f"{cls.__name__} must implement the 'calculate_instance_name_from_dict' method to generate a name for the instance.")
 
     @classmethod
-    def calculate_instance_name_from_instance(cls, instance : 'Entity') -> str:
+    def calculate_instance_name_from_instance(cls, instance : Entity) -> str:
         if not isinstance(instance, NamedProtocol):
             raise TypeError(f"Expected instance of {cls.__name__}, got {type(instance).__name__}.")
         if (name := instance.instance_name) is not None:

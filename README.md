@@ -77,7 +77,7 @@ Expect rapid development, breaking changes, and ongoing improvements. This READM
 
 ### 3.1. Requirements
 
-- Python 3.13 or later
+- Python 3.14 or later
 - [uv](https://github.com/astral-sh/uv) (fast Python package installer)
 - [graphviz](https://graphviz.org) (for rendering class inheritance diagrams in the documentation)
 

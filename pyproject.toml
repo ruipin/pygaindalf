@@ -8,12 +8,12 @@ description = "Add your description here"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = "LICENSE"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "frozendict>=2.4.6",
     "iso4217>=1.14.20250512",
     "ordered-set>=4.1.0",
-    "pydantic>=2.11.7",
+    "pydantic>=2.12.0a1",
     "pyyaml>=6.0.2",
     "requests>=2.32.4",
     "requests-cache>=1.2.1",

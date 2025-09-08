@@ -48,12 +48,11 @@ class ConfigFilePath:
         return core_schema.with_info_after_validator_function(
             function= cls._pydantic_validate,
             schema= core_schema.union_schema([core_schema.str_schema(), core_schema.is_instance_schema(cls)]),
-            field_name=handler.field_name,
             serialization=core_schema.plain_serializer_function_ser_schema(cls._pydantic_serialize, info_arg=True),
         )
 
     @classmethod
-    def _pydantic_validate(cls, value : Any, info : core_schema.ValidationInfo) -> 'ConfigFilePath':
+    def _pydantic_validate(cls, value : Any, info : core_schema.ValidationInfo) -> ConfigFilePath:
         if isinstance(value, cls):
             return value
         return cls(value)

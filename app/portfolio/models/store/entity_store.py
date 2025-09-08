@@ -26,16 +26,16 @@ ENTITY_AUDIT_LOG_STORE_WEAKREF = True
 @callguard_class()
 class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
     # MARK: Global Store
-    _global_store : 'ClassVar[EntityStore | None]' = None
+    _global_store : ClassVar[EntityStore | None] = None
 
     @staticmethod
-    def get_global_store() -> 'EntityStore':
+    def get_global_store() -> EntityStore:
         if EntityStore._global_store is None:
             raise ValueError("Global EntityStore is not set. Please create an EntityStore instance and call make_global_store() on it before accessing the global store.")
         return EntityStore._global_store
 
     @staticmethod
-    def get_or_create_global_store() -> 'EntityStore':
+    def get_or_create_global_store() -> EntityStore:
         if EntityStore._global_store is None:
             store = EntityStore()
             store.make_global_store()
@@ -82,9 +82,9 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
 
     # MARK: Name Stores
-    _string_uid_mappings : MutableMapping[str, 'StringUidMapping']
+    _string_uid_mappings : MutableMapping[str, StringUidMapping]
 
-    def get_string_uid_mapping(self, namespace : str) -> 'StringUidMapping':
+    def get_string_uid_mapping(self, namespace : str) -> StringUidMapping:
         from .string_uid_mapping import StringUidMapping
         if (store := self._string_uid_mappings.get(namespace, None)) is None:
             store = self._string_uid_mappings[namespace] = StringUidMapping(instance_parent=self)

@@ -27,7 +27,7 @@ class OrderedViewFrozenLedgerUidSet(OrderedViewFrozenSet[Uid]):
         return JournalledOrderedViewLedgerUidSet
 
     @override
-    def _sort_key(self, item : Uid) -> 'SupportsRichComparison':
+    def _sort_key(self, item : Uid) -> SupportsRichComparison:
         ledger = Ledger.by_uid(item)
         if ledger is None:
             raise ValueError(f"No ledger found for UID {item}.")

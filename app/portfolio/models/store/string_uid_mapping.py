@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 @callguard_class()
 class StringUidMapping(MutableMapping[str, Uid], LoggableHierarchicalMixin):
     # MARK: Initialization
-    def __init__(self, /, *args : Mapping[str, Entity] | Mapping[str, Uid], instance_parent : 'EntityStore | None' = None):
+    def __init__(self, /, *args : Mapping[str, Entity] | Mapping[str, Uid], instance_parent : EntityStore | None = None):
         super().__init__(instance_parent=instance_parent)
 
         self._store = {}

@@ -189,10 +189,10 @@ class EntityJournal(LoggableHierarchicalModel):
         self._call_entity_hook('field_edit', collection.instance_name)
 
     # MARK: Propagation
-    _dirty_children : 'builtins.set[EntityJournal]' = PrivateAttr(default_factory=builtins.set)
+    _dirty_children : builtins.set[EntityJournal] = PrivateAttr(default_factory=builtins.set)
     _propagated_has_updates : bool = PrivateAttr(default=False)
 
-    def _update_child_dirty_state(self, child : 'EntityJournal', dirty : bool | None = None):
+    def _update_child_dirty_state(self, child : EntityJournal, dirty : bool | None = None):
         if dirty is None:
             dirty = child.dirty
 
@@ -234,7 +234,7 @@ class EntityJournal(LoggableHierarchicalModel):
     # MARK: Commit
     _new_entity : Entity | None = PrivateAttr(default=None)
 
-    def flatten_hierarchy(self, journals : 'OrderedSet[EntityJournal]') -> None:
+    def flatten_hierarchy(self, journals : OrderedSet[EntityJournal]) -> None:
         """
         Return a flat ordered set of all journals in this hierarchy
         """

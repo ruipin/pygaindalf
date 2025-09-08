@@ -35,7 +35,7 @@ class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
         return cls._get_entity_store().get_string_uid_mapping(f"{cls.__name__}_BY_TICKER")
 
     @classmethod
-    def instance(cls, isin : str | None = None, ticker: str | None = None) -> 'Instrument | None':
+    def instance(cls, isin : str | None = None, ticker: str | None = None) -> Instrument | None:
         if not isinstance(isin, (str, type(None))) or not isinstance(ticker, (str, type(None))):
             raise TypeError(f"Expected 'isin' and 'ticker' to be str or None, got {type(isin).__name__} and {type(ticker).__name__}.")
         elif not isin and not ticker:
@@ -72,7 +72,7 @@ class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
 
     @classmethod
     @override
-    def _instance_store_search(cls, **kwargs) -> 'Instrument | None':
+    def _instance_store_search(cls, **kwargs) -> Instrument | None:
         isin = kwargs.get('isin', None)
         ticker = kwargs.get('ticker', None)
         return cls.instance(isin=isin, ticker=ticker)

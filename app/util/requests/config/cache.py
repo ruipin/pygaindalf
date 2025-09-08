@@ -5,7 +5,7 @@ import os
 
 from enum import Enum, StrEnum
 from pydantic import Field, PositiveInt, model_validator
-from typing import Any, override
+from typing import Any, override, Self
 
 from requests_ratelimiter import Duration
 
@@ -61,7 +61,7 @@ class RequestCacheConfig(BaseConfigModel):
     ignored_parameters : list[str]       = Field(default_factory=list                    , description='List of user-defined parameters to ignore in cache requests.')
 
     @model_validator(mode='after')
-    def validate_filetype(self) -> 'RequestCacheConfig':
+    def validate_filetype(self) -> Self:
         """
         Validate the filetype is compatible with the backend.
         """

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 class JournalledOrderedViewSet[T : Any, T_Mutable : OrderedViewSet, T_Immutable : OrderedViewFrozenSet](GenericJournalledSet[T, T_Immutable, T_Mutable, T_Immutable]):
     # MARK: OrderedViewSet
-    def sort(self, key : Callable[[T], 'SupportsRichComparison'] | None = None, reverse : bool | None = None) -> Sequence[T]:
+    def sort(self, key : Callable[[T], SupportsRichComparison] | None = None, reverse : bool | None = None) -> Sequence[T]:
         return self._get_container().sort(key=key, reverse=reverse)
 
     @property

@@ -27,7 +27,7 @@ class OrderedViewFrozenTransactionUidSet(OrderedViewFrozenSet[Uid]):
         return JournalledOrderedViewTransactionUidSet
 
     @override
-    def _sort_key(self, item : Uid) -> 'SupportsRichComparison':
+    def _sort_key(self, item : Uid) -> SupportsRichComparison:
         txn = Transaction.by_uid(item)
         if txn is None:
             raise ValueError(f"No transaction found for UID {item}.")

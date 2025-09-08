@@ -66,7 +66,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
     _entries : list[EntityAudit]
 
     @classmethod
-    def _get_entity_store(cls) -> 'EntityStore':
+    def _get_entity_store(cls) -> EntityStore:
         from ..store.entity_store import EntityStore
         if (uid_storage := EntityStore.get_global_store()) is None:
             raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
@@ -86,11 +86,11 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             self._entries = []
 
     @classmethod
-    def from_entity(cls, entity: 'Entity') -> 'EntityAuditLog':
+    def from_entity(cls, entity: Entity) -> EntityAuditLog:
         return cls(entity.uid)
 
     @property
-    def entity(self) -> 'Entity | None':
+    def entity(self) -> Entity | None:
         from .entity import Entity
         return Entity.by_uid(self.entity_uid)
 
@@ -103,7 +103,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         return f"Audit@{str(self.entity_uid)}"
 
     @property
-    def instance_parent(self) -> 'Entity | None':
+    def instance_parent(self) -> Entity | None:
         """
         Returns the parent entity of this audit log, if it exists.
         If the entity is not set, returns None.
@@ -145,7 +145,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             raise ValueError("Cannot add a DELETED entry to an entity that does not exist. The entity must be created first.")
         self._entries.append(entry)
 
-    def _diff(self, old_entity: 'Entity | None', new_entity: 'Entity | None') -> dict[str, Any] | None:
+    def _diff(self, old_entity: Entity | None, new_entity: Entity | None) -> dict[str, Any] | None:
         """
         Returns a dictionary containing the differences between the old and new entities.
         This is used to track changes made to the entity during an update action.
@@ -183,7 +183,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
                 diff[key] = new_value
         return diff
 
-    def on_create(self, entity: 'Entity') -> None:
+    def on_create(self, entity: Entity) -> None:
         if entity.uid != self.entity_uid:
             raise ValueError(f"Entity UID {entity.uid} does not match the audit log's entity UID {self.entity_uid}.")
 
@@ -208,7 +208,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             version=entity.version,
         )
 
-    def on_delete(self, entity: 'Entity', who : str | None = None, why : str | None = None) -> None:
+    def on_delete(self, entity: Entity, who : str | None = None, why : str | None = None) -> None:
         if entity.uid != self.entity_uid:
             raise ValueError(f"Entity UID {entity.uid} does not match the audit log's entity UID {self.entity_uid}.")
         if entity.version < self.version:

@@ -59,7 +59,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         return concrete_cls.model_validate(data)
 
     @classmethod
-    def get_component_class_for_package(cls, package) -> type['ComponentSubclassMeta']:
+    def get_component_class_for_package(cls, package) -> type[ComponentSubclassMeta]:
         # Import the package
         root_path = cls.package_root
         rel_path = f'.{package}'
@@ -85,7 +85,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         return component_cls
 
     @property
-    def component_class(self) -> type['ComponentSubclassMeta']:
+    def component_class(self) -> type[ComponentSubclassMeta]:
         return self.get_component_class_for_package(self.package)
 
     @classproperty

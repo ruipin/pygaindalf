@@ -93,7 +93,7 @@ class Uid:
 
 # MARK: Incrementing Uid Factory
 class IncrementingUidFactory:
-    _instance : ClassVar['IncrementingUidFactory']
+    _instance : ClassVar[IncrementingUidFactory]
     counters : dict[str, int]
 
     def __new__(cls):

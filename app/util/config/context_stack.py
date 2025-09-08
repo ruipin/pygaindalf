@@ -11,20 +11,18 @@ from contextvars import ContextVar, Token
 from pydantic import BaseModel
 
 
-CONFIG_CONTEXT = ContextVar['ContextStack']('config_context')
-
 
 @dataclass
 class ContextStack:
     type CurrentType = dict[str, Any] | BaseModel
 
     name : str | None = None
-    parent : 'ContextStack | None' = None
+    parent : ContextStack | None = None
     current : CurrentType | None = None
     token : Token | None = None
 
     @classmethod
-    def push(cls, current: CurrentType, name : str | None = None) -> 'ContextStack':
+    def push(cls, current: CurrentType, name : str | None = None) -> ContextStack:
         """
         Push a new context onto the stack.
         """
@@ -49,7 +47,7 @@ class ContextStack:
         CONFIG_CONTEXT.reset(current.token)
 
     @classmethod
-    def get(cls) -> 'ContextStack | None':
+    def get(cls) -> ContextStack | None:
         """
         Get the current context from the stack.
         If the stack is empty, return None.
@@ -57,7 +55,7 @@ class ContextStack:
         return CONFIG_CONTEXT.get(None)
 
     @classmethod
-    def iterate(cls, skip : int = 0) -> 'Generator[ContextStack]':
+    def iterate(cls, skip : int = 0) -> Generator[ContextStack]:
         """
         Iterate over the current context and all parent contexts.
         """
@@ -139,3 +137,5 @@ class ContextStack:
             yield context
         finally:
             context.name = old_name
+
+CONFIG_CONTEXT = ContextVar[ContextStack]('config_context')

@@ -15,7 +15,7 @@ type CallguardWrappedDecorator[T : object, **P, R] = Callable[[CallguardWrapped[
 
 class CallguardWrappedDecoratorFactory[T : object, **P, R](Protocol):
     @classmethod
-    def __call__(cls, **options : 'Unpack[CallguardOptions]') -> CallguardWrappedDecorator[T,P,R]: ...
+    def __call__(cls, **options : Unpack[CallguardOptions]) -> CallguardWrappedDecorator[T,P,R]: ...
 
 
 # MARK: Filter
@@ -44,7 +44,7 @@ class CallguardHandlerInfo[T : object, **P, R]:
     callee_self : object
     caller_module : str
     callee_module : str
-    default_checker : 'Callable[[CallguardHandlerInfo], bool]'
+    default_checker : Callable[[CallguardHandlerInfo], bool]
     exception_class : type[Exception]
 
 

@@ -80,7 +80,7 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
 
         name = info.field_name
         if name is None:
-            cls.log.warning("Field name is None, cannot propagate context")
+            #cls.log.warning("Field name is None, cannot propagate context") # TODO: This seems to have broken in pydantic 2.12.0a1
             return handler(value)
 
         # Create a new context with the current value

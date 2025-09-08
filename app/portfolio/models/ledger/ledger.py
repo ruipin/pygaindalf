@@ -71,7 +71,7 @@ class Ledger(NamedInstanceStoreEntityMixin, AutomaticNamedEntity, MutableSet[Tra
         return f"{cls.__name__}@{instrument_name}"
 
     @classmethod
-    def by_instrument(cls, instrument: Instrument) -> 'Ledger | None':
+    def by_instrument(cls, instrument: Instrument) -> Ledger | None:
         """
         Returns the ledger instance associated with the given instrument.
         If no ledger exists for the instrument, returns None.

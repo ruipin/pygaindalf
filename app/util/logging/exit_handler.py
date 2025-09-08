@@ -55,7 +55,7 @@ class ExitHandler(logging.Handler):
         logging.shutdown()
 
 
-    def __init__(self, manager : 'manager.LoggingManager', *args, **kwargs):
+    def __init__(self, manager : manager.LoggingManager, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.manager = manager
