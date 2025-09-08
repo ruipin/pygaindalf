@@ -5,8 +5,9 @@ import pytest
 
 from iso4217 import Currency
 
-from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.entity.entity_audit_log import EntityAuditType, EntityAuditLog
+
 
 
 @pytest.mark.portfolio

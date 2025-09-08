@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import typing, types, itertools
+import typing, types, annotationlib
 
 
 # MARK: Definitions
@@ -26,14 +26,15 @@ def get_original_bases(cls : type | GenericAlias) -> tuple[typing.Any, ...]:
 def get_arg_info(cls : type | GenericAlias, name : str) -> tuple[int, typing.TypeVar]:
     bases = get_original_bases(cls)
     for base in bases:
-        origin = typing.get_origin(base)
+        origin = typing.get_origin(base) or base
+        args = typing.get_args(base)
         if origin is typing.Generic:
             generic = base
             break
     else:
         raise GenericsError(f"{cls.__name__} is not a generic class")
-
     args = typing.get_args(generic)
+
     for index, arg in enumerate(args):
         if arg.__name__ == name:
             return (index, arg)
@@ -55,7 +56,9 @@ def has_arg(cls : type | GenericAlias, name : str) -> bool:
 def get_arg(cls : GenericAlias, name : str) -> typing.TypeVar | type | GenericAlias:
     # Get index and TypeVar for the named generic argument
     (index, generic) = get_arg_info(cls, name)
-    bound = generic.__bound__
+    if generic is None:
+        raise RuntimeError(f"Could not find generic argument {name} in {cls.__name__}")
+    bound = annotationlib.call_evaluate_function(generic.evaluate_bound, format=annotationlib.Format.FORWARDREF) if generic.evaluate_bound else None
 
     # Get the actual type argument at that index
     args = typing.get_args(cls)
@@ -97,12 +100,13 @@ def get_bases_between[T : type](cls : T, parent : T, result : list[T] | None = N
 
     bases = get_original_bases(cls)
     for base in bases:
-        origin = typing.get_origin(base)
+        origin = typing.get_origin(base) or base
         if origin is None:
             continue
 
         if origin is parent:
-            result.append(base)
+            if origin is not base:
+                result.append(base)
             return result
 
         if issubclass(origin, parent):

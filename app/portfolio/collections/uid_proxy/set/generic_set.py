@@ -5,29 +5,17 @@ from typing import TYPE_CHECKING, override, Iterator
 from collections.abc import Set, MutableSet
 
 from ....models.uid import Uid
-from ..collection import UidProxyCollection
+from ..collection import UidProxyCollection, UidProxyFrozenCollection
 
 from ....models.entity import Entity
 
 
-class GenericUidProxySet[T : Entity, T_Collection : Set[Uid], T_Mut_Collection : MutableSet[Uid]](MutableSet[T], UidProxyCollection[T, T_Collection, T_Mut_Collection]):
+class GenericUidProxyFrozenSet[T : Entity, T_Collection : Set[Uid]](Set[T], UidProxyFrozenCollection[T, T_Collection]):
     @override
     def __contains__(self, value : object) -> bool:
         if isinstance(value, self.get_concrete_proxy_type()):
             return value.uid in self._get_field()
         return False
-
-    @override
-    def add(self, value : T) -> None:
-        self._get_mut_field().add(value.uid)
-
-    @override
-    def discard(self, value : T) -> None:
-        self._get_mut_field().discard(value.uid)
-
-    @override
-    def clear(self) -> None:
-        self._get_mut_field().clear()
 
     @override
     def __iter__(self) -> Iterator[T]:
@@ -42,3 +30,17 @@ class GenericUidProxySet[T : Entity, T_Collection : Set[Uid], T_Mut_Collection :
     @override
     def __len__(self):
         return len(self._get_field())
+
+
+class GenericUidProxySet[T : Entity, T_Collection : Set[Uid], T_Mut_Collection : MutableSet[Uid]](MutableSet[T], GenericUidProxyFrozenSet[T, T_Collection], UidProxyCollection[T, T_Collection, T_Mut_Collection]):
+    @override
+    def add(self, value : T) -> None:
+        self._get_mut_field().add(value.uid)
+
+    @override
+    def discard(self, value : T) -> None:
+        self._get_mut_field().discard(value.uid)
+
+    @override
+    def clear(self) -> None:
+        self._get_mut_field().clear()

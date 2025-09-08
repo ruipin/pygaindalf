@@ -3,7 +3,7 @@
 
 import datetime
 
-from typing import override, Iterable, Any, TYPE_CHECKING
+from typing import override, Iterable, Any, TYPE_CHECKING, Self
 from collections.abc import Set, MutableSet
 
 from ...collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class OrderedViewFrozenLedgerUidSet(OrderedViewFrozenSet[Uid]):
     @classmethod
     @override
-    def get_mutable_type(cls) -> type[MutableSet[Uid]]:
+    def get_mutable_type(cls, source : type[OrderedViewFrozenSet] | None = None) -> type[MutableSet[Uid]]:
         return OrderedViewLedgerUidSet
 
     @classmethod
@@ -49,7 +49,7 @@ class OrderedViewFrozenLedgerUidSet(OrderedViewFrozenSet[Uid]):
 class OrderedViewLedgerUidSet(OrderedViewFrozenLedgerUidSet, OrderedViewSet[Uid]):
     @classmethod
     @override
-    def get_immutable_type(cls) -> type[Set[Uid]]:
+    def get_immutable_type(cls, source : type[OrderedViewSet] | None = None) -> type[Set[Uid]]:
         return OrderedViewFrozenLedgerUidSet
 
 

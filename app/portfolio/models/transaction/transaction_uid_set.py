@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class OrderedViewFrozenTransactionUidSet(OrderedViewFrozenSet[Uid]):
     @classmethod
     @override
-    def get_mutable_type(cls) -> type[MutableSet[Uid]]:
+    def get_mutable_type(cls, source : type[OrderedViewFrozenSet] | None = None) -> type[MutableSet[Uid]]:
         return OrderedViewTransactionUidSet
 
     @classmethod
@@ -49,7 +49,7 @@ class OrderedViewFrozenTransactionUidSet(OrderedViewFrozenSet[Uid]):
 class OrderedViewTransactionUidSet(OrderedViewFrozenTransactionUidSet, OrderedViewSet[Uid]):
     @classmethod
     @override
-    def get_immutable_type(cls) -> type[Set[Uid]]:
+    def get_immutable_type(cls, source : type[OrderedViewSet] | None = None) -> type[Set[Uid]]:
         return OrderedViewFrozenTransactionUidSet
 
 

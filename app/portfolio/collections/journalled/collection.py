@@ -14,6 +14,7 @@ from ....util.callguard import callguard_class
 from .protocols import JournalledCollectionHooksProtocol
 
 
+# TODO:
 #@callguard_class()
 class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : Collection, T_Immutable : Collection, T_Journal : object](HierarchicalNamedMixin, metaclass=ABCMeta):
     # MARK: Generics

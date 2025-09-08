@@ -5,36 +5,28 @@ import datetime
 import weakref
 
 from typing import override, Any
-from pydantic import Field, model_validator, ValidationInfo, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator
 
 from decimal import Decimal
-
-from enum import StrEnum
 
 from ..uid import Uid
 
 from ..entity import IncrementingUidEntity
-from ..instrument import Instrument
+from ..instrument.instrument import Instrument
+
+from .transaction_journal import TransactionJournal
+from .transaction_type import TransactionType
 
 
-class TransactionType(StrEnum):
-    # TODO: We might want to subclass transaction types for more specific behavior, e.g. AcquisitionTransaction vs DisposalTransaction ?
-    BUY      = "buy"
-    SELL     = "sell"
-    DIVIDEND = "dividend"
-    INTEREST = "interest"
-    FEE      = "fee"
 
+class Transaction(IncrementingUidEntity[TransactionJournal]):
+    @classmethod
     @override
-    def __str__(self) -> str:
-        return self.value
-
-    @override
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}.{self.name}"
+    def get_journal_class(cls) -> type[TransactionJournal]:
+        return TransactionJournal
 
 
-class Transaction(IncrementingUidEntity):
+    # MARK: Fields
     type           : TransactionType = Field(description="The type of transaction.")
     date           : datetime.date   = Field(description="The date of the transaction.")
     quantity       : Decimal         = Field(description="The quantity involved in the transaction.")
@@ -68,25 +60,3 @@ class Transaction(IncrementingUidEntity):
             raise ValueError(f"Transaction.instance_parent must be a Ledger, got {type(value).__name__}.")
 
         return value
-
-
-    # MARK: Uid
-    #@classmethod
-    #@override
-    #def uid_namespace(cls, data : dict[str, Any] | None = None) -> str:
-    #    """
-    #    Returns the namespace for the UID.
-    #    This can be overridden in subclasses to provide a custom namespace.
-    #    """
-    #    core_uid_namespace = super().uid_namespace(data)
-    #    if data is None:
-    #        return core_uid_namespace
-
-    #    if (instrument_uid := data.get('instrument_uid', None)) is None:
-    #        raise ValueError(f"{cls.__name__}.uid_namespace requires 'instrument_uid' in data to generate a UID namespace.")
-
-    #    instrument = Instrument.by_uid(instrument_uid)
-    #    if instrument is None:
-    #        raise ValueError(f"{cls.__name__}.uid_namespace requires 'instrument_uid' to correspond to a valid Instrument to generate a UID namespace.")
-
-    #    return f"{core_uid_namespace}-{instrument.instance_name}"

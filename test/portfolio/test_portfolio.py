@@ -6,7 +6,7 @@ from iso4217 import Currency
 
 from app.portfolio.manager import PortfolioManager
 from app.portfolio.models.portfolio import Portfolio
-from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
 from app.util.helpers.frozendict import frozendict
 
@@ -24,7 +24,7 @@ def portfolio(portfolio_manager : PortfolioManager) -> Portfolio:
 
 @pytest.mark.portfolio
 class TestPortfolio:
-    def test_basic_initialization_and_audit(self, portfolio : Portfolio):
+    def test_basic_initialization_and_audit(self, portfolio: Portfolio):
         p = portfolio
         assert p.uid.namespace == "Portfolio"
         assert p.uid.id == 1
@@ -34,6 +34,7 @@ class TestPortfolio:
         assert p.entity_log.exists is True
         assert p.entity_log.next_version == 2
         assert p.ledgers == set()
+        assert len(p.ledgers) == 0
 
     def test_session_manager_cached_property(self, portfolio_manager : PortfolioManager, portfolio : Portfolio):
         p = portfolio

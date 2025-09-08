@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from iso4217 import Currency
 
-from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
 from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 

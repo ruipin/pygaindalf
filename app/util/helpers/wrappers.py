@@ -80,11 +80,19 @@ class BeforeAttributeCheckDecorator[T : object, **P, R](BeforeDecorator[Concaten
 
         if isinstance(attr, str):
             if getattr(target, attr, None) != desired:
-                raise exception(f"{message or f"Attribute '{attr}' must be {desired}"} when calling {target.__class__.__name__}.{wrapped.__name__} on {target!s}")
+                try:
+                    target_str = str(target)
+                except:
+                    target_str = '<str() raised exception>'
+                raise exception(f"{message or f"Attribute '{attr}' must be {desired}"} when calling {target.__class__.__name__}.{wrapped.__name__} on {target_str}")
         else:
             for a, d in zip(attr, desired):
+                try:
+                    target_str = str(target)
+                except:
+                    target_str = '<str() raised exception>'
                 if getattr(target, a, None) != d:
-                    raise exception(f"{message or f"Attribute '{a}' must be {d}"} when calling {target.__class__.__name__}.{wrapped.__name__} on {target!s}")
+                    raise exception(f"{message or f"Attribute '{a}' must be {d}"} when calling {target.__class__.__name__}.{wrapped.__name__} on {target_str}")
 
 
 @overload

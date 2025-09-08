@@ -8,7 +8,7 @@ from pydantic import Field, PrivateAttr, ValidationError, BaseModel, InstanceOf,
 from app.util.mixins.models import LoggableHierarchicalModel
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.journal.session import JournalSession
-from app.portfolio.journal.entity import EntityJournal
+from app.portfolio.journal.entity_journal import EntityJournal
 from app.portfolio.collections.journalled.sequence import JournalledSequence
 from app.portfolio.collections.journalled.mapping import JournalledMapping
 from app.portfolio.models.entity.incrementing_uid_entity import IncrementingUidEntity
@@ -28,6 +28,11 @@ class SampleEntity(IncrementingUidEntity):
     meta: dict[str, int] = Field(default_factory=lambda: {"a": 1, "b": 2}.copy())
     data: list[int] = Field(default_factory=lambda: [10, 20].copy())
     note: str = Field(default="initial")
+
+    @classmethod
+    @override
+    def get_journal_class(cls):
+        return EntityJournal
 
 class SampleEntityManager(LoggableHierarchicalModel):
     model_config = ConfigDict(
@@ -74,14 +79,13 @@ class TestSessionEntityJournal:
             assert entity.session_manager.in_session is True
 
             assert entity.value == 1
-            original = entity.journal.get_original_field("value")
-            assert original == 1
+            assert entity.journal.value == 1
 
-            entity.value = 42  # journal set, not pydantic mutation
-            assert entity.value == 42  # read sees tentative update
+            entity.journal.value = 42  # journal set, not pydantic mutation
+            assert entity.journal.value == 42  # read sees tentative update
+            assert entity.value == 1 # but entity does not change
             j = entity.journal
             assert isinstance(j, EntityJournal)
-            assert j.get_original_field("value") == 1  # original unaffected
             assert j.dirty is True
             assert s.dirty is True
 
@@ -91,34 +95,36 @@ class TestSessionEntityJournal:
             assert entity.value == 1  # reverted view (still in session but update cleared)
 
     def test_noop_same_instance_and_revert_clears_update(self, entity: SampleEntity, session_manager: SessionManager):
+        lst_original = entity.data
+        assert isinstance(lst_original, list)
+
         with session_manager(actor="tester", reason="unit-test") as s:
-            lst_original = entity.data  # triggers wrapping? first access -> JournalledSequence
-            # Access during session -> wrapper placement; but list field is a list -> returns JournalledSequence
-            assert isinstance(lst_original, JournalledSequence)
+            lst_j = entity.journal.data
+            assert isinstance(lst_j, JournalledSequence)
 
             # Write identical (same identity) object to field 'meta'
             meta_original = entity.journal.get_original_field("meta")
             assert isinstance(meta_original, dict)
-            entity.meta = meta_original  # identity -> no update created
-            assert not entity.journal.updated("meta")
+            entity.journal.meta = meta_original  # identity -> no update created
+            assert not entity.journal.is_field_updated("meta")
 
             # Modify field with a different object
             new_meta = {"a": 10, "b": 2}
-            entity.meta = new_meta
-            assert entity.journal.get('meta') is new_meta
+            entity.journal.meta = new_meta
+            assert entity.journal.meta is new_meta
             assert entity.dirty is True
 
             # Revert to original identity -> clears update
-            entity.meta = meta_original
-            assert not entity.journal.updated("meta")
+            entity.journal.meta = meta_original
+            assert not entity.journal.is_field_updated("meta")
             assert entity.dirty is False
 
             s.abort()
 
     def test_read_collection_wraps_sequence_and_mapping(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test") as s:
-            items_wrapped = entity.items
-            meta_wrapped = entity.meta
+            items_wrapped = entity.journal.items
+            meta_wrapped = entity.journal.meta
 
             assert isinstance(items_wrapped, JournalledSequence)
             assert isinstance(meta_wrapped, JournalledMapping)
@@ -145,7 +151,7 @@ class TestSessionEntityJournal:
 
     def test_start_then_abort_with_edits_clears(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test") as s:
-            entity.value = 5
+            entity.journal.value = 5
             assert s.dirty is True
             s.abort()  # clears journals
             assert s.dirty is False
@@ -160,7 +166,7 @@ class TestSessionEntityJournal:
     def test_session_commit_with_changes_applies_and_restarts(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test") as s:
             current_version = entity.version
-            entity.value = 99
+            entity.journal.value = 99
             assert entity.dirty is True
             s.commit()  # expected to apply changes & potentially allow continued session (future behavior)
 
@@ -176,7 +182,7 @@ class TestSessionEntityJournal:
     def test_session_end_with_changes_updates_entities(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test") as s:
             v_old = entity.version
-            entity.note = "updated"
+            entity.journal.note = "updated"
             assert entity.dirty is True
             s.end()  # should commit then mark ended
             assert s.ended is True
@@ -210,23 +216,21 @@ class TestSessionEntityJournal:
     # --- Additional behavior -----------------------------------------------------------------
     def test_collection_edits_do_not_mutate_originals(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test") as s:
-            original_items_ref = entity.journal.get_original_field("items")
-            original_meta_ref = entity.journal.get_original_field("meta")
-            assert isinstance(original_items_ref, list)
-            assert isinstance(original_meta_ref, dict)
+            assert isinstance(entity.items, list)
+            assert isinstance(entity.meta, dict)
 
             # Perform edits on wrapped structures
-            items_wrapped = entity.items
-            meta_wrapped = entity.meta
+            items_wrapped = entity.journal.items
+            meta_wrapped = entity.journal.meta
             items_wrapped[1] = 200
             meta_wrapped["a"] = 10
 
             # Originals unchanged
-            assert original_items_ref[1] == 2
-            assert original_meta_ref["a"] == 1
+            assert entity.items[1] == 2
+            assert entity.meta["a"] == 1
 
             # Abort -> changes discarded
             s.abort()
             assert entity.value == 1
-            assert original_items_ref[1] == 2
-            assert original_meta_ref["a"] == 1
+            assert entity.items[1] == 2
+            assert entity.meta["a"] == 1

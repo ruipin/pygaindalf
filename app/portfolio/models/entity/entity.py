@@ -11,12 +11,12 @@ from abc import abstractmethod, ABCMeta
 from weakref import WeakValueDictionary
 from functools import cached_property
 
-from ....util.mixins import LoggableHierarchicalModel, NamedProtocol
-from ....util.helpers import script_info
+from ....util.mixins import LoggableHierarchicalModel, NamedProtocol, NamedMixinMinimal
+from ....util.helpers import script_info, generics
 from ....util.callguard import CallguardClassOptions
 
 if TYPE_CHECKING:
-    from ...journal.entity import EntityJournal
+    from ...journal.entity_journal import EntityJournal
     from ...journal.session_manager import SessionManager
     from ...journal.session import JournalSession
     from ..store.entity_store import EntityStore
@@ -27,7 +27,7 @@ from .superseded import superseded_check
 from .entity_audit_log import EntityAuditLog
 
 
-class Entity(LoggableHierarchicalModel):
+class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinMinimal):
     __callguard_class_options__ = CallguardClassOptions['Entity'](
         decorator=superseded_check, decorate_public_methods=True, decorate_skip_properties=True
     )
@@ -55,11 +55,57 @@ class Entity(LoggableHierarchicalModel):
         cls.model_field_reverse_aliases = frozendict(reverse)
 
 
+    # MARK: Instance Name
+    PROPAGATE_INSTANCE_NAME_FROM_PARENT : ClassVar[bool] = False
+    STRICT_INSTANCE_NAME_VALIDATION : ClassVar[bool] = True
+
+    @classmethod
+    @abstractmethod
+    def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
+        raise NotImplementedError(f"{cls.__name__} must implement the 'calculate_instance_name_from_dict' method to generate a name for the instance.")
+
+    @classmethod
+    def calculate_instance_name_from_instance(cls, instance : Entity) -> str:
+        if not isinstance(instance, NamedProtocol):
+            raise TypeError(f"Expected instance of {cls.__name__}, got {type(instance).__name__}.")
+        if (name := instance.instance_name) is not None:
+            return name
+        raise ValueError(f"{cls.__name__} must have a valid instance name.")
+
+    @classmethod
+    def calculate_instance_name_from_arbitrary_data(cls, data : Any) -> str:
+        if isinstance(data, cls):
+            return cls.calculate_instance_name_from_instance(data)
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected 'data' to be a dict or {cls.__name__}, got {type(data).__name__}.")
+        return cls.calculate_instance_name_from_dict(data)
+
+    @model_validator(mode='after')
+    def _validate_instance_name(self) -> Self:
+        if self.__class__.STRICT_INSTANCE_NAME_VALIDATION:
+            dict_name = self.__class__.calculate_instance_name_from_dict(self.__dict__)
+            instance_name = self.__class__.calculate_instance_name_from_instance(self)
+            if instance_name != dict_name:
+                raise ValueError(f"Instance name '{instance_name}' does not match the calculated name from the dictionary '{dict_name}'.")
+
+        return self
+
+    @computed_field(description="The instance name, or class name if not set.")
+    @property
+    def instance_name(self) -> str:
+        """
+        Get the instance name, or class name if not set.
+        """
+        return self.calculate_instance_name_from_dict(self.__dict__)
+
+
+
     # MARK: Uid
+    # TODO: These should all be marked Final, but pydantic is broken here, see https://github.com/pydantic/pydantic/issues/10474#issuecomment-2478666651
     uid : Uid = Field(default_factory=lambda: None, validate_default=True, description="Unique identifier for the entity.") # pyright: ignore[reportAssignmentType] as the default value is overridden by _validate_uid_before anyway
 
     @classmethod
-    def uid_namespace(cls, data : dict[str, Any] | None = None) -> str:
+    def uid_namespace(cls) -> str:
         """
         Returns the namespace for the UID.
         This can be overridden in subclasses to provide a custom namespace.
@@ -68,7 +114,11 @@ class Entity(LoggableHierarchicalModel):
 
     @classmethod
     def _calculate_uid(cls, data : dict[str, Any]) -> Uid:
-        raise NotImplementedError(f"{cls.__name__} must implement the '_calculate_uid' method to generate a UID.")
+        instance_name = cls.calculate_instance_name_from_dict(data)
+        if instance_name is None:
+            raise ValueError(f"{cls.__name__} must have an instance name when calculating its UID.")
+
+        return Uid(namespace=cls.uid_namespace(), id=instance_name)
 
     @model_validator(mode='before')
     @classmethod
@@ -82,7 +132,7 @@ class Entity(LoggableHierarchicalModel):
         if not isinstance(uid, Uid):
             raise TypeError(f"Expected 'uid' to be of type Uid, got {type(uid).__name__}.")
 
-        uid_namespace = cls.uid_namespace(data)
+        uid_namespace = cls.uid_namespace()
         if uid.namespace != uid_namespace:
             raise ValueError(f"Uid namespace '{uid.namespace}' does not match expected namespace '{uid_namespace}'.")
 
@@ -234,14 +284,8 @@ class Entity(LoggableHierarchicalModel):
         args['version'] = self.entity_log.next_version
 
         # Sanity check - name won't change
-        from .named_entity import NamedEntity
-        is_named = False
-        if isinstance(self, NamedEntity):
-            if not isinstance(self, NamedProtocol):
-                raise TypeError("Entity is a NamedEntity but not a NamedProtocol.")
-            is_named = True
-            if (new_name := self.calculate_instance_name_from_dict(args)) != self.instance_name:
-                raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_name}'.")
+        if (new_name := self.calculate_instance_name_from_dict(args)) != self.instance_name:
+            raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_name}'.")
 
         # Update entity
         new_entity = self.__class__(**args)
@@ -249,22 +293,26 @@ class Entity(LoggableHierarchicalModel):
         # Sanity check - name didn't change
         if not isinstance(new_entity, self.__class__):
             raise TypeError(f"Expected new entity to be an instance of {self.__class__.__name__}, got {type(new_entity).__name__}.")
-        if is_named:
-            if not isinstance(new_entity, NamedProtocol) or not isinstance(self, NamedProtocol):
-                raise TypeError("New entity or original entity is not a NamedProtocol but one was expected.")
-            if new_entity.instance_name != self.instance_name:
-                raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_entity.instance_name}'.")
+        if new_entity.instance_name != self.instance_name:
+            raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_entity.instance_name}'.")
 
         # Return updated entity
         return new_entity
 
 
     # MARK: Journal
+    @classmethod
+    def get_journal_class(cls) -> type[T_Journal]:
+        raise NotImplementedError(f"{cls.__name__} must implement the 'get_journal_class' method to return the associated journal class.")
+
     @property
-    def journal(self) -> EntityJournal:
+    def journal(self) -> T_Journal:
         result = self.session.get_entity_journal(entity=self)
         if result is None:
             raise RuntimeError("Entity does not have an associated journal.")
+        journal_cls = self.get_journal_class()
+        if not isinstance(result, journal_cls):
+            raise RuntimeError(f"Expected journal of type {journal_cls}, got {type(result)}.")
         return result
 
     def get_journal(self) -> EntityJournal | None:
@@ -316,65 +364,6 @@ class Entity(LoggableHierarchicalModel):
     def original_instance_parent(self) -> Any:
         return super().__getattribute__('instance_parent')
 
-    # Overriding __getattribute__ causes type checkers to assume any attribute access might succeed.
-    # We don't plan to add/remove attributes, just proxy some of them to the journal.
-    # So we gate our override with `not TYPE_CHECKING` to avoid confusing type checkers while keeping runtime behavior.
-    if not TYPE_CHECKING:
-        @override
-        def __getattribute__(self, name: str) -> Any:
-            # We special-case instance_parent to ensure we always link to the latest version of our parent entity
-            if name == 'instance_parent':
-                parent = super().__getattribute__(name)
-                if isinstance(parent, Entity) and parent.superseded:
-                    return parent.superseding
-                return parent
-
-            # Short-circuit cases
-            if (
-                # Short-circuit private and 'Entity' attributes
-                (name.startswith('_') or Entity._is_entity_attribute(name)) or
-                # Short-circuit if not yet initialized
-                (not self.initialized) or
-                # If this is not a model field
-                (not self.is_model_field(name)) or
-                # If not in a session, return the normal attribute
-                (self.superseded or not self.in_session)
-            ):
-                return super().__getattribute__(name)
-
-            # If there is no journal, return the normal attribute
-            journal = self.get_journal()
-            if journal is None:
-                return super().__getattribute__(name)
-
-            # Otherwise, use the journal to get the attribute
-            return journal.get(name)
-
-    @override
-    def __setattr__(self, name: str, value: Any) -> None:
-        if (
-            # Short-circuit private and 'Entity' attributes
-            (name.startswith('_') or Entity._is_entity_attribute(name)) or
-            # Short-circuit if not yet initialized
-            (not self.initialized) or
-            # If this is not a model field
-            (not self.is_model_field(name)) or
-            # If not in a session, set the normal attribute
-            (self.superseded or not self.in_session)
-        ):
-            return super().__setattr__(name, value)
-
-        # If there is no journal, set the normal attribute
-        journal = self.get_journal()
-        if journal is None:
-            return super().__setattr__(name, value)
-
-        # Otherwise, use the journal to set the attribute
-        journal.set(name, value)
-
-    #def on_journal_field_edit(self, session: 'JournalSession', field: str) -> None:
-    #    self.log.debug(t"Entity {self} field '{field}' edited in session {session}.")
-
     @property
     def dirty(self) -> bool:
         return self.journal.dirty
@@ -387,8 +376,27 @@ class Entity(LoggableHierarchicalModel):
             return False
         return manager.in_session
 
+    @property
+    def dependents(self) -> Iterable[Uid]:
+        parent = self.instance_parent
+        if isinstance(parent, Entity):
+            yield parent.uid
+
+        # TODO: Yield subscribed dependents
+
+    def on_subscribed_entity_invalidation(self, source: EntityJournal) -> None:
+        pass
+
 
     # MARK: Utilities
     @override
     def __hash__(self):
         return hash((self.uid, self.version))
+
+    @override
+    def __str__(self) -> str:
+        return super().__str__().replace('>', f" v{self.version}>")
+
+    @override
+    def __repr__(self) -> str:
+        return super().__repr__().replace('>', f" v{self.version}>")

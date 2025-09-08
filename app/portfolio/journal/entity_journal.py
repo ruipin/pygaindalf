@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import annotationlib
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, InstanceOf
-from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args, Literal
+from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args, Literal, Final, Union, Iterator, Callable
 from ordered_set import OrderedSet
 import builtins
 
@@ -19,8 +20,6 @@ from ..models.entity.superseded import superseded_check
 
 from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet, JournalledOrderedViewSet
 from ..collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
-
-from .protocols import JournalHooksProtocol
 
 
 class EntityJournal(LoggableHierarchicalModel):
@@ -38,6 +37,13 @@ class EntityJournal(LoggableHierarchicalModel):
     )
 
     PROPAGATE_TO_CHILDREN : ClassVar[bool] = False
+
+
+    # MARK: Subclassing
+    # We rely on init=False on subclasses to convince the type checker that fields do not get exposed in the constructor
+    # as such we must swallow that parameter here
+    def __init_subclass__(cls, *, init : bool = False):
+        pass
 
 
     # MARK: Entity
@@ -68,11 +74,6 @@ class EntityJournal(LoggableHierarchicalModel):
     @override
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}:{self.entity!r}>"
-
-    def _call_entity_hook(self, hook_name : Literal['field_edit'], *args: Any, **kwargs: Any) -> None:
-        entity = self.entity
-        if isinstance(entity, JournalHooksProtocol):
-            getattr(entity, f"on_journal_{hook_name}")(self, *args, **kwargs)
 
     def instance_name(self) -> str:
         return f"EntityJournal({self.entity.uid})"
@@ -107,6 +108,10 @@ class EntityJournal(LoggableHierarchicalModel):
     # MARK: Fields API
     _updates : dict[str, Any] = PrivateAttr(default_factory=dict)
 
+    @staticmethod
+    def _is_journal_attribute(name: str) -> bool:
+        return hasattr(EntityJournal, name) or name in EntityJournal.model_fields or name in EntityJournal.model_computed_fields
+
     def is_computed_field(self, field : str) -> bool:
         return self.entity.is_computed_field(field)
 
@@ -129,35 +134,30 @@ class EntityJournal(LoggableHierarchicalModel):
 
         return not extra.get('readOnly', False)
 
-    def updated(self, field : str) -> bool:
+    def is_protected_field_type(self, field : str) -> bool:
+        FORBIDDEN_TYPES = (JournalledCollection, OrderedViewSet, OrderedViewFrozenSet)
+
+        annotations = annotationlib.get_annotations(self.entity.__class__, format=annotationlib.Format.VALUE)
+        annotation = annotations.get(field, None)
+        if annotation is None:
+            raise RuntimeError(f"Field '{field}' not found in entity type {self.entity.__class__.__name__} annotations.")
+
+        if isinstance(annotation, Union):
+            for arg in get_args(annotation):
+                if issubclass(arg, FORBIDDEN_TYPES):
+                    return True
+            return False
+        else:
+            origin = get_origin(annotation) or annotation
+            return issubclass(origin, FORBIDDEN_TYPES)
+
+    def is_field_updated(self, field : str) -> bool:
         return field in self._updates
 
     def get_original_field(self, field : str) -> Any:
         if not self.has_field(field):
             raise AttributeError(f"Entity of type {self.entity.__class__.__name__} does not have field '{field}'.")
         return super(Entity, self.entity).__getattribute__(field)
-
-    def set[T](self, field : str, value : T) -> T:
-        field = self.entity.resolve_field_alias(field)
-
-        has_update = field in self._updates
-        if not has_update and not self.has_field(field):
-            raise AttributeError(f"Entity of type {self.entity.__class__.__name__} does not have field '{field}'.")
-
-        if not self.can_modify(field):
-            raise AttributeError(f"Field '{field}' of entity type {self.entity.__class__.__name__} is read-only.")
-
-        original = self.get_original_field(field)
-        if value is original:
-            if has_update:
-                del self._updates[field]
-        else:
-            self._updates[field] = value
-
-        self.propagate()
-        self._call_entity_hook('field_edit', field)
-
-        return value
 
     def _wrap_field(self, field : str, original : Any) -> Any:
         new = original
@@ -174,9 +174,35 @@ class EntityJournal(LoggableHierarchicalModel):
         else:
             return original
 
-        return self.set(field, new)
+        self._updates[field] = new
+        self.propagate()
 
-    def get(self, field : str) -> Any:
+        return new
+
+    def set_field[T](self, field : str, value : T) -> T:
+        field = self.entity.resolve_field_alias(field)
+
+        has_update = field in self._updates
+        if not has_update and not self.has_field(field):
+            raise AttributeError(f"Entity of type {self.entity.__class__.__name__} does not have field '{field}'.")
+
+        if not self.can_modify(field):
+            raise AttributeError(f"Field '{field}' of entity type {self.entity.__class__.__name__} is read-only.")
+
+        original = self.get_original_field(field)
+        if value is original:
+            if has_update:
+                del self._updates[field]
+        else:
+            if self.is_protected_field_type(field):
+                raise AttributeError(f"Field '{field}' of entity type {self.entity.__class__.__name__} is protected and cannot be modified. Use the collection's methods to modify it instead.")
+            self._updates[field] = value
+
+        self.propagate()
+
+        return value
+
+    def get_field(self, field : str) -> Any:
         field = self.entity.resolve_field_alias(field)
 
         if field in self._updates:
@@ -185,8 +211,38 @@ class EntityJournal(LoggableHierarchicalModel):
         original = self.get_original_field(field)
         return self._wrap_field(field, original)
 
-    def on_journalled_collection_edit(self, collection : JournalledCollection) -> None:
-        self._call_entity_hook('field_edit', collection.instance_name)
+    if not TYPE_CHECKING:
+        @override
+        def __getattribute__(self, name: str) -> Any:
+            # Short-circuit cases
+            if (
+                # Short-circuit private and 'Entity' attributes
+                (name.startswith('_') or EntityJournal._is_journal_attribute(name)) or
+                # If this is not a model field
+                (not self.is_model_field(name)) or
+                # If not in a session, return the normal attribute
+                (self.superseded)
+            ):
+                return super().__getattribute__(name)
+
+            # Otherwise, use the journal to get the attribute
+            return self.get_field(name)
+
+    @override
+    def __setattr__(self, name: str, value: Any) -> None:
+        if (
+            # Short-circuit private and 'Entity' attributes
+            (name.startswith('_') or EntityJournal._is_journal_attribute(name)) or
+            # If this is not a model field
+            (not self.is_model_field(name)) or
+            # If not in a session, set the normal attribute
+            (self.superseded)
+        ):
+            return super().__setattr__(name, value)
+
+        # Otherwise set attribute on the journal
+        return self.set_field(name, value)
+
 
     # MARK: Propagation
     _dirty_children : builtins.set[EntityJournal] = PrivateAttr(default_factory=builtins.set)
@@ -207,7 +263,6 @@ class EntityJournal(LoggableHierarchicalModel):
         """
         Propagate whether we are dirty to the parent entity's journal
         """
-        #self.log.debug("Propagate: entity=%s dirty=%s", self.entity, self.dirty)
 
         # Check if the dirty state has changed since the last time we propagated to our parent journal
         has_updates = bool(self._updates)
@@ -230,117 +285,50 @@ class EntityJournal(LoggableHierarchicalModel):
         self._propagated_has_updates = has_updates
 
 
-
     # MARK: Commit
-    _new_entity : Entity | None = PrivateAttr(default=None)
+    _invalidated : bool = PrivateAttr(default=False)
 
-    def flatten_hierarchy(self, journals : OrderedSet[EntityJournal]) -> None:
+    @property
+    def invalidated(self) -> bool:
+        return self._invalidated
+
+    def invalidate(self) -> None:
+        if self._invalidated:
+            raise RuntimeError(f"Journal {self} is already invalidated.")
+        self._invalidated = True
+
+        for dep in self.entity.dependents:
+            entity = Entity.by_uid(dep)
+            if not entity:
+                raise RuntimeError(f"Dependent entity with UID {dep} not found.")
+            entity.on_subscribed_entity_invalidation(self)
+
+    def commit_yield_hierarchy(self, condition : Callable[[EntityJournal], bool]) -> Iterator[EntityJournal]:
         """
         Return a flat ordered set of all journals in this hierarchy
         """
-        if self in journals:
+        if not condition(self):
             return
 
         # Iterate dirty children journals
         for child in self._dirty_children:
-            # If the journal already exists in the set, we can skip it
-            if child in journals:
+            if not condition(child):
                 continue
 
-            child.flatten_hierarchy(journals)
+            for inv in child.commit_yield_hierarchy(condition):
+                yield inv
 
-        if self.entity_uid in journals:
-            raise RuntimeError(f"Journal {self} was added to the flattened hierarchy by one of its children. This should not happen.")
+        if not condition(self):
+            raise RuntimeError(f"Journal {self} was invalidated or commited during child invalidation.")
 
-        # Add self, then return
-        journals.add(self)
-
-    def _refresh_entity_collections(self):
-        # No need to do an entity refresh if there are no dirty children
-        if not self._dirty_children:
-            return
-
-        # If our entity contains collections of Entities, we need to ensure they are also updated
-        for attr, info in self.entity.__class__.model_fields.items():
-            field = self.get(attr)
-            if field is None:
-                continue
-
-            annotation = info.annotation
-            if annotation is None:
-                continue
-
-            origin = get_origin(annotation)
-            if origin is None:
-                continue
-            if not isinstance(origin, type):
-                continue
-
-            args = get_args(annotation)
-
-            if issubclass(origin, Sequence):
-                if len(args) != 1 or not issubclass(args[0], Entity):
-                    self.log.warning(t"Entity field '{attr}' is annotated as a sequence but the item type is not an Entity. Skipping entity refresh.")
-                    continue
-
-                self.log.debug("Refreshing entity sequence '%s'", attr)
-
-                for i, entity in enumerate(field):
-                    if not isinstance(entity, Entity):
-                        raise TypeError(f"Entity field '{attr}' is annotated as a sequence of Entities but the update contains a non-Entity item.")
-                    if entity.superseded:
-                        superseding = entity.superseding
-                        if superseding is None:
-                            raise RuntimeError(f"Entity field '{attr}' contains an entity '{entity}' that is marked as superseded but has no superseding entity.")
-                        else:
-                            field[i] = superseding
-
-
-            elif issubclass(origin, Mapping):
-                if len(args) != 2 or not issubclass(args[1], Entity):
-                    continue
-
-                self.log.debug("Refreshing entity mapping '%s'", attr)
-
-                if issubclass(args[0], Uid):
-                    for dirty in self._dirty_children:
-                        uid = dirty.entity_uid
-                        if dirty.entity_uid in field:
-                            superseding = dirty.entity.superseding
-                            if superseding is None:
-                                del field[dirty.entity_uid]
-                            else:
-                                field[dirty.entity_uid] = superseding
-                else:
-                    for key, entity in field.items():
-                        if not isinstance(entity, Entity):
-                            raise TypeError(f"Field '{attr}' is annotated as a mapping of Entities but the update contains a non-Entity item.")
-                        if entity.superseded:
-                            field[key] = entity.superseding
-
-            elif issubclass(origin, Set):
-                if len(args) != 1 or not issubclass(args[0], Entity):
-                    continue
-
-                self.log.debug("Refreshing entity set '%s'", attr)
-
-                for item in field:
-                    if not isinstance(item, Entity):
-                        raise TypeError(f"Field '{attr}' is annotated as a set of Entities but the update contains a non-Entity item.")
-                    if item.superseded:
-                        field.discard(item)
-                        superseding = item.superseding
-                        if superseding is not None:
-                            field.add(superseding)
+        # Yield self, then return
+        yield self
 
     def commit(self) -> Entity:
         if not self.dirty:
             return self.entity
 
-        #self.log.debug("Committing journal for entity %s", self.entity)
-
-        # Trigger entity refresh
-        self._refresh_entity_collections()
+        self.log.debug("Committing journal for entity %s", self.entity)
 
         # Collect all updates
         updates = {}
@@ -355,20 +343,14 @@ class EntityJournal(LoggableHierarchicalModel):
         if not updates:
             return self.entity
 
-        #self.log.debug("Updates to apply to entity %s: %s", self.entity, repr(updates))
+        self.log.debug("Updates to apply to entity %s: %s", self.entity, repr(updates))
 
         # Update the entity
         new_entity = self._new_entity = self.entity.update(
             **updates
         )
 
-        #self.log.debug("New entity created: %s (v%d)", new_entity, new_entity.version)
-
-        # TODO: How do we handle updating instance_parent when the parent gets superseded?
-        #       Maybe propagate the change to all children entities here?
-        #       Or maybe entities could catch accesses to instance_parent in __getattr__ and redirect to the most recent version?
-        #       ~~What about if the parent's name changed, how do we clear the logger hierarchy cache?~~
-        #           UPDATE: Entity.update now fails if the entity name changes during the update
+        self.log.debug("New entity created: %s (v%d)", new_entity, new_entity.version)
 
         # Done
         return new_entity

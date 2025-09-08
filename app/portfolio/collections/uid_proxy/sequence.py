@@ -5,16 +5,14 @@ from typing import TYPE_CHECKING, override, overload, Iterable
 from collections.abc import Sequence, MutableSequence
 
 from ...models.uid import Uid
-from .collection import UidProxyCollection
+from .collection import UidProxyCollection, UidProxyFrozenCollection
 
 from ...models.entity import Entity
 
 
-class UidProxySequence[T : Entity](MutableSequence[T], UidProxyCollection[T, Sequence[Uid], MutableSequence[Uid]]):
+class UidProxyFrozenSequence[T : Entity](Sequence[T], UidProxyFrozenCollection[T, Sequence[Uid]]):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        import typing
-        import types
 
     @override
     def __len__(self) -> int:
@@ -41,6 +39,9 @@ class UidProxySequence[T : Entity](MutableSequence[T], UidProxyCollection[T, Seq
 
         return entity
 
+
+
+class UidProxySequence[T : Entity](MutableSequence[T], UidProxyFrozenSequence[T], UidProxyCollection[T, Sequence[Uid], MutableSequence[Uid]]):
     @overload
     def __setitem__(self, index: int, value: T) -> None: ...
     @overload
@@ -51,7 +52,7 @@ class UidProxySequence[T : Entity](MutableSequence[T], UidProxyCollection[T, Seq
             raise NotImplementedError("Sliced write access not implemented yet")
 
         if not isinstance(value, (proxy_type := self.get_concrete_proxy_type())):
-            raise NotImplementedError(f"Only single item assignment of type {proxy_type.__name__} is supported")
+            raise TypeError(f"Only single item assignment of type {proxy_type.__name__} is allowed")
 
         self._get_mut_field()[index] = value.uid
 

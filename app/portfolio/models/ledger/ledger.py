@@ -11,16 +11,26 @@ from collections.abc import Set, MutableSet, Sequence
 from ...collections.uid_proxy import UidProxyOrderedViewSet, UidProxySequence
 from ...collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
 
-from ..instrument import Instrument
-from ..entity import AutomaticNamedEntity
+from ..instrument.instrument import Instrument
 from ..entity.instance_store import NamedInstanceStoreEntityMixin
-from ..transaction import Transaction, OrderedViewFrozenTransactionUidSet, UidProxyOrderedViewTransactionSet
+from ..entity import Entity
+from ..transaction import Transaction, OrderedViewFrozenTransactionUidSet, UidProxyOrderedViewTransactionFrozenSet
 
 from ..uid import Uid
 
+from .ledger_base import LedgerBase
+from .ledger_journal import LedgerJournal
 
 
-class Ledger(NamedInstanceStoreEntityMixin, AutomaticNamedEntity, MutableSet[Transaction]):
+
+class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
+    @classmethod
+    @override
+    def get_journal_class(cls) -> type[LedgerJournal]:
+        return LedgerJournal
+
+
+
     # MARK: Instrument
     instrument_uid: Uid = Field(description="The financial instrument associated with this ledger, such as a stock, bond, or currency.")
 
@@ -87,69 +97,11 @@ class Ledger(NamedInstanceStoreEntityMixin, AutomaticNamedEntity, MutableSet[Tra
 
 
     # MARK: Transactions
-    # Make type checkers believe that the transaction_uids tuple is mutable
     if TYPE_CHECKING:
-        transaction_uids_ : Iterable[Uid] = Field(default_factory=OrderedViewFrozenTransactionUidSet, alias='transaction_uids')
-        @property
-        def transaction_uids(self) -> OrderedViewSet[Uid]: ...
-        @transaction_uids.setter
-        def transaction_uids(self, value : MutableSet[Uid] | Set[Uid]) -> None: ...
+        transaction_uids : Set[Uid] = Field(default_factory=frozenset)
     else:
         transaction_uids : OrderedViewFrozenTransactionUidSet = Field(default_factory=OrderedViewFrozenTransactionUidSet, description="A set of transaction Uids associated with this ledger.")
 
     @cached_property
-    def transactions(self) -> UidProxyOrderedViewTransactionSet:
-        return UidProxyOrderedViewTransactionSet(owner=self, field='transaction_uids')
-
-
-    # MARK: Custom __getitem__
-    def __getitem__(self, index : int | Uid) -> Transaction:
-        if isinstance(index, int):
-            return self.transactions[index]
-
-        elif isinstance(index, Uid):
-            if index not in self.transaction_uids:
-                raise KeyError(f"Transaction with UID {index} not found in ledger")
-            if (transaction := Transaction.by_uid(index)) is None:
-                raise KeyError(f"Transaction with UID {index} not found")
-            return transaction
-
-        else:
-            raise KeyError(f"Index must be an int or Uid, got {type(index).__name__}")
-
-
-    # MARK: MutableSet ABC
-    @override
-    def __contains__(self, value : object) -> bool:
-        if not isinstance(value, (Transaction, Uid)):
-            return False
-        return Transaction.narrow_to_uid(value) in self.transaction_uids
-
-    @override
-    def add(self, value : Transaction | Uid) -> None:
-        self.transaction_uids.add(Transaction.narrow_to_uid(value))
-
-    @override
-    def discard(self, value : Transaction | Uid) -> None:
-        self.transaction_uids.discard(Transaction.narrow_to_uid(value))
-
-    @override
-    def __iter__(self) -> Iterator[Transaction]: # pyright: ignore[reportIncompatibleMethodOverride] since we are overriding the pydantic.BaseModel iterator on purpose
-        # TODO: Wrap an ordered view
-        for uid in self.transaction_uids:
-            transaction = Transaction.by_uid(uid)
-            if transaction is None:
-                raise KeyError(f"Transaction with UID {uid} not found")
-            yield transaction
-
-    @override
-    def __len__(self):
-        return len(self.transaction_uids)
-
-    @property
-    def length(self) -> int:
-        return len(self.transaction_uids)
-
-    @override
-    def __repr__(self) -> str:
-        return super().__repr__().replace('>', f", transactions={repr(self.transaction_uids)}>")
+    def transactions(self) -> UidProxyOrderedViewTransactionFrozenSet:
+        return UidProxyOrderedViewTransactionFrozenSet(owner=self, field='transaction_uids')

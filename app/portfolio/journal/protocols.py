@@ -1,16 +1,10 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .session import JournalSession
-    from ..models.entity import Entity
-
-
-@runtime_checkable
-class JournalHooksProtocol(Protocol):
-    def on_journal_field_edit(self, session: JournalSession, field: str) -> None: ...
 
 
 @runtime_checkable

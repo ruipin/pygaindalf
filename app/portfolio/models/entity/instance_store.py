@@ -17,6 +17,7 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
     __initialized : bool = PrivateAttr(default=False)
 
     def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
         if (not issubclass(cls, Entity)) and (type(cls) is not ABCMeta):
             raise TypeError(f"{cls.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
 

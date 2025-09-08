@@ -6,6 +6,7 @@ from pydantic import Field
 from functools import cached_property
 
 from app.portfolio.collections.uid_proxy import UidProxyMapping
+from app.portfolio.collections.uid_proxy.mapping import UidProxyFrozenMapping
 from app.portfolio.models.entity import IncrementingUidEntity
 from app.portfolio.models.uid import Uid
 
@@ -15,6 +16,8 @@ class Item(IncrementingUidEntity):
 
 class _UidProxyItemMapping(UidProxyMapping[str, Item]):
     pass
+class _UidProxyFrozenItemMapping(UidProxyFrozenMapping[str, Item]):
+    pass
 
 class Owner(IncrementingUidEntity):
     item_uids: dict[str, Uid] = Field(default_factory=dict)
@@ -22,6 +25,10 @@ class Owner(IncrementingUidEntity):
     @cached_property
     def items(self):
         return _UidProxyItemMapping(owner=self, field='item_uids')
+
+    @cached_property
+    def items_frozen(self):
+        return _UidProxyFrozenItemMapping(owner=self, field='item_uids')
 
 
 @pytest.mark.portfolio_collections
@@ -35,6 +42,26 @@ class TestUidProxyMapping:
         assert o.item_uids == {'a': i.uid}
         assert len(o.items) == 1
         assert list(iter(o.items)) == ['a']
+
+    def test_frozen_get_and_len(self):
+        o = Owner()
+        i = Item()
+        # populate via mutable view
+        o.items['a'] = i
+        f = o.items_frozen
+        assert f['a'] is i
+        assert len(f) == 1
+        assert list(iter(f)) == ['a']
+
+    def test_frozen_is_read_only(self):
+        o = Owner()
+        i = Item()
+        o.items['a'] = i
+        f = o.items_frozen
+        with pytest.raises(TypeError):
+            f['b'] = i  # type: ignore[index]
+        with pytest.raises(TypeError):
+            del f['a']  # type: ignore[index]
 
     def test_del(self):
         o = Owner()
@@ -55,6 +82,8 @@ class TestUidProxyMapping:
         o.item_uids['ghost'] = fake  # no Item instance created with this UID
         with pytest.raises(KeyError):
             _ = o.items['ghost']
+        with pytest.raises(KeyError):
+            _ = o.items_frozen['ghost']
 
     def test_invalid_underlying_uid_type_raises(self):
         o = Owner()
@@ -64,6 +93,8 @@ class TestUidProxyMapping:
         # Accessing 'bad' should TypeError due to wrong underlying type
         with pytest.raises(TypeError):
             _ = o.items['bad']
+        with pytest.raises(TypeError):
+            _ = o.items_frozen['bad']
 
     def test_repr_and_str(self):
         o = Owner()
@@ -72,3 +103,5 @@ class TestUidProxyMapping:
 
         assert any(i.uid == s.uid for s in o.items.values())
         assert type(o.items) == _UidProxyItemMapping
+        assert any(i.uid == s.uid for s in o.items_frozen.values())
+        assert type(o.items_frozen) == _UidProxyFrozenItemMapping

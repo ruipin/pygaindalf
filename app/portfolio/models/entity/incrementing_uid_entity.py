@@ -9,15 +9,15 @@ from ....util.helpers import script_info
 
 from ..uid import IncrementingUidFactory, Uid
 
-from .named_entity import AutomaticNamedEntity
 from .entity import Entity
+from ...journal.entity_journal import EntityJournal
 
 
-class IncrementingUidEntity(AutomaticNamedEntity):
+class IncrementingUidEntity[T_Journal : EntityJournal](Entity[T_Journal]):
     @classmethod
     @override
     def _calculate_uid(cls, data : dict[str, Any]) -> Uid:
-        return cls._get_entity_store().generate_next_uid(cls.uid_namespace(data))
+        return cls._get_entity_store().generate_next_uid(cls.uid_namespace())
 
     @classmethod
     @override

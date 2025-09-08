@@ -10,15 +10,15 @@ from .....util.helpers import generics
 from ....models.uid import Uid
 from ....models.entity import Entity
 from ...ordered_view import OrderedViewSet, OrderedViewFrozenSet
-from .generic_set import GenericUidProxySet
+from .generic_set import GenericUidProxySet, GenericUidProxyFrozenSet
 from ..sequence import UidProxySequence
 
 
 
-class UidProxyOrderedViewSet[T : Entity, T_Proxy_Seq : UidProxySequence](GenericUidProxySet[T, OrderedViewFrozenSet[Uid], OrderedViewSet[Uid]]):
+class UidProxyOrderedViewFrozenSet[T : Entity, T_Proxy_Seq : UidProxySequence](GenericUidProxyFrozenSet[T, OrderedViewFrozenSet[Uid]]):
     @classmethod
     def get_concrete_proxy_sequence_type(cls, source : type[Self] | None = None) -> type[T_Proxy_Seq]:
-        return generics.get_concrete_parent_arg(source or cls, UidProxyOrderedViewSet, 'T_Proxy_Seq')
+        return generics.get_concrete_parent_arg(source or cls, UidProxyOrderedViewFrozenSet, 'T_Proxy_Seq')
 
     # MARK: OrderedViewSet
     @cached_property
@@ -34,3 +34,7 @@ class UidProxyOrderedViewSet[T : Entity, T_Proxy_Seq : UidProxySequence](Generic
     def __getitem__(self, index: slice) -> Sequence[T]: ...
     def __getitem__(self, index: int | slice) -> T | Sequence[T]:
         return self.sorted[index]
+
+
+class UidProxyOrderedViewSet[T : Entity, T_Proxy_Seq : UidProxySequence](UidProxyOrderedViewFrozenSet[T, T_Proxy_Seq], GenericUidProxySet[T, OrderedViewFrozenSet[Uid], OrderedViewSet[Uid]]):
+    pass

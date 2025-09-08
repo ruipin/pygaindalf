@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, override, Iterator
 from collections.abc import Mapping, MutableMapping
 
 from ...models.uid import Uid
-from .collection import UidProxyCollection
+from .collection import UidProxyCollection, UidProxyFrozenCollection
 
 from ...models.entity import Entity
 
 
-class UidProxyMapping[K, V : Entity](MutableMapping[K,V], UidProxyCollection[V, Mapping[K,Uid], MutableMapping[K,Uid]]):
+class UidProxyFrozenMapping[K, V : Entity](Mapping[K,V], UidProxyFrozenCollection[V, Mapping[K,Uid]]):
     @override
     def __getitem__(self, key: K) -> V:
         uid = self._get_field()[key]
@@ -27,17 +27,20 @@ class UidProxyMapping[K, V : Entity](MutableMapping[K,V], UidProxyCollection[V, 
 
 
     @override
-    def __setitem__(self, key: K, value: V) -> None:
-        self._get_mut_field()[key] = value.uid
-
-    @override
-    def __delitem__(self, key: K) -> None:
-        del self._get_mut_field()[key]
-
-    @override
     def __iter__(self) -> Iterator[K]:
         return iter(self._get_field())
 
     @override
     def __len__(self):
         return len(self._get_field())
+
+
+
+class UidProxyMapping[K, V : Entity](MutableMapping[K,V], UidProxyFrozenMapping[K,V], UidProxyCollection[V, Mapping[K,Uid], MutableMapping[K,Uid]]):
+    @override
+    def __setitem__(self, key: K, value: V) -> None:
+        self._get_mut_field()[key] = value.uid
+
+    @override
+    def __delitem__(self, key: K) -> None:
+        del self._get_mut_field()[key]

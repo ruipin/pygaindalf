@@ -8,15 +8,18 @@ from decimal import Decimal
 import datetime as dt
 
 from app.portfolio.collections.uid_proxy import UidProxySequence
+from app.portfolio.collections.uid_proxy.sequence import UidProxyFrozenSequence
 from app.portfolio.models.entity import IncrementingUidEntity
 from app.portfolio.models.transaction.transaction import Transaction, TransactionType
-from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.uid import Uid
 from iso4217 import Currency
 
 
 # Proxy specialization ------------------------------------------------------
 class _UidProxyTransactionSequence(UidProxySequence[Transaction]):
+    pass
+class _UidProxyFrozenTransactionSequence(UidProxyFrozenSequence[Transaction]):
     pass
 
 
@@ -25,7 +28,11 @@ class Holder(IncrementingUidEntity):
 
     @cached_property
     def transactions(self):
-        return _UidProxyTransactionSequence(owner=self, field='transaction_uids')
+        return _UidProxyTransactionSequence(owner=self, field='transaction_uids') # type: ignore[reportAbstractUsage]
+
+    @cached_property
+    def transactions_frozen(self):
+        return _UidProxyFrozenTransactionSequence(owner=self, field='transaction_uids')  # type: ignore[reportAbstractUsage]
 
 
 @pytest.mark.portfolio_collections
@@ -63,6 +70,28 @@ class TestUidProxySequence:
         assert h.transactions[0] is t2
         assert h.transaction_uids == [t2.uid]
 
+    def test_frozen_get_and_len(self):
+        instr = Instrument(ticker='META', currency=Currency('USD'))
+        h = Holder()
+        t1 = self._make_tx(instr, qty=4)
+        h.transactions.insert(0, t1)
+        f = h.transactions_frozen
+        assert len(f) == 1
+        assert f[0] is t1
+        with pytest.raises(NotImplementedError):
+            _ = f[0:1]
+
+    def test_frozen_is_read_only(self):
+        instr = Instrument(ticker='ADBE', currency=Currency('USD'))
+        h = Holder()
+        t1 = self._make_tx(instr, qty=1)
+        h.transactions.insert(0, t1)
+        f = h.transactions_frozen
+        with pytest.raises(TypeError):
+            f[0] = t1  # type: ignore[index]
+        with pytest.raises(TypeError):
+            del f[0]  # type: ignore[index]
+
     @pytest.mark.xfail(raises=NotImplementedError, reason="Sliced read access not implemented yet")
     def test_slice_get(self):
         instr = Instrument(ticker='TSLA', currency=Currency('USD'))
@@ -79,13 +108,13 @@ class TestUidProxySequence:
         h.transactions.insert(0, t1)
         h.transactions[0:1] = [t1]
 
-    @pytest.mark.xfail(raises=NotImplementedError, reason="Only single item assignment supported")
     def test_setitem_wrong_type(self):
         instr = Instrument(ticker='ORCL', currency=Currency('USD'))
         h = Holder()
         t1 = self._make_tx(instr, qty=1)
         h.transactions.insert(0, t1)
-        h.transactions[0] = 123  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="Only single item assignment of type Transaction is allowed"):
+            h.transactions[0] = 123  # type: ignore[arg-type]
 
     def test_repr_and_str(self):
         instr = Instrument(ticker='IBM', currency=Currency('USD'))
@@ -95,3 +124,5 @@ class TestUidProxySequence:
 
         assert any(t.uid == s.uid for s in h.transactions)
         assert type(h.transactions) == _UidProxyTransactionSequence
+        assert any(t.uid == s.uid for s in h.transactions_frozen)
+        assert type(h.transactions_frozen) == _UidProxyFrozenTransactionSequence

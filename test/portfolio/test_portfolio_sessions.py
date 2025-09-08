@@ -13,12 +13,13 @@ from decimal import Decimal
 
 import pytest
 from iso4217 import Currency
-from collections.abc import MutableSet
+from collections.abc import MutableSet, Set
 
 from app.portfolio.manager import PortfolioManager
-from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
 from app.portfolio.models.transaction.transaction import Transaction, TransactionType
+from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
 from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
 
@@ -41,8 +42,9 @@ def session_manager(portfolio_manager: PortfolioManager):
 @pytest.mark.portfolio
 @pytest.mark.session
 class TestPortfolioSessions:
-    def test_add_ledgers_commit(self, portfolio, session_manager):
+    def test_add_ledgers_commit(self, portfolio : Portfolio, session_manager):
         assert portfolio.ledgers == set()
+        assert len(portfolio.ledgers) == 0
 
         inst1 = Instrument(ticker="AAPL", currency=Currency("USD"))
         ledg1 = Ledger(instrument_uid=inst1.uid)
@@ -51,8 +53,8 @@ class TestPortfolioSessions:
         ledg2 = Ledger(instrument_uid=inst2.uid)
 
         with session_manager(actor="tester", reason="add-ledgers") as s:
-            # Access set via session (wrapped Journalled Set proxy)
-            ledgers_set = portfolio.ledgers
+            # Access mutable set via the portfolio's journal
+            ledgers_set = portfolio.journal.ledgers
             ledgers_set.add(ledg1)
             ledgers_set.add(ledg2)
             assert portfolio.dirty is True
@@ -67,12 +69,12 @@ class TestPortfolioSessions:
         assert p_new[inst1] is ledg1
         assert p_new[inst2] is ledg2
 
-    def test_add_and_remove_ledger_abort(self, portfolio, session_manager):
+    def test_add_and_remove_ledger_abort(self, portfolio : Portfolio, session_manager):
         inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
         ledg = Ledger(instrument_uid=inst.uid)
 
         with session_manager(actor="tester", reason="add-then-abort") as s:
-            ledgers_set = portfolio.ledgers
+            ledgers_set = portfolio.journal.ledgers
             ledgers_set.add(ledg)
             assert ledg in ledgers_set
             assert portfolio.dirty
@@ -84,7 +86,7 @@ class TestPortfolioSessions:
         # After context, portfolio unchanged
         assert ledg not in portfolio.ledgers
 
-    def test_remove_existing_ledger_commit(self, portfolio, session_manager, portfolio_manager):
+    def test_remove_existing_ledger_commit(self, portfolio : Portfolio, session_manager, portfolio_manager):
         # Seed a ledger through update (no session needed for initial construction)
         inst = Instrument(ticker="ORCL", currency=Currency("USD"))
         ledg = Ledger(instrument_uid=inst.uid)
@@ -95,14 +97,14 @@ class TestPortfolioSessions:
         portfolio_manager.portfolio = p2
 
         with session_manager(actor="tester", reason="remove-ledger"):
-            ledgers_set = p2.ledgers
+            ledgers_set = p2.journal.ledgers
             ledgers_set.discard(ledg)
             assert ledg not in ledgers_set
 
         p3 = p2.superseding
         assert p3 is not None and ledg not in p3.ledgers
 
-    def test_add_transactions_commit_and_ordering(self, portfolio, session_manager, portfolio_manager):
+    def test_add_transactions_commit_and_ordering(self, portfolio : Portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="TSLA", currency=Currency("USD"))
         ledg = Ledger(instrument_uid=inst.uid)
         p2 = portfolio.update(ledger_uids={ledg.uid})
@@ -130,10 +132,11 @@ class TestPortfolioSessions:
                 consideration=Decimal("630"),
             )
 
-            # Access ledger transactions (now a MutableSet with ordered view)
+            # Access ledger transactions via the journal (mutable ordered set view)
             assert ledg.in_session
-            assert isinstance(ledg.transaction_uids, MutableSet)
-            tx_set = ledg.transactions
+            # Entities expose frozen sets; journal exposes mutable proxies
+            assert isinstance(ledg.transaction_uids, Set) and not isinstance(ledg.transaction_uids, MutableSet)
+            tx_set = ledg.journal.transactions
             assert len(tx_set) == 0
             # Add transactions (order determined by date automatically)
             tx_set.add(t2)
@@ -152,7 +155,7 @@ class TestPortfolioSessions:
         # Persisted ordering by date
         assert list(new_ledger.transactions) == [t1, t2, t3]
 
-    def test_remove_transaction_abort(self, portfolio, session_manager, portfolio_manager):
+    def test_remove_transaction_abort(self, portfolio : Portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="NVDA", currency=Currency("USD"))
         t1 = Transaction(
             type=TransactionType.BUY,
@@ -172,7 +175,7 @@ class TestPortfolioSessions:
         portfolio_manager.portfolio = p2
 
         with session_manager(actor="tester", reason="tx-remove-abort") as s:
-            tx_set = ledg.transactions
+            tx_set = ledg.journal.transactions
             # Date ordering t1 (Feb 1) then t2 (Feb 2)
             assert list(tx_set) == [t1, t2]
             tx_set.discard(t1)
@@ -187,7 +190,7 @@ class TestPortfolioSessions:
         # Retrieve original ledger via indexing
         assert list(p2[ledg.uid].transactions) == [t1, t2]
 
-    def test_reorder_transactions_commit(self, portfolio, session_manager, portfolio_manager):
+    def test_reorder_transactions_commit(self, portfolio : Portfolio, session_manager, portfolio_manager):
         inst = Instrument(ticker="IBM", currency=Currency("USD"))
         t1 = Transaction(
             type=TransactionType.BUY,
@@ -214,7 +217,7 @@ class TestPortfolioSessions:
         assert portfolio_manager.portfolio is p2
 
         with session_manager(actor="tester", reason="ordering-commit"):
-            seq = ledg.transactions
+            seq = ledg.journal.transactions
             # Initial ordering should be by date: t1, t2, t3
             assert list(seq) == [t1, t2, t3]
             # Removing and re-adding should preserve date ordering

@@ -1,41 +1,26 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override, TYPE_CHECKING, Iterator, Iterable
-from pydantic import Field
 from functools import cached_property
-from collections.abc import MutableSet, Set
 
-from .entity import Entity
-from .ledger.ledger import Ledger
-from .instrument import Instrument
-from .uid import Uid
+from collections.abc import Set, Sequence
+from abc import abstractmethod, ABCMeta
+from typing import override, Iterator, TYPE_CHECKING
 
-from .entity import IncrementingUidEntity
-
-from ..collections.ordered_view import OrderedViewSet
-from .ledger import UidProxyOrderedViewLedgerSet, OrderedViewFrozenLedgerUidSet
+from ..uid import Uid
+from ..ledger import Ledger, OrderedViewFrozenLedgerUidSet, UidProxyOrderedViewLedgerFrozenSet
+from ..entity import Entity
+from ..instrument import Instrument
 
 
-class Portfolio(IncrementingUidEntity, MutableSet[Ledger]):
-    # Make type checkers believe that the ledger_uids tuple is mutable
+class PortfolioBase[T_Uid_Set : OrderedViewFrozenLedgerUidSet, T_Proxy_Set : UidProxyOrderedViewLedgerFrozenSet](Set[Ledger], metaclass=ABCMeta):
     if TYPE_CHECKING:
-        ledger_uids_ : Iterable[Uid] = Field(default_factory=OrderedViewFrozenLedgerUidSet, alias='ledger_uids')
-        @property
-        def ledger_uids(self) -> OrderedViewSet[Uid]: ...
-        @ledger_uids.setter
-        def ledger_uids(self, value : MutableSet[Uid] | Set[Uid]) -> None: ...
-    else:
-        ledger_uids : OrderedViewFrozenLedgerUidSet = Field(default_factory=OrderedViewFrozenLedgerUidSet, description="A set of ledger Uids associated with this portfolio.")
+        ledger_uids : T_Uid_Set
 
     @cached_property
-    def ledgers(self) -> UidProxyOrderedViewLedgerSet:
-        return UidProxyOrderedViewLedgerSet(owner=self, field='ledger_uids')
-
-
-    # MARK: Custom __getitem__
-    #def __getitem__(self, index : int) -> Ledger:
-    #    return self.ledgers[index]
+    @abstractmethod
+    def ledgers(self) -> T_Proxy_Set:
+        raise NotImplementedError("Subclasses must implement ledgers property")
 
 
     # MARK: Custom __getitem__
@@ -65,7 +50,7 @@ class Portfolio(IncrementingUidEntity, MutableSet[Ledger]):
         raise KeyError(f"Index must be an int, Uid or Instrument, got {type(index).__name__}")
 
 
-    # MARK: MutableSet ABC
+    # MARK: Set ABC
     @override
     def __contains__(self, value : object) -> bool:
         if not isinstance(value, (Ledger, Uid)):
@@ -73,20 +58,8 @@ class Portfolio(IncrementingUidEntity, MutableSet[Ledger]):
         return Ledger.narrow_to_uid(value) in self.ledger_uids
 
     @override
-    def add(self, value : Ledger | Uid) -> None:
-        self.ledger_uids.add(Ledger.narrow_to_uid(value))
-
-    @override
-    def discard(self, value : Ledger | Uid) -> None:
-        self.ledger_uids.discard(Ledger.narrow_to_uid(value))
-
-    @override
     def __iter__(self) -> Iterator[Ledger]: # pyright: ignore[reportIncompatibleMethodOverride] since we are overriding the pydantic BaseModel iterator on purpose
-        for uid in self.ledger_uids:
-            ledger = Ledger.by_uid(uid)
-            if ledger is None:
-                raise KeyError(f"Ledger with UID {uid} not found")
-            yield ledger
+        return iter(self.ledgers)
 
     @override
     def __len__(self):

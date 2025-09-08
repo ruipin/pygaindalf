@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from iso4217 import Currency
 
-from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 from app.portfolio.models.entity.entity_audit_log import EntityAuditType, EntityAuditLog
 

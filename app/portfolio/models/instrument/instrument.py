@@ -1,24 +1,26 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import functools
-
-from pydantic import Field, ValidatorFunctionWrapHandler, model_validator, PrivateAttr, field_validator, ValidationInfo, TypeAdapter
+from pydantic import model_validator, Field
 from pydantic_core import PydanticUseDefault
-from typing import override, Any, ClassVar, Self, MutableMapping, cast as typing_cast
-
+from typing import override, Any, Generic
 from iso4217 import Currency
 
-from ...util.helpers import script_info
+from ..entity.instance_store import InstanceStoreEntityMixin
+from ..entity import Entity
+from ..store import StringUidMapping
 
-from .entity.instance_store import InstanceStoreEntityMixin
-from .entity import Entity
-from .entity import AutomaticNamedEntity
-from .store import StringUidMapping
-from .uid import Uid
+from .instrument_journal import InstrumentJournal
 
 
-class Instrument(InstanceStoreEntityMixin, AutomaticNamedEntity):
+
+class Instrument(InstanceStoreEntityMixin, Entity[InstrumentJournal]):
+    @classmethod
+    @override
+    def get_journal_class(cls) -> type[InstrumentJournal]:
+        return InstrumentJournal
+
+
     # MARK: Fields
     isin     : str | None = Field(default=None, min_length=1, description="International Securities Identification Number (ISIN) of the instrument.")
     ticker   : str | None = Field(default=None, min_length=1, description="Ticker symbol of the instrument, used for trading and identification.")

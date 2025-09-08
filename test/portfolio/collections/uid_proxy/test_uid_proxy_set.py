@@ -6,6 +6,7 @@ from pydantic import Field
 from functools import cached_property
 
 from app.portfolio.collections.uid_proxy import UidProxySet
+from app.portfolio.collections.uid_proxy.set.set import UidProxyFrozenSet
 from app.portfolio.models.entity import IncrementingUidEntity
 from app.portfolio.models.uid import Uid
 
@@ -16,6 +17,8 @@ class Child(IncrementingUidEntity):
 
 class _UidProxyChildSet(UidProxySet[Child]):
     pass
+class _UidProxyFrozenChildSet(UidProxyFrozenSet[Child]):
+    pass
 
 class Parent(IncrementingUidEntity):
     child_uids: set[Uid] = Field(default_factory=set)
@@ -23,6 +26,10 @@ class Parent(IncrementingUidEntity):
     @cached_property
     def children(self):  # Returns a proxy set of Child entities
         return _UidProxyChildSet(owner=self, field='child_uids')
+
+    @cached_property
+    def children_frozen(self):
+        return _UidProxyFrozenChildSet(owner=self, field='child_uids')
 
 
 @pytest.mark.portfolio_collections
@@ -54,6 +61,20 @@ class TestUidProxySet:
         assert c1 not in proxy and c2 in proxy
         assert p.child_uids == {c2.uid}
 
+    def test_frozen_contains_iter_and_read_only(self):
+        p = Parent()
+        c1, c2 = Child(), Child()
+        p.children.add(c1)
+        p.children.add(c2)
+        f = p.children_frozen
+        assert len(f) == 2
+        assert c1 in f and c2 in f
+        assert {x.uid for x in f} == {c1.uid, c2.uid}
+        with pytest.raises(AttributeError):
+            f.add(c1)  # type: ignore[attr-defined]
+        with pytest.raises(AttributeError):
+            f.discard(c1)  # type: ignore[attr-defined]
+
     def test_iter_yields_entities(self):
         p = Parent()
 
@@ -73,6 +94,8 @@ class TestUidProxySet:
 
         assert any(c.uid == s.uid for s in p.children)
         assert type(p.children) == _UidProxyChildSet
+        assert any(c.uid == s.uid for s in p.children_frozen)
+        assert type(p.children_frozen) == _UidProxyFrozenChildSet
 
     def test_missing_entity_uid_raises_key_error(self):
         p = Parent()
@@ -82,4 +105,6 @@ class TestUidProxySet:
         p.child_uids.add(fake)
         with pytest.raises(KeyError):
             list(p.children)  # iter should raise when resolving fake uid
+        with pytest.raises(KeyError):
+            list(p.children_frozen)
 

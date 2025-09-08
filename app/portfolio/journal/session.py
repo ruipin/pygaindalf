@@ -4,7 +4,7 @@
 import weakref
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
-from typing import ClassVar, Any, override, TypedDict, Literal
+from typing import ClassVar, Any, override, TypedDict, Literal, Iterator, Callable
 from datetime import datetime
 from ordered_set import OrderedSet
 
@@ -15,7 +15,7 @@ from ..models.uid import Uid, IncrementingUidFactory
 from ..models.entity.entity import Entity
 from ..models.entity.superseded import superseded_check
 
-from .entity import EntityJournal
+from .entity_journal import EntityJournal
 
 
 class SessionParams(TypedDict):
@@ -105,7 +105,10 @@ class JournalSession(LoggableHierarchicalModel):
         if self._in_commit:
             return None
 
-        journal = EntityJournal(entity=entity)
+        journal_cls = entity.get_journal_class()
+        if not issubclass(journal_cls, EntityJournal):
+            raise TypeError(f"Entity journal class {journal_cls} is not a subclass of EntityJournal.")
+        journal = journal_cls(entity=entity)
         self._entity_journals[entity.uid] = journal
         return journal
 
@@ -198,30 +201,44 @@ class JournalSession(LoggableHierarchicalModel):
 
     # MARK: Commit
     def _commit(self) -> None:
-        flattened = self._commit_flatten()
-        self._commit_apply(flattened)
-        self._call_parent_hook('commit')
+        self._commit_invalidate()
+        self._commit_apply()
+    #    flattened = self._commit_flatten()
+    #    self._commit_apply(flattened)
+    #    self._call_parent_hook('commit')
 
-    def _commit_flatten(self) -> OrderedSet[EntityJournal]:
-        """
-        Recursively travel the entity journal hierarchy, flattening it into a list of journals such that all dependencies are handled before dependents.
-        """
-        #self.log.debug("Flattening entity journal hierarchy for commit...")
-
-        journals = OrderedSet([])
-
+    def _commit_travel_hierarchy(self, condition : Callable[[EntityJournal], bool]) -> Iterator[EntityJournal]:
         for ej in self._entity_journals.values():
-            ej.flatten_hierarchy(journals)
+            for inv in ej.commit_yield_hierarchy(condition):
+                yield inv
 
-        return journals
+    def _commit_invalidate(self):
+        """
+        Invalidate all computed fields in all journals.
+        """
+        self.log.debug("Invalidating all entities with a journal...")
 
-    def _commit_apply(self, flattened : OrderedSet[EntityJournal]) -> None:
+        len_journals = len(self._entity_journals)
+
+        while True:
+            for ej in self._commit_travel_hierarchy(lambda x: not x.invalidated):
+                self.log.debug(f"Invalidating entity journal for {ej.entity.instance_name}...")
+                ej.invalidate()
+
+                if (new_len := len(self._entity_journals)) != len_journals:
+                    # New journals were added during invalidation, restart
+                    len_journals = new_len
+                    break
+            else:
+                break
+
+    def _commit_apply(self) -> None:
         """
         Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions).
         Where an entity holds references to child entities (e.g. lists/dicts), these references are refreshed.
         """
-        self.log.debug(t"Committing flattened hierarchy: ({', '.join(str(j.entity) for j in flattened)})")
+        self.log.debug("Committing journals...")
 
-        entity = None
-        for journal in flattened:
+        for journal in self._commit_travel_hierarchy(lambda x: not x.superseded):
+            self.log.debug(f"Committing entity journal for {journal.entity.instance_name}...")
             journal.commit()
