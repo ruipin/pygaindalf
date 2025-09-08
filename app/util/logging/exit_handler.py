@@ -16,9 +16,7 @@ class ExitHandler(logging.Handler):
     Custom logging handler to track log message counts and handle application exit status.
     """
     class ExitStatusFormatter(logging.Formatter):
-        @override
-        def format(self, record):
-            return record.msg
+        pass
 
 
     def atexit(self):

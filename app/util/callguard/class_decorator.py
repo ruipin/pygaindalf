@@ -113,7 +113,7 @@ class CallguardClassDecorator[T : object]:
     @classmethod
     def _filter_by_name(cls, klass : type[T], name : str, value : Any, callguard_class_options : CallguardClassOptions[T], pydantic_decorators : tuple[str, ...]) -> tuple[bool, bool]:
         if name in pydantic_decorators:
-            LOG.debug(f"Callguard: Skipping {klass.__name__}.{name} as it is a pydantic decorator")
+            LOG.debug(t"Callguard: Skipping {klass.__name__}.{name} as it is a pydantic decorator")
             return (False, False)
 
         # Parse options
@@ -189,7 +189,7 @@ class CallguardClassDecorator[T : object]:
             decorate = not decorate_skip_instancemethods
             guard_fn = typing_cast(CallguardGuardMethod[_T,P,R], CallguardCallableDecorator.guard)
         else:
-            LOG.debug(f"Skipping non-callable, non-property attribute {options.get('method_name', '<unknown>')} of type {type(value)}")
+            LOG.debug(t"Skipping non-callable, non-property attribute {options.get('method_name', '<unknown>')} of type {type(value)}")
             return value
 
         if guard_fn is None:
@@ -223,7 +223,7 @@ class CallguardClassDecorator[T : object]:
         setattr(klass, f'_{klass.__name__}__callguarded__', True)
 
         if not getattr(klass, '__callguarded__', False):
-            LOG.debug(f"Callguard: Marking class {klass.__name__} as callguarded")
+            LOG.debug(t"Callguard: Marking class {klass.__name__} as callguarded")
             setattr(klass, '__callguarded__', True)
 
             # Inject __init_subclass__ to auto-guard subclasses, if the inheritance chain does not already have it
@@ -233,7 +233,7 @@ class CallguardClassDecorator[T : object]:
 
             @classmethod
             def init_subclass_wrapper(subcls):
-                LOG.error(f"__init_subclass__: {cls.__name__} -> {klass.__name__} -> {subcls.__name__}")
+                LOG.error(t"__init_subclass__: {cls.__name__} -> {klass.__name__} -> {subcls.__name__}")
 
                 if original_init_subclass is not None:
                     original_init_subclass.__func__(subcls)
@@ -251,7 +251,7 @@ class CallguardClassDecorator[T : object]:
 
     @classmethod
     def guard(cls, klass: type[T], **callguard_class_options: Unpack[CallguardClassOptions[T]]) -> type[T]:
-        LOG.debug(f"Callguard: Guarding class {klass.__name__}")
+        LOG.debug(t"Callguard: Guarding class {klass.__name__}")
 
         # Check if we should proceed
         if not callguard_enabled(klass, skip_if_already_guarded=False):
@@ -261,7 +261,7 @@ class CallguardClassDecorator[T : object]:
 
         if getattr(klass, f'_{klass.__name__}__callguarded__', False):
             # Already callguarded
-            LOG.debug(f"Callguard: Class {klass.__name__} is already callguarded, skipping")
+            LOG.debug(t"Callguard: Class {klass.__name__} is already callguarded, skipping")
             return klass
 
         # Decoration
@@ -278,7 +278,7 @@ class CallguardClassDecorator[T : object]:
             raise ValueError(f"klass must have a __dict__ Mapping, got {type(d)} instead")
 
         for name, value in d.items():
-            LOG.debug(f"Callguard: Inspecting {klass.__name__}.{name} of type {type(value)}")
+            LOG.debug(t"Callguard: Inspecting {klass.__name__}.{name} of type {type(value)}")
 
             # Filter by name
             (guard, decorate) = cls._filter_by_name(
@@ -313,7 +313,7 @@ class CallguardClassDecorator[T : object]:
 
         # Apply modifications
         for name, value in modifications.items():
-            LOG.debug(f"Callguard: Patching {klass.__name__}.{name}")
+            LOG.debug(t"Callguard: Patching {klass.__name__}.{name}")
             setattr(klass, name, value)
 
         # Mark class as callguarded

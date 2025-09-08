@@ -212,13 +212,13 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         if entity.uid != self.entity_uid:
             raise ValueError(f"Entity UID {entity.uid} does not match the audit log's entity UID {self.entity_uid}.")
         if entity.version < self.version:
-            self.log.warning(f"Entity version {entity.version} is less than the audit log's version {self.version}. This indicates that the entity has been modified since the last audit entry, which is not allowed.")
+            self.log.warning(t"Entity version {entity.version} is less than the audit log's version {self.version}. This indicates that the entity has been modified since the last audit entry, which is not allowed.")
             return
         if entity.version > self.version:
             raise ValueError(f"Entity version {entity.version} is greater than the audit log's version {self.version} which is not allowed.")
 
         if (parent := self.instance_parent) is None or parent is not entity:
-            self.log.warning(f"Entity {entity.uid} does not match the audit log's parent entity {parent}. This indicates that the entity has been modified since the last audit entry, which is not allowed.")
+            self.log.warning(t"Entity {entity.uid} does not match the audit log's parent entity {parent}. This indicates that the entity has been modified since the last audit entry, which is not allowed.")
 
         old_entity = self.instance_parent
         diff = self._diff(old_entity, None)

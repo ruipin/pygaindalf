@@ -107,7 +107,7 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
                 if inherit is None:
                     defaulted.append(fld)
                     continue
-                cls.log.debug(f"Field '{fld}' has InheritFactory, found value: {inherit}")
+                cls.log.debug(t"Field '{fld}' has InheritFactory, found value: {inherit}")
                 value[fld] = inherit
                 inherited.append(fld)
 

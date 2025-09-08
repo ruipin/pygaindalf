@@ -2,7 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 # Exception Handler
-from . import exception_handler
+from . import exception_handler, tstring
 
 # Loggable Protocol
 from .loggable_protocol import LoggableProtocol

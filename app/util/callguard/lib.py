@@ -72,5 +72,5 @@ def get_execution_frame_self(frame : FrameType) -> object | None:
 def callguard_enabled(obj : Any = None, skip_if_already_guarded : bool = True) -> bool:
     result = CALLGUARD_ENABLED and not getattr(obj, '__callguard_disabled__', False) and (not getattr(obj, '__callguarded__', False) or not skip_if_already_guarded)
     if not result:
-        LOG.debug(f"Callguard: Object {obj.__name__} is not callguard-enabled, skipping")
+        LOG.debug(t"Callguard: Object {obj.__name__} is not callguard-enabled, skipping")
     return result

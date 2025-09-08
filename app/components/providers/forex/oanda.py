@@ -46,7 +46,7 @@ class OandaForexProvider(ForexProviderBase[OandaForexProviderConfig]):
         response = requests.get(url, params=params)
 
         if response.status_code != 200:
-            self.log.error(f"Failed to fetch exchange rate ({response.status_code}): {response.text}")
+            self.log.error(t"Failed to fetch exchange rate ({response.status_code}): {response.text}")
             raise ValueError(f"Failed to fetch exchange rate for {from_currency} to {to_currency} on {date}")
 
         # We pick the average bid for the given date
@@ -55,13 +55,13 @@ class OandaForexProvider(ForexProviderBase[OandaForexProviderConfig]):
         try:
             rate : str = str(json['response'][0]['average_bid'])
         except (KeyError, IndexError) as e:
-            self.log.error(f"Error parsing exchange rate data: {e}")
+            self.log.error(t"Error parsing exchange rate data: {e}")
             raise ValueError(f"Invalid response format for {from_currency} to {to_currency} on {date}: {json}")
 
         # Convert to Decimal
         result = self.decimal(rate)
 
-        self.log.debug(f"Exchange rate for {from_currency} to {to_currency} on {date}: {result}")
+        self.log.debug(t"Exchange rate for {from_currency} to {to_currency} on {date}: {result}")
         return result
 
 COMPONENT = OandaForexProvider

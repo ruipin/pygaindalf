@@ -14,14 +14,14 @@ from .lib import *
 # MARK: Callable decorator
 def default_callguard_checker[T : object, **P, R](info : CallguardHandlerInfo[T,P,R]) -> bool:
     if LOG.isEnabledFor(logging.DEBUG):
-        LOG.debug(f"Caller frame: {info.caller_frame.f_code.co_name} in {info.caller_module}")
+        LOG.debug(t"Caller frame: {info.caller_frame.f_code.co_name} in {info.caller_module}")
 
         callee_name = info.callee_frame.f_locals.get('method_name', info.callee_frame.f_code.co_name)
-        LOG.debug(f"Callee frame: {callee_name} in {info.callee_module}")
+        LOG.debug(t"Callee frame: {callee_name} in {info.callee_module}")
 
     if info.check_module:
         if info.caller_module != info.callee_module:
-            LOG.error(f"Module mismatch: caller {info.caller_module}, callee {info.callee_module}")
+            LOG.error(t"Module mismatch: caller {info.caller_module}, callee {info.callee_module}")
             return False
 
     if info.allow_same_module:
@@ -34,7 +34,7 @@ def default_callguard_checker[T : object, **P, R](info : CallguardHandlerInfo[T,
                 (not isinstance(info.callee_self, type) or not isinstance(info.caller_self, info.callee_self)) and
                 (not isinstance(info.caller_self, type) or not isinstance(info.callee_self, info.caller_self))
             ):
-                LOG.error(f"Self mismatch: caller {info.caller_self}, callee {info.callee_self}")
+                LOG.error(t"Self mismatch: caller {info.caller_self}, callee {info.callee_self}")
                 return False
     return True
 
@@ -84,7 +84,7 @@ class CallguardCallableDecorator[T : object, **P, R]:
             @functools.wraps(wrapped)
             def _callguard_wrapper(self : T, *args : P.args, **kwargs : P.kwargs) -> R:
                 _method_name = typing_cast(str, method_name(self, *args, **kwargs)) if callable(method_name) else method_name
-                LOG.debug(f"Callguard: Guarding call to {_method_name}")
+                LOG.debug(t"Callguard: Guarding call to {_method_name}")
 
                 callee_frame = get_execution_frame(frames_up=frames_up)
                 if callee_frame is None:

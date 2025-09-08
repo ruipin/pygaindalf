@@ -182,7 +182,7 @@ class Entity(LoggableHierarchicalModel):
         if sys.is_finalizing:
             return
 
-        self.log.debug(f"Entity __del__ called for {self}.")
+        self.log.debug(t"Entity __del__ called for {self}.")
 
         if self.superseded:
             self.entity_log.on_delete(self, who='system', why='__del__')
@@ -373,7 +373,7 @@ class Entity(LoggableHierarchicalModel):
         journal.set(name, value)
 
     #def on_journal_field_edit(self, session: 'JournalSession', field: str) -> None:
-    #    self.log.debug(f"Entity {self} field '{field}' edited in session {session}.")
+    #    self.log.debug(t"Entity {self} field '{field}' edited in session {session}.")
 
     @property
     def dirty(self) -> bool:

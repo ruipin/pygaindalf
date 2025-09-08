@@ -280,7 +280,7 @@ class EntityJournal(LoggableHierarchicalModel):
 
             if issubclass(origin, Sequence):
                 if len(args) != 1 or not issubclass(args[0], Entity):
-                    self.log.warning(f"Entity field '{attr}' is annotated as a sequence but the item type is not an Entity. Skipping entity refresh.")
+                    self.log.warning(t"Entity field '{attr}' is annotated as a sequence but the item type is not an Entity. Skipping entity refresh.")
                     continue
 
                 self.log.debug("Refreshing entity sequence '%s'", attr)

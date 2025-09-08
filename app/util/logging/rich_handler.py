@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from gc import enable
 import logging
 
 from pathlib import Path
-from typing import Iterable, override
+from typing import override
 
 from rich.console import Console, ConsoleRenderable, RenderableType
 from rich.containers import Renderables
@@ -13,6 +12,7 @@ from rich.logging import RichHandler
 from rich.text    import Text
 from rich.table   import Table
 from rich.traceback import Traceback
+
 
 class CustomRichHandler(RichHandler):
     @override
