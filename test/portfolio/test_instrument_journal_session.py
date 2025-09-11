@@ -17,7 +17,7 @@ from pydantic import Field, ConfigDict, InstanceOf
 from app.util.mixins import LoggableHierarchicalModel
 
 
-# --- Minimal owner that behaves like a PortfolioManager but is an Entity so SessionManager can parent it ---
+# --- Minimal owner that behaves like a PortfolioRoot but is an Entity so SessionManager can parent it ---
 class OneInstrumentOwner(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',

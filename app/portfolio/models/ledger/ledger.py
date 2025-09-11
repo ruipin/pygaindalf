@@ -8,6 +8,9 @@ from functools import cached_property
 from pydantic import Field, computed_field, field_validator
 from collections.abc import Set, MutableSet, Sequence
 
+if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
+
 from ...collections.uid_proxy import UidProxyOrderedViewSet, UidProxySequence
 from ...collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
 
@@ -105,3 +108,9 @@ class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
     @cached_property
     def transactions(self) -> UidProxyOrderedViewTransactionFrozenSet:
         return UidProxyOrderedViewTransactionFrozenSet(owner=self, field='transaction_uids')
+
+
+    # MARK: Utilities
+    @override
+    def sort_key(self) -> SupportsRichComparison:
+        return (self.instance_name, self.uid)

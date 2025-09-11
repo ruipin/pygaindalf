@@ -11,9 +11,6 @@ from ...collections.journalled import JournalledOrderedViewSet
 from ..uid import Uid
 from .transaction import Transaction
 
-if TYPE_CHECKING:
-    from _typeshed import SupportsRichComparison
-
 
 class OrderedViewFrozenTransactionUidSet(OrderedViewFrozenSet[Uid]):
     @classmethod
@@ -25,13 +22,6 @@ class OrderedViewFrozenTransactionUidSet(OrderedViewFrozenSet[Uid]):
     @override
     def get_journalled_type(cls) -> type[JournalledOrderedViewSet]:
         return JournalledOrderedViewTransactionUidSet
-
-    @override
-    def _sort_key(self, item : Uid) -> SupportsRichComparison:
-        txn = Transaction.by_uid(item)
-        if txn is None:
-            raise ValueError(f"No transaction found for UID {item}.")
-        return (txn.date, txn.uid)
 
     @classmethod
     @override

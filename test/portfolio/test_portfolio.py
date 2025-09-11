@@ -4,7 +4,7 @@
 import pytest
 from iso4217 import Currency
 
-from app.portfolio.manager import PortfolioManager
+from app.portfolio.root import PortfolioRoot
 from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
@@ -14,11 +14,11 @@ import pydantic
 
 
 @pytest.fixture
-def portfolio_manager() -> PortfolioManager:
-    return PortfolioManager()
+def portfolio_manager() -> PortfolioRoot:
+    return PortfolioRoot()
 
 @pytest.fixture
-def portfolio(portfolio_manager : PortfolioManager) -> Portfolio:
+def portfolio(portfolio_manager : PortfolioRoot) -> Portfolio:
     return portfolio_manager.portfolio
 
 
@@ -36,7 +36,7 @@ class TestPortfolio:
         assert p.ledgers == set()
         assert len(p.ledgers) == 0
 
-    def test_session_manager_cached_property(self, portfolio_manager : PortfolioManager, portfolio : Portfolio):
+    def test_session_manager_cached_property(self, portfolio_manager : PortfolioRoot, portfolio : Portfolio):
         p = portfolio
         sm1 = p.session_manager
         sm2 = p.session_manager

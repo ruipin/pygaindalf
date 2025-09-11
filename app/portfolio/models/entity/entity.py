@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from ...journal.session_manager import SessionManager
     from ...journal.session import JournalSession
     from ..store.entity_store import EntityStore
+    from _typeshed import SupportsRichComparison
 
 from ..uid import Uid
 
@@ -389,6 +390,9 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
 
 
     # MARK: Utilities
+    def sort_key(self) -> SupportsRichComparison:
+        return self.uid
+
     @override
     def __hash__(self):
         return hash((self.uid, self.version))

@@ -1,7 +1,7 @@
-"""Tests exercising portfolio session code paths via PortfolioManager.
+"""Tests exercising portfolio session code paths via PortfolioRoot.
 
 These tests intentionally avoid using any bespoke session fixtures and instead
-drive everything through a real `PortfolioManager` and its `session_manager`.
+drive everything through a real `PortfolioRoot` and its `session_manager`.
 
 They validate ledger + transaction add/remove and reordering behaviors using
 the journalling layer (JournalledMapping / JournalledSequence) across commits
@@ -15,7 +15,7 @@ import pytest
 from iso4217 import Currency
 from collections.abc import MutableSet, Set
 
-from app.portfolio.manager import PortfolioManager
+from app.portfolio.root import PortfolioRoot
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
 from app.portfolio.models.transaction.transaction import Transaction, TransactionType
@@ -27,15 +27,15 @@ from app.portfolio.collections.journalled.mapping import JournalledMapping  # no
 # --- Fixtures --------------------------------------------------------------------
 
 @pytest.fixture()
-def portfolio_manager() -> PortfolioManager:
-    return PortfolioManager()
+def portfolio_manager() -> PortfolioRoot:
+    return PortfolioRoot()
 
 @pytest.fixture()
-def portfolio(portfolio_manager: PortfolioManager):
+def portfolio(portfolio_manager: PortfolioRoot):
     return portfolio_manager.portfolio
 
 @pytest.fixture()
-def session_manager(portfolio_manager: PortfolioManager):
+def session_manager(portfolio_manager: PortfolioRoot):
     return portfolio_manager.session_manager
 
 

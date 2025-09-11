@@ -4,10 +4,13 @@
 import datetime
 import weakref
 
-from typing import override, Any
+from typing import override, Any, TYPE_CHECKING
 from pydantic import Field, computed_field, field_validator
 
 from decimal import Decimal
+
+if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
 
 from ..uid import Uid
 
@@ -60,3 +63,9 @@ class Transaction(IncrementingUidEntity[TransactionJournal]):
             raise ValueError(f"Transaction.instance_parent must be a Ledger, got {type(value).__name__}.")
 
         return value
+
+
+    # MARK: Utilities
+    @override
+    def sort_key(self) -> SupportsRichComparison:
+        return (self.date, self.uid)

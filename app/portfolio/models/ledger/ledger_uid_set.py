@@ -11,9 +11,6 @@ from ...collections.journalled import JournalledOrderedViewSet
 from ..uid import Uid
 from .ledger import Ledger
 
-if TYPE_CHECKING:
-    from _typeshed import SupportsRichComparison
-
 
 class OrderedViewFrozenLedgerUidSet(OrderedViewFrozenSet[Uid]):
     @classmethod
@@ -25,13 +22,6 @@ class OrderedViewFrozenLedgerUidSet(OrderedViewFrozenSet[Uid]):
     @override
     def get_journalled_type(cls) -> type[JournalledOrderedViewSet]:
         return JournalledOrderedViewLedgerUidSet
-
-    @override
-    def _sort_key(self, item : Uid) -> SupportsRichComparison:
-        ledger = Ledger.by_uid(item)
-        if ledger is None:
-            raise ValueError(f"No ledger found for UID {item}.")
-        return (ledger.instrument.instance_name, ledger.uid)
 
     @classmethod
     @override

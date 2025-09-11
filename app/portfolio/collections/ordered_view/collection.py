@@ -2,7 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from functools import lru_cache
-from typing import override, Iterable, Iterator, Hashable, Any, overload, Self, TYPE_CHECKING, cast as typing_cast, Callable
+from typing import override, Iterable, Iterator, Hashable, Any, overload, Self, TYPE_CHECKING, cast as typing_cast, Callable, Protocol, runtime_checkable
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import core_schema, CoreSchema
 from collections.abc import Collection, Sequence
@@ -15,6 +15,14 @@ if TYPE_CHECKING:
 from ....util.helpers import generics
 from ....util.callguard import callguard_class
 from ....util.helpers.instance_lru_cache import instance_lru_cache
+
+from ...models.uid import Uid
+from ...models.entity import Entity
+
+
+@runtime_checkable
+class SortKeyProtocol(Protocol):
+    def sort_key(self) -> SupportsRichComparison: ...
 
 
 @callguard_class()
@@ -35,6 +43,12 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
         raise NotImplementedError("Subclasses must implement _get_container method.")
 
     def _sort_key(self, item : T) -> SupportsRichComparison:
+        if isinstance(item, Uid):
+            item = Entity.by_uid(item)
+            if item is None:
+                raise ValueError(f"No entity found for UID {item}.")
+        if isinstance(item, SortKeyProtocol):
+            return item.sort_key()
         return typing_cast('SupportsRichComparison', item)
 
     @property

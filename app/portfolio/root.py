@@ -18,7 +18,7 @@ from .journal.session import JournalSession
 
 
 
-class PortfolioManager(LoggableHierarchicalModel):
+class PortfolioRoot(LoggableHierarchicalModel):
     model_config = ConfigDict(
         extra='forbid',
         frozen=False,
