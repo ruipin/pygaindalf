@@ -42,7 +42,7 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
     def _get_container(self) -> Collection[T]:
         raise NotImplementedError("Subclasses must implement _get_container method.")
 
-    def _sort_key(self, item : T) -> SupportsRichComparison:
+    def item_sort_key(self, item : T) -> SupportsRichComparison:
         if isinstance(item, Uid):
             item = Entity.by_uid(item)
             if item is None:
@@ -52,15 +52,15 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
         return typing_cast('SupportsRichComparison', item)
 
     @property
-    def _sort_reverse(self) -> bool:
+    def item_sort_reverse(self) -> bool:
         return False
 
     @instance_lru_cache
     def sort(self, key : Callable[[T], SupportsRichComparison] | None = None, reverse : bool | None = None) -> Sequence[T]:
         if key is None:
-            key = self._sort_key
+            key = self.item_sort_key
         if reverse is None:
-            reverse = self._sort_reverse
+            reverse = self.item_sort_reverse
         return tuple(sorted(self._get_container(), key=key, reverse=reverse))
 
     @property

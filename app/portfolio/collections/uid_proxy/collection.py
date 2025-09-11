@@ -11,8 +11,7 @@ from ....util.callguard import callguard_class
 from ...models.entity import Entity
 
 
-# TODO:
-#@callguard_class()
+@callguard_class()
 class UidProxyFrozenCollection[T_Proxy : Entity, T_Collection : object](metaclass=ABCMeta):
     def __init__(self, *, owner : object, field : str):
         self._owner = weakref.ref(owner)

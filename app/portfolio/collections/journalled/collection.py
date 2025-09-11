@@ -14,8 +14,7 @@ from ....util.callguard import callguard_class
 from .protocols import JournalledCollectionHooksProtocol
 
 
-# TODO:
-#@callguard_class()
+@callguard_class()
 class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : Collection, T_Immutable : Collection, T_Journal : object](HierarchicalNamedMixin, metaclass=ABCMeta):
     # MARK: Generics
     @classmethod
@@ -71,6 +70,10 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
     @property
     def edited(self) -> bool:
         return self._container is not None
+
+    @property
+    def journal(self) -> tuple[T_Journal, ...]:
+        return tuple(self._journal)
 
     def __len__(self):
         return len(self._get_container())

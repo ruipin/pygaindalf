@@ -14,19 +14,19 @@ class TestJournalledMapping:
         jm = JournalledMapping(original)
         assert jm.edited is False
         assert jm["a"] == 1
-        assert jm._container is None
         assert len(jm) == 2
+        # journal should be empty before any edits
+        assert jm.journal == ()
 
     def test_setitem_triggers_copy_and_journal(self):
         original = {"a":1}
         jm = JournalledMapping(original)
         jm["a"] = 10
         assert jm.edited is True
-        assert jm._container is not None
         assert original["a"] == 1
         assert jm["a"] == 10
-        assert len(jm._journal) == 1
-        e = jm._journal[0]
+        assert len(jm.journal) == 1
+        e = jm.journal[0]
         assert e.type is JournalledMappingEditType.SETITEM
         assert e.key == "a" and e.value == 10
 
@@ -37,7 +37,7 @@ class TestJournalledMapping:
         assert jm.edited is True
         assert "a" not in jm
         assert len(jm) == 1
-        e = jm._journal[0]
+        e = jm.journal[0]
         assert e.type is JournalledMappingEditType.DELITEM
         assert e.key == "a"
 
@@ -47,7 +47,7 @@ class TestJournalledMapping:
         jm["z"] = 3
         jm["x"] = 5
         del jm["y"]
-        assert [e.type for e in jm._journal] == [
+        assert [e.type for e in jm.journal] == [
             JournalledMappingEditType.SETITEM,
             JournalledMappingEditType.SETITEM,
             JournalledMappingEditType.DELITEM,
@@ -69,8 +69,8 @@ class TestJournalledMapping:
         jm["c"] = 30
 
         # Journal assertions
-        assert len(jm._journal) == 4
-        j0, j1, j2, j3 = jm._journal
+        assert len(jm.journal) == 4
+        j0, j1, j2, j3 = jm.journal
         assert (j0.type, j0.key, j0.value) == (JournalledMappingEditType.SETITEM, "d", 4)
         assert (j1.type, j1.key, j1.value) == (JournalledMappingEditType.SETITEM, "b", 20)
         assert (j2.type, j2.key, j2.value) == (JournalledMappingEditType.DELITEM, "a", None)
