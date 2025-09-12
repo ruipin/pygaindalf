@@ -69,7 +69,7 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
 
     @property
     def edited(self) -> bool:
-        return self._container is not None
+        return self._container is not None or bool(self._journal)
 
     @property
     def journal(self) -> tuple[T_Journal, ...]:
@@ -80,11 +80,11 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
 
     @override
     def __str__(self) -> str:
-        return str(self._get_container())
+        return str(self._journal)
 
     @override
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}: {self._get_container()!r})>"
+        return f"<{self.__class__.__name__}: {str(self)})>"
 
 
     # MARK: Pydantic

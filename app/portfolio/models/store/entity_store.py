@@ -218,8 +218,13 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
         removed = 0
         for uid in unreachable:
-            entity = self.pop(uid)
+            entity = self._entity_store.get(uid, None)
+            if entity is None:
+                raise RuntimeError(f"Entity with UID {uid} not found in store during mark and sweep.")
+
             entity.entity_log.on_delete(entity, who=who, why=why)
+            del self._entity_store[uid]
+
             removed += 1
 
         self.log.debug("Mark and sweep completed, removed %d entities.", removed)

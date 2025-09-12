@@ -4,11 +4,15 @@
 import annotationlib
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, InstanceOf
-from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args, Literal, Final, Union, Iterator, Callable
+from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args, Literal, Final, Union, Iterator, Callable, cast as typing_cast
 from ordered_set import OrderedSet
+from frozendict import frozendict
 import builtins
 
 from collections.abc import Sequence, Mapping, Set
+
+if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
 
 from ...util.mixins import LoggableHierarchicalModel
 from ...util.callguard import CallguardClassOptions
@@ -27,7 +31,7 @@ class EntityJournal(LoggableHierarchicalModel):
         decorator=superseded_check,
         decorate_public_methods=True,
         allow_same_module=True,
-        decorate_ignore_patterns=('ended','superseded','dirty','entity_uid')
+        decorate_ignore_patterns=('ended','superseded','dirty','entity_uid','commit_yield_hierarchy','get_diff')
     )
 
     model_config = ConfigDict(
@@ -72,11 +76,20 @@ class EntityJournal(LoggableHierarchicalModel):
         return entity
 
     @override
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}({self.entity!s})"
+
+    @override
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}:{self.entity!r}>"
 
+    @property
     def instance_name(self) -> str:
-        return f"EntityJournal({self.entity.uid})"
+        return f"{self.__class__.__name__}({self.entity.uid})"
+
+    def sort_key(self) -> SupportsRichComparison:
+        # Delegate to entity sort key, but we pretend to be the entity for this call
+        return type(self.entity).sort_key(typing_cast(Entity, self))
 
 
     # MARK: Superseded
@@ -202,14 +215,14 @@ class EntityJournal(LoggableHierarchicalModel):
 
         return value
 
-    def get_field(self, field : str) -> Any:
+    def get_field(self, field : str, *, wrap : bool = True) -> Any:
         field = self.entity.resolve_field_alias(field)
 
         if field in self._updates:
             return self._updates[field]
 
         original = self.get_original_field(field)
-        return self._wrap_field(field, original)
+        return self._wrap_field(field, original) if wrap else original
 
     if not TYPE_CHECKING:
         @override
@@ -242,6 +255,25 @@ class EntityJournal(LoggableHierarchicalModel):
 
         # Otherwise set attribute on the journal
         return self.set_field(name, value)
+
+
+    def get_diff(self) -> frozendict[str, Any]:
+        if (cached := getattr(self, '_diff', None)) is not None:
+            return cached
+
+        diff = self._updates.copy()
+        for k, v in self._updates.items():
+            if isinstance(v, JournalledCollection):
+                if not v.edited:
+                    del diff[k]
+                else:
+                    diff[k] = tuple(v.journal)
+
+        result = frozendict(diff)
+        if self.invalidated:
+            self._diff = result
+
+        return result
 
 
     # MARK: Propagation
@@ -285,6 +317,28 @@ class EntityJournal(LoggableHierarchicalModel):
         self._propagated_has_updates = has_updates
 
 
+
+    # MARK: Invalidation
+    def on_dependency_invalidated(self, source: EntityJournal) -> None:
+        # Loop through entity fields, and search for OrderedViewSets that referenced the source entity
+        for nm, info in self.entity.__class__.model_fields.items():
+            original = self.get_original_field(nm)
+
+            if isinstance(original, OrderedViewFrozenSet):
+                value = self.get_field(nm, wrap=False)
+
+                # Only propagate if the invalidated child is present in both the wrapped set *and* the original set
+                # (this avoids propagating invalidations for items that have been added or removed from the set in the same session as the invalidation)
+                if source.entity_uid not in original or (value is not original and source.entity_uid not in value):
+                    continue
+
+                if not self.is_field_updated(nm):
+                    value = self._wrap_field(nm, value)
+                assert isinstance(value, JournalledOrderedViewSet)
+
+                value.on_item_journal_invalidated(source)
+
+
     # MARK: Commit
     _invalidated : bool = PrivateAttr(default=False)
 
@@ -301,7 +355,7 @@ class EntityJournal(LoggableHierarchicalModel):
             entity = Entity.by_uid(dep)
             if not entity:
                 raise RuntimeError(f"Dependent entity with UID {dep} not found.")
-            entity.on_subscribed_entity_invalidation(self)
+            entity.on_dependency_invalidated(self)
 
     def commit_yield_hierarchy(self, condition : Callable[[EntityJournal], bool]) -> Iterator[EntityJournal]:
         """

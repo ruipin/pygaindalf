@@ -16,8 +16,9 @@ from ..collection import JournalledCollection
 
 
 class JournalledSetEditType(Enum):
-    ADD     = "add"
-    DISCARD = "discard"
+    ADD          = "add"
+    DISCARD      = "discard"
+    ITEM_UPDATED = "item_updated"  # Used when an item in the set has been updated (e.g., an entity that is part of the set has been modified)
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class JournalledSetEdit[T]:

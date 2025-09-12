@@ -8,11 +8,13 @@ from pydantic import Field, ConfigDict, PrivateAttr, computed_field, PositiveInt
 from pydantic_core import CoreSchema, core_schema
 from enum import Enum
 from collections.abc import Sequence, MutableMapping
-from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator
+from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator, Iterable
+from frozendict import frozendict
 
 from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal, SingleInitializationModel
 from ....util.helpers import script_info
 from ....util.callguard import callguard_class
+from ....util.helpers.frozendict import FrozenDict
 
 from ..uid import Uid
 
@@ -41,14 +43,14 @@ class EntityAudit(SingleInitializationModel):
         frozen=True,
     )
 
-    what    : EntityAuditType       = Field(description="The type of action that was performed on the entity.")
-    when    : datetime              = Field(default_factory=datetime.now, description="The date and time when this entity log entry was created.")
+    what    : EntityAuditType             = Field(description="The type of action that was performed on the entity.")
+    when    : datetime                    = Field(default_factory=datetime.now, description="The date and time when this entity log entry was created.")
     # TODO: 'who' should be a required field
-    who     : str | None            = Field(description="The actor who performed the action that created this log entry.")
+    who     : str | None                  = Field(description="The actor who performed the action that created this log entry.")
     # TODO: Instead of a string, this should be the audit log event, or a diff of the changes, etc
-    why     : str | None            = Field(default=None, description="Why this action was performed, if known.")
-    diff    : dict[str, Any] | None = Field(default=None, description="A dictionary containing the changes made to the entity, if applicable. This can be used to track what was changed in the entity during this action.")
-    version : PositiveInt           = Field(ge=1, description="The version of this entity at the time of the audit entry.")
+    why     : str | None                  = Field(default=None, description="Why this action was performed, if known.")
+    diff    : FrozenDict[str, Any] | None = Field(default=None, description="A dictionary containing the changes made to the entity, if applicable. This can be used to track what was changed in the entity during this action.")
+    version : PositiveInt                 = Field(ge=1, description="The version of this entity at the time of the audit entry.")
 
     @model_validator(mode='after')
     def _validate_consistency(self) -> Self:
@@ -84,6 +86,10 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
         if not hasattr(self, '_entries'):
             self._entries = []
+        if not hasattr(self, '_dependents'):
+            self._dependents = set()
+        if not hasattr(self, '_dependencies'):
+            self._dependencies = set()
 
     @classmethod
     def from_entity(cls, entity: Entity) -> EntityAuditLog:
@@ -134,6 +140,76 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
 
 
+    # MARK: Entity Diffing
+    def _is_diffable_field(self, field_name: str) -> bool:
+        return not field_name.startswith('_') and field_name not in ('uid', 'version', 'entity_log', 'instance_parent_weakref')
+
+    def _diff(self, old_entity: Entity | None, new_entity: Entity | None) -> frozendict[str, Any] | None:
+        """
+        Returns a dictionary containing the differences between the old and new entities.
+        This is used to track changes made to the entity during an update action.
+        """
+        if not self.TRACK_ENTITY_DIFF:
+            return None
+
+        # If both entities are None, something went wrong
+        if old_entity is None and new_entity is None:
+            raise ValueError("Both old and new entities are None. Cannot compute diff.")
+
+        # If there is no old entity, then all model fields in the entity are new
+        elif old_entity is None and new_entity is not None:
+            diff = {}
+            for fldnm in new_entity.__class__.model_fields.keys():
+                if not self._is_diffable_field(fldnm):
+                    continue
+                diff[fldnm] = getattr(new_entity, fldnm, None)
+            return frozendict(diff)
+
+        # If there is no new entity, then all model fields in the old entity are removed
+        elif new_entity is None and old_entity is not None:
+            diff = {}
+            for fldnm in old_entity.__class__.model_fields.keys():
+                if not self._is_diffable_field(fldnm):
+                    continue
+                if getattr(old_entity, fldnm, None) is not None:
+                    diff[fldnm] = None
+            return frozendict(diff)
+
+        # Otherwise, both entities exist, and we take the journal diff
+        else:
+            assert new_entity is not None and old_entity is not None
+            journal = old_entity.get_journal(create=False, fail=False)
+            return journal.get_diff() if journal is not None else self._diff_manual(old_entity, new_entity)
+
+    def _diff_manual(self, old_entity: Entity, new_entity: Entity) -> frozendict[str, Any] | None:
+        diff = {}
+
+        keys = set(old_entity.__dict__.keys())
+        keys.update(set(new_entity.__dict__.keys()))
+
+        for key in keys:
+            if not self._is_diffable_field(key):
+                continue
+
+            old_value = getattr(old_entity, key, None)
+            new_value = getattr(new_entity, key, None)
+
+            from .entity import Entity
+            mismatch = False
+            if not isinstance(new_value, type(old_value)):
+                mismatch = True
+            elif isinstance(old_value, Entity) or (eq := getattr(old_value, '__eq__', None)) is None or (eq_res := eq(new_value)) is NotImplemented:
+                mismatch = old_value is not new_value
+            else:
+                mismatch = (not eq_res)
+
+            if mismatch:
+                diff[key] = new_value
+
+        return frozendict(diff)
+
+
+
     # MARK: Entity Registration
     def _add_entry(self, entry : EntityAudit | None = None, /, **kwargs) -> None:
         if entry is None:
@@ -145,44 +221,6 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             raise ValueError("Cannot add a DELETED entry to an entity that does not exist. The entity must be created first.")
         self._entries.append(entry)
 
-    def _diff(self, old_entity: Entity | None, new_entity: Entity | None) -> dict[str, Any] | None:
-        """
-        Returns a dictionary containing the differences between the old and new entities.
-        This is used to track changes made to the entity during an update action.
-        """
-        if not self.TRACK_ENTITY_DIFF:
-            return None
-
-        diff = {}
-
-        keys = set(old_entity.__dict__.keys()) if old_entity is not None else set()
-        if new_entity is not None:
-            keys.update(set(new_entity.__dict__.keys()))
-
-        for key in keys:
-            if key.startswith('_'):
-                continue
-            if key in ('uid', 'version', 'entity_log'):
-                continue
-
-            old_value = getattr(old_entity, key, None) if old_entity is not None else None
-            new_value = getattr(new_entity, key, None) if new_entity is not None else None
-
-            from .entity import Entity
-            mismatch = False
-            if not isinstance(new_value, type(old_value)):
-                mismatch = True
-            elif isinstance(old_value, Entity) and ((diff_mthd := getattr(old_entity, f'_audit_diff_{key}', None)) is not None or (diff_mthd := getattr(old_entity, f'_audit_diff', None)) is not None):
-                mismatch = bool(diff_mthd(key, new_value))
-            elif isinstance(old_value, Entity) or (eq := getattr(old_value, '__eq__', None)) is None or (eq_res := eq(new_value)) is NotImplemented:
-                mismatch = old_value is not new_value
-            else:
-                mismatch = (not eq_res)
-
-            if mismatch:
-                diff[key] = new_value
-        return diff
-
     def on_create(self, entity: Entity) -> None:
         if entity.uid != self.entity_uid:
             raise ValueError(f"Entity UID {entity.uid} does not match the audit log's entity UID {self.entity_uid}.")
@@ -193,9 +231,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         diff = None
         if self.entity is None or entity is not self.entity:
             old_entity = self.instance_parent
-
             diff = self._diff(old_entity, entity)
-
             self._reset_log_cache()
 
         self._add_entry(
@@ -234,6 +270,8 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             diff=diff,
             version=self.next_version,
         )
+
+
 
     # MARK: Properties
     @computed_field(description="The most recent version of the entity")
@@ -279,6 +317,32 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         if entry.version != version:
             raise ValueError(f"Entry version {entry.version} does not match the requested version {version}.")
         return entry
+
+
+
+    # MARK: Subscribers (dependents and dependencies)
+    _dependents   : set[Uid]
+    _dependencies : set[Uid]
+
+    def add_dependent(self, uid: Uid) -> None:
+        self._dependents.add(uid)
+
+    def remove_dependent(self, uid: Uid) -> None:
+        self._dependents.discard(uid)
+
+    @property
+    def dependents(self) -> Iterable[Uid]:
+        yield from self._dependents
+
+    def add_dependency(self, uid: Uid) -> None:
+        self._dependencies.add(uid)
+
+    def remove_dependency(self, uid: Uid) -> None:
+        self._dependencies.discard(uid)
+
+    @property
+    def dependencies(self) -> Iterable[Uid]:
+        yield from self._dependencies
 
 
     # MARK: Printing

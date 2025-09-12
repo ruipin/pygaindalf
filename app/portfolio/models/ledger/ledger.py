@@ -59,7 +59,7 @@ class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
     @property
     @override
     def instance_name(self) -> str:
-        instrument = getattr(self, 'instrument', None)
+        instrument = Instrument.by_uid(self.instrument_uid)
         if instrument is None:
             return f"{self.__class__.__name__}@None"
         return f"{self.__class__.__name__}@{self.instrument.instance_name}"

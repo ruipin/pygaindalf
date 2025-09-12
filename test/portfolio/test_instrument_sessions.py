@@ -33,7 +33,7 @@ class OneInstrumentOwner(LoggableHierarchicalModel):
 
     # Expose the session manager via the expected protocol name
     @property
-    def session_manager(self) -> SessionManager:  # type: ignore[override]
+    def session_manager(self) -> SessionManager:
         return self.sm
 
 

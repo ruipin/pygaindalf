@@ -19,10 +19,7 @@ from ....util.helpers.instance_lru_cache import instance_lru_cache
 from ...models.uid import Uid
 from ...models.entity import Entity
 
-
-@runtime_checkable
-class SortKeyProtocol(Protocol):
-    def sort_key(self) -> SupportsRichComparison: ...
+from .sort_key_protocol import SortKeyProtocol
 
 
 @callguard_class()

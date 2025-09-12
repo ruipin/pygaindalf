@@ -101,7 +101,7 @@ class NamedMixinMinimal(metaclass=ABCMeta):
         nm = self.final_instance_name
         cnm = self.__class__.__name__
 
-        if nm == cnm:
+        if cnm in nm:
             return nm
         else:
             return f"{shorten_name(self.__class__.__name__)} {nm}"

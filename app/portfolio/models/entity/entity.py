@@ -6,7 +6,7 @@ import functools
 
 from frozendict import frozendict
 from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
-from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack, cast as typing_cast, Iterable
+from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack, cast as typing_cast, Iterator, Iterable
 from abc import abstractmethod, ABCMeta
 from weakref import WeakValueDictionary
 from functools import cached_property
@@ -301,14 +301,47 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
         return new_entity
 
 
-    # MARK: Journal
+    # MARK: Session / Journal
+    @cached_property
+    def session_manager_or_none(self) -> SessionManager | None:
+        parent = self.instance_parent
+
+        from ...journal.session_manager import HasSessionManagerProtocol
+        if not isinstance(parent, HasSessionManagerProtocol):
+            return None
+
+        return parent.session_manager
+
+    @cached_property
+    def session_manager(self) -> SessionManager:
+        session_manager = self.session_manager_or_none
+        if session_manager is None:
+            raise RuntimeError(f"{self!r} is not part of a session-managed hierarchy, cannot determine session manager.")
+        return session_manager
+
+    @property
+    def session_or_none(self) -> JournalSession | None:
+        manager = self.session_manager_or_none
+        return manager.session if manager is not None else None
+
+    @property
+    def session(self) -> JournalSession:
+        session = self.session_manager.session
+        if session is None:
+            raise RuntimeError("No active session found in the session manager.")
+        return session
+
     @classmethod
     def get_journal_class(cls) -> type[T_Journal]:
         raise NotImplementedError(f"{cls.__name__} must implement the 'get_journal_class' method to return the associated journal class.")
 
+    def get_journal(self, *, create : bool = True, fail : bool = True) -> EntityJournal | None:
+        session = self.session if fail else self.session_or_none
+        return session.get_entity_journal(entity=self, create=create) if session is not None else None
+
     @property
     def journal(self) -> T_Journal:
-        result = self.session.get_entity_journal(entity=self)
+        result = self.get_journal(create=True)
         if result is None:
             raise RuntimeError("Entity does not have an associated journal.")
         journal_cls = self.get_journal_class()
@@ -316,26 +349,10 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
             raise RuntimeError(f"Expected journal of type {journal_cls}, got {type(result)}.")
         return result
 
-    def get_journal(self) -> EntityJournal | None:
-        return self.session.get_entity_journal(entity=self)
-
-    @cached_property
-    def session_manager(self) -> SessionManager:
-        parent = self.instance_parent
-
-        from ...journal.session_manager import HasSessionManagerProtocol
-        if not isinstance(parent, HasSessionManagerProtocol):
-            raise RuntimeError(f"{self.__class__.__name__} is not part of a session-managed hierarchy (parent has type {parent.__class__}). Cannot determine session manager.")
-
-        return parent.session_manager
-
     @property
-    def session(self) -> JournalSession:
-        session = self.session_manager.session
-        if session is None:
-            raise RuntimeError("No active session found in the session manager.")
+    def has_journal(self) -> bool:
+        return self.get_journal(create=False) is not None
 
-        return session
 
     @staticmethod
     def _is_entity_attribute(name: str) -> bool:
@@ -377,16 +394,54 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
             return False
         return manager.in_session
 
+
+
+    # MARK: Subscriptions
     @property
     def dependents(self) -> Iterable[Uid]:
+        # Parent is always a dependent
         parent = self.instance_parent
         if isinstance(parent, Entity):
             yield parent.uid
 
-        # TODO: Yield subscribed dependents
+        # Yield all subscribers
+        yield from self.entity_log.dependents
 
-    def on_subscribed_entity_invalidation(self, source: EntityJournal) -> None:
-        pass
+    def add_dependent(self, entity: Entity | Uid) -> None:
+        uid = Entity.narrow_to_uid(entity)
+        self.entity_log.add_dependent(uid)
+
+    def remove_dependent(self, entity: Entity | Uid) -> None:
+        uid = Entity.narrow_to_uid(entity)
+        self.entity_log.remove_dependent(uid)
+
+    @property
+    def dependencies(self) -> Iterable[Uid]:
+        yield from self.entity_log.dependencies
+
+    def _add_dependency(self, entity: Entity | Uid) -> None:
+        if isinstance(entity, Uid):
+            entity_or_none = Entity.by_uid(entity)
+            if entity_or_none is None:
+                raise ValueError(f"Cannot add entity with UID {entity} as dependency, entity not found.")
+            entity = entity_or_none
+
+        entity.add_dependent(self)
+
+    def _remove_dependency(self, entity: Entity | Uid) -> None:
+        if isinstance(entity, Uid):
+            entity_or_none = Entity.by_uid(entity)
+            if entity_or_none is None:
+                raise ValueError(f"Cannot remove entity with UID {entity} as dependency, entity not found.")
+            entity = entity_or_none
+
+        entity.remove_dependent(self)
+
+    def on_dependency_invalidated(self, source: EntityJournal) -> None:
+        self.log.debug(t"Entity {self} received invalidation from dependency entity {source.entity}.")
+
+        self.journal.on_dependency_invalidated(source)
+
 
 
     # MARK: Utilities

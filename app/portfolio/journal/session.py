@@ -112,7 +112,7 @@ class JournalSession(LoggableHierarchicalModel):
         self._entity_journals[entity.uid] = journal
         return journal
 
-    def get_entity_journal(self, entity: Entity) -> EntityJournal | None:
+    def get_entity_journal(self, entity: Entity, *, create : bool = True) -> EntityJournal | None:
         if self.ended:
             raise RuntimeError("Cannot get an entity journal from an ended session.")
 
@@ -128,7 +128,10 @@ class JournalSession(LoggableHierarchicalModel):
             else:
                 return journal
 
-        return self._add_entity_journal(entity)
+        if create:
+            return self._add_entity_journal(entity)
+        else:
+            return None
 
     def _clear(self):
         self._entity_journals.clear()

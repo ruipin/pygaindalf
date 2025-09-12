@@ -90,10 +90,10 @@ class TestLedger:
             consideration=Decimal("1000"),
         )
         # Supply a tuple (sequence) to test broader Iterable support
-        ledg = Ledger(
-            instrument_uid=inst.uid,
-            transaction_uids=(tx1.uid, tx2.uid),
-        )
+        ledg = Ledger.model_validate({
+            "instrument_uid": inst.uid,
+            "transaction_uids": (tx1.uid, tx2.uid),
+        })
         assert len(ledg) == 2
         assert ledg[0] is tx1 and ledg[1] is tx2
 
