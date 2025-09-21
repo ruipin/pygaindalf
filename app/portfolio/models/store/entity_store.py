@@ -14,6 +14,7 @@ from ....util.callguard import callguard_class
 
 from ..entity import Entity
 from ..entity.entity_audit_log import EntityAuditLog
+from ..entity.entity_links import EntityLinks
 from ..uid import IncrementingUidFactory, Uid
 
 if TYPE_CHECKING:
@@ -21,43 +22,54 @@ if TYPE_CHECKING:
 
 
 ENTITY_STORE_WEAKREF = False
-ENTITY_AUDIT_LOG_STORE_WEAKREF = True
+ENTITY_AUDIT_LOG_STORE_WEAKREF = False
+ENTITY_LINKS_STORE_WEAKREF = True
 
 @callguard_class()
 class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
-    # MARK: Global Store
-    _global_store : ClassVar[EntityStore | None] = None
+    # MARK: Global instance behaviour
+    if script_info.is_unit_test():
+        _global_store : ClassVar[EntityStore | None] = None
+
+        def set_as_global_store(self) -> None:
+            EntityStore._global_store = self
+
+        @staticmethod
+        def clear_global_store() -> None:
+            EntityStore._global_store = None
+
+        @classmethod
+        def create_global_store[T : EntityStore](cls : type[T]) -> T:
+            root = cls()
+            root.set_as_global_store()
+            return root
+
+    @staticmethod
+    def get_global_store_or_none() -> EntityStore | None:
+        from ..root import EntityRoot
+        global_root = EntityRoot.get_global_root_or_none()
+        if script_info.is_unit_test() and (global_store := EntityStore._global_store) is not None:
+            if global_root is not None:
+                raise RuntimeError("Must not have both a global EntityRoot and a global EntityStore.")
+            return global_store
+        if global_root is None:
+            return None
+        return global_root.entity_store
 
     @staticmethod
     def get_global_store() -> EntityStore:
-        if EntityStore._global_store is None:
-            raise ValueError("Global EntityStore is not set. Please create an EntityStore instance and call make_global_store() on it before accessing the global store.")
-        return EntityStore._global_store
-
-    @staticmethod
-    def get_or_create_global_store() -> EntityStore:
-        if EntityStore._global_store is None:
-            store = EntityStore()
-            store.make_global_store()
-            return store
-        return EntityStore._global_store
-
-
-    def make_global_store(self) -> None:
-        EntityStore._global_store = self
-
-    if script_info.is_unit_test():
-        @staticmethod
-        def reset_global_store() -> None:
-            EntityStore.get_global_store().reset()
+        if (global_store := EntityStore.get_global_store_or_none()) is None:
+            raise RuntimeError("No global EntityStore instance available.")
+        return global_store
 
 
     # MARK: Initialization
     def __init__(self, *args : Entity | Mapping[Uid, Entity]):
         super().__init__()
 
-        self._entity_store    = (dict if not ENTITY_STORE_WEAKREF           else weakref.WeakValueDictionary)()
-        self._audit_log_store = (dict if not ENTITY_AUDIT_LOG_STORE_WEAKREF else weakref.WeakValueDictionary)()
+        self._entity_store       = (dict if not ENTITY_STORE_WEAKREF           else weakref.WeakValueDictionary)()
+        self._audit_log_store    = (dict if not ENTITY_AUDIT_LOG_STORE_WEAKREF else weakref.WeakValueDictionary)()
+        self._entity_links_store = (dict if not ENTITY_LINKS_STORE_WEAKREF     else weakref.WeakValueDictionary)()
 
         self._uid_factory = IncrementingUidFactory()
         self._string_uid_mappings = {}
@@ -65,13 +77,13 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
         for arg in args:
             self.update(arg)
 
-    if script_info.is_unit_test():
-        def reset(self):
-            self._entity_store.clear()
-            self._audit_log_store.clear()
-            self._uid_factory.reset()
-            for mapping in self._string_uid_mappings.values():
-                mapping.reset()
+    def reset(self):
+        self._entity_store.clear()
+        self._audit_log_store.clear()
+        self._entity_links_store.clear()
+        self._uid_factory.reset()
+        for mapping in self._string_uid_mappings.values():
+            mapping.reset()
 
 
     # MARK: UID Factory
@@ -94,6 +106,7 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
     # MARK: Entity Store
     _entity_store : MutableMapping[Uid, Entity]
     _audit_log_store : MutableMapping[Uid, EntityAuditLog]
+    _entity_links_store : MutableMapping[Uid, EntityLinks]
 
     @override
     def update(self, value : Entity | Mapping[Uid, Entity], /) -> None: # pyright: ignore[reportIncompatibleMethodOverride]
@@ -111,14 +124,12 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
         return None
 
     def get_audit_log(self, key : Uid | Entity) -> EntityAuditLog | None:
-        if isinstance(key, Entity):
-            uid = key.uid
-        elif isinstance(key, Uid):
-            uid = key
-        else:
-            raise TypeError(f"Key must be a Uid or Entity, got {type(key)}.")
-
+        uid = Entity.narrow_to_uid(key)
         return self._audit_log_store.get(uid, None)
+
+    def get_entity_links(self, key : Uid | Entity) -> EntityLinks | None:
+        uid = Entity.narrow_to_uid(key)
+        return self._entity_links_store.get(uid, None)
 
 
     # MARK: MutableMapping ABC
@@ -142,6 +153,7 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
         self._entity_store[uid] = entity
         self._audit_log_store[uid] = entity.entity_log
+        self._entity_links_store[uid] = entity.entity_links
 
     @override
     def __delitem__(self, value: Uid | Entity) -> None:
@@ -152,11 +164,14 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
         else:
             raise TypeError(f"Value must be a Uid or Entity, got {type(value)}.")
 
-        del self._entity_store[uid]
-        del self._audit_log_store[uid]
+        entity = self._entity_store.get(uid, None)
+        if entity is None:
+            return
 
-        for mapping in self._string_uid_mappings.values():
-            mapping.remove_uid(uid)
+        if entity.entity_log.exists:
+            raise RuntimeError(f"Cannot delete entity with UID {uid} because it still exists. Call entity.delete() instead.")
+
+        del self._entity_store[uid]
 
     @override
     def __iter__(self) -> Iterator[Uid]: # pyright: ignore[reportIncompatibleMethodOverride] as we override MutableMapping not BaseModel
@@ -222,8 +237,8 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
             if entity is None:
                 raise RuntimeError(f"Entity with UID {uid} not found in store during mark and sweep.")
 
-            entity.entity_log.on_delete(entity, who=who, why=why)
-            del self._entity_store[uid]
+            entity.delete(who=who, why=why)
+            #del self[uid]
 
             removed += 1
 

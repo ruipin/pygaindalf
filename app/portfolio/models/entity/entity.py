@@ -2,17 +2,14 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import sys
-import functools
 
 from frozendict import frozendict
-from pydantic import BaseModel, ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
-from typing import override, Any, ClassVar, MutableMapping, TYPE_CHECKING, ContextManager, Self, Unpack, cast as typing_cast, Iterator, Iterable
-from abc import abstractmethod, ABCMeta
-from weakref import WeakValueDictionary
-from functools import cached_property
+from pydantic import ConfigDict, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
+from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable
+from abc import abstractmethod
 
 from ....util.mixins import LoggableHierarchicalModel, NamedProtocol, NamedMixinMinimal
-from ....util.helpers import script_info, generics
+from ....util.helpers import script_info
 from ....util.callguard import CallguardClassOptions
 
 if TYPE_CHECKING:
@@ -25,7 +22,8 @@ if TYPE_CHECKING:
 from ..uid import Uid
 
 from .superseded import superseded_check
-from .entity_audit_log import EntityAuditLog
+from .entity_audit_log import EntityAuditLog, EntityAuditType
+from .entity_links import EntityLinks
 
 
 class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinMinimal):
@@ -54,6 +52,63 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
 
         cls.model_field_aliases = frozendict(aliases)
         cls.model_field_reverse_aliases = frozendict(reverse)
+
+    @classmethod
+    def _instance_update_allowed(cls, in_commit_only : bool = True) -> bool:
+        # Check if we are in the middle of a commit
+        from ...journal.session_manager import SessionManager
+        session_manager = SessionManager.get_global_manager_or_none()
+        if session_manager is None:
+            if not script_info.is_unit_test():
+                return False
+        else:
+            if not session_manager.in_session or session_manager.session is None:
+                return False
+            if in_commit_only and not session_manager.session.in_commit:
+                return False
+
+        return True
+
+
+
+    # MARK: Initialization / Destruction
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
+        if not cls._instance_update_allowed(in_commit_only=False):
+            raise RuntimeError(f"Not allowed to create {cls.__name__} instances outside of a session.")
+        return super().__new__(cls, *args, **kwargs)
+
+    @override
+    def model_post_init(self, context : Any) -> None:
+        super().model_post_init(context)
+
+        self.entity_log.on_create(self)
+        if self.entity_log.most_recent.what == EntityAuditType.CREATED and (session := self.session_or_none) is not None:
+            session.on_entity_created(self)
+
+    def __del__(self):
+        # No need to track deletion in finalizing state
+        if sys.is_finalizing:
+            return
+
+        self.log.debug(t"Entity __del__ called for {self}.")
+        if not self.superseded:
+            self._on_delete(who='system', why='__del__')
+
+    def delete(self, who : str, why : str) -> None:
+        if not self._instance_update_allowed():
+            raise RuntimeError(f"Not allowed to delete {self.__class__.__name__} instances outside of a session commit.")
+        self._on_delete(who=who, why=why)
+
+    def _on_delete(self, who : str, why : str) -> None:
+        self.entity_links.on_delete(self)
+        self.entity_log.on_delete(self, who=who, why=why)
+
+        session = self.session_or_none
+        if session is not None:
+            session.on_entity_deleted(self)
+
+        entity_store = self.__class__._get_entity_store()
+        del entity_store[self.uid]
 
 
     # MARK: Instance Name
@@ -160,11 +215,13 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
     def _get_entity_store(cls) -> EntityStore:
         from ..store.entity_store import EntityStore
         if (uid_storage := EntityStore.get_global_store()) is None:
-            raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
+            raise ValueError(f"Global EntityStore is not set. Please create an EntityStore instance and call set_as_global_store() on it before creating {cls.__name__} instances.")
         return uid_storage
 
     @classmethod
     def by_uid[T : Entity](cls : type[T], uid: Uid) -> T | None:
+        if not isinstance(uid, Uid):
+            raise TypeError(f"Expected 'uid' to be of type Uid, got {type(uid).__name__}.")
         result = cls._get_entity_store().get(uid, None)
         if result is None:
             return None
@@ -175,6 +232,8 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
     @classmethod
     def narrow_to_uid[T : Entity](cls : type[T], value : T | Uid) -> Uid:
         if isinstance(value, Uid):
+            if (cls is not Entity) and (not value.namespace != cls.uid_namespace()):
+                raise ValueError(f"UID namespace '{value.namespace}' does not match expected namespace '{cls.uid_namespace()}'.")
             return value
         elif isinstance(value, cls):
             return value.uid
@@ -222,22 +281,6 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
             raise ValueError(f"Entity version '{version}' does not match the next audit log version '{entity_log.version + 1}'. The version should be incremented when the entity is cloned as part of an update action.")
         return version
 
-    @override
-    def model_post_init(self, context : Any) -> None:
-        super().model_post_init(context)
-
-        self.entity_log.on_create(self)
-
-    def __del__(self):
-        # No need to track deletion in finalizing state
-        if sys.is_finalizing:
-            return
-
-        self.log.debug(t"Entity __del__ called for {self}.")
-
-        if self.superseded:
-            self.entity_log.on_delete(self, who='system', why='__del__')
-
     def is_newer_version_than(self, other : Entity) -> bool:
         if not isinstance(other, Entity):
             raise TypeError(f"Expected Entity, got {type(other)}")
@@ -264,6 +307,11 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
         Creates a new instance of the entity with the updated data.
         The new instance will have an incremented version and the same UID, superseding the current instance.
         """
+        # Check if we are in the middle of a commit
+        if not self._instance_update_allowed():
+            raise RuntimeError(f"Not allowed to update {self.__class__.__name__} instances outside of a session commit.")
+
+        # Validate data
         if not kwargs:
             raise ValueError("No data provided to update the entity.")
 
@@ -302,32 +350,25 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
 
 
     # MARK: Session / Journal
-    @cached_property
+    @property
     def session_manager_or_none(self) -> SessionManager | None:
-        parent = self.instance_parent
+        from ...journal.session_manager import SessionManager
+        return SessionManager.get_global_manager_or_none()
 
-        from ...journal.session_manager import HasSessionManagerProtocol
-        if not isinstance(parent, HasSessionManagerProtocol):
-            return None
-
-        return parent.session_manager
-
-    @cached_property
+    @property
     def session_manager(self) -> SessionManager:
-        session_manager = self.session_manager_or_none
-        if session_manager is None:
-            raise RuntimeError(f"{self!r} is not part of a session-managed hierarchy, cannot determine session manager.")
-        return session_manager
+        from ...journal.session_manager import SessionManager
+        return SessionManager.get_global_manager()
 
     @property
     def session_or_none(self) -> JournalSession | None:
-        manager = self.session_manager_or_none
-        return manager.session if manager is not None else None
+        if (manager := self.session_manager_or_none) is None:
+            return None
+        return manager.session
 
     @property
     def session(self) -> JournalSession:
-        session = self.session_manager.session
-        if session is None:
+        if (session := self.session_or_none) is None:
             raise RuntimeError("No active session found in the session manager.")
         return session
 
@@ -396,51 +437,32 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
 
 
 
-    # MARK: Subscriptions
-    @property
-    def dependents(self) -> Iterable[Uid]:
-        # Parent is always a dependent
-        parent = self.instance_parent
-        if isinstance(parent, Entity):
-            yield parent.uid
-
-        # Yield all subscribers
-        yield from self.entity_log.dependents
-
-    def add_dependent(self, entity: Entity | Uid) -> None:
-        uid = Entity.narrow_to_uid(entity)
-        self.entity_log.add_dependent(uid)
-
-    def remove_dependent(self, entity: Entity | Uid) -> None:
-        uid = Entity.narrow_to_uid(entity)
-        self.entity_log.remove_dependent(uid)
+    # MARK: Links
+    entity_links : EntityLinks = Field(default_factory=lambda data: EntityLinks(data['uid']), validate_default=True, repr=False, exclude=True, description="The links for this entity, which tracks relationships with other entities.")
 
     @property
-    def dependencies(self) -> Iterable[Uid]:
-        yield from self.entity_log.dependencies
+    def dependent_uids(self) -> Iterable[Uid]:
+        yield from self.entity_links.dependent_uids
 
-    def _add_dependency(self, entity: Entity | Uid) -> None:
-        if isinstance(entity, Uid):
-            entity_or_none = Entity.by_uid(entity)
-            if entity_or_none is None:
-                raise ValueError(f"Cannot add entity with UID {entity} as dependency, entity not found.")
-            entity = entity_or_none
+    @property
+    def dependents(self) -> Iterable[Entity]:
+        yield from self.entity_links.dependents
 
-        entity.add_dependent(self)
+    @property
+    def dependency_uids(self) -> Iterable[Uid]:
+        yield from self.entity_links.dependency_uids
 
-    def _remove_dependency(self, entity: Entity | Uid) -> None:
-        if isinstance(entity, Uid):
-            entity_or_none = Entity.by_uid(entity)
-            if entity_or_none is None:
-                raise ValueError(f"Cannot remove entity with UID {entity} as dependency, entity not found.")
-            entity = entity_or_none
-
-        entity.remove_dependent(self)
+    @property
+    def dependencies(self) -> Iterable[Entity]:
+        yield from self.entity_links.dependencies
 
     def on_dependency_invalidated(self, source: EntityJournal) -> None:
         self.log.debug(t"Entity {self} received invalidation from dependency entity {source.entity}.")
-
         self.journal.on_dependency_invalidated(source)
+
+    def on_dependency_deleted(self, entity: Entity) -> None:
+        self.log.debug(t"Entity {self} received deletion notice from dependency entity {entity}.")
+        self.entity_links.remove_dependency(entity)
 
 
 

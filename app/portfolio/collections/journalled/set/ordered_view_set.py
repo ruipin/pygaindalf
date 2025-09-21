@@ -51,12 +51,9 @@ class JournalledOrderedViewSet[T : Any, T_Mutable : OrderedViewSet, T_Immutable 
             self._get_mut_container().clear_sort_cache()
 
     def on_item_journal_invalidated(self, entity_journal : EntityJournal) -> None:
-        print(f"JournalledOrderedViewSet {self} received invalidation from item journal {entity_journal}")
-
         original_sort_key = self.item_sort_key(entity_journal.entity)
         new_sort_key = self.item_sort_key(entity_journal)
         if original_sort_key != new_sort_key:
-            print(f"Sort key changed from {original_sort_key} to {new_sort_key}")
             # We assume that T is Uid here. If it isn't then we shouldn't be here anyway, but this only affects the audit log, so it's not critical even if we are
             self._append_journal(JournalledSetEditType.ITEM_UPDATED, typing_cast(T, entity_journal.entity.uid))
             self._update_frontier_sort_key(new_sort_key)

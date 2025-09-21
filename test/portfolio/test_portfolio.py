@@ -4,7 +4,7 @@
 import pytest
 from iso4217 import Currency
 
-from app.portfolio.root import PortfolioRoot
+from app.portfolio.models.root.portfolio_root import PortfolioRoot
 from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
@@ -13,19 +13,10 @@ from app.util.helpers.frozendict import frozendict
 import pydantic
 
 
-@pytest.fixture
-def portfolio_manager() -> PortfolioRoot:
-    return PortfolioRoot()
-
-@pytest.fixture
-def portfolio(portfolio_manager : PortfolioRoot) -> Portfolio:
-    return portfolio_manager.portfolio
-
-
 @pytest.mark.portfolio
 class TestPortfolio:
-    def test_basic_initialization_and_audit(self, portfolio: Portfolio):
-        p = portfolio
+    def test_basic_initialization_and_audit(self, portfolio_root):
+        p = portfolio_root.portfolio
         assert p.uid.namespace == "Portfolio"
         assert p.uid.id == 1
         assert p.version == 1
@@ -35,27 +26,3 @@ class TestPortfolio:
         assert p.entity_log.next_version == 2
         assert p.ledgers == set()
         assert len(p.ledgers) == 0
-
-    def test_session_manager_cached_property(self, portfolio_manager : PortfolioRoot, portfolio : Portfolio):
-        p = portfolio
-        sm1 = p.session_manager
-        sm2 = p.session_manager
-        assert sm1 is sm2  # cached_property
-        assert sm1 is portfolio_manager.session_manager
-
-    def test_add_ledger_by_reconstruction(self, portfolio : Portfolio):
-        # Portfolio currently immutable; simulate adding ledger by cloning via update
-        p1 = portfolio
-        inst = Instrument(
-            ticker="AAPL",
-            currency=Currency("USD"),
-        )
-        ledg = Ledger(instrument_uid=inst.uid)
-
-        p2 = p1.update(ledger_uids={ledg.uid})
-
-        assert p2 is not p1
-        assert p1.superseded
-        assert not p2.superseded
-        assert p2.version == 2
-        assert ledg in p2

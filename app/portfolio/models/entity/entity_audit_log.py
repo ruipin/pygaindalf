@@ -1,28 +1,25 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import weakref
-
 from datetime import datetime
-from pydantic import Field, ConfigDict, PrivateAttr, computed_field, PositiveInt, GetCoreSchemaHandler, BaseModel, model_validator
+from pydantic import Field, ConfigDict, computed_field, PositiveInt, GetCoreSchemaHandler, model_validator
 from pydantic_core import CoreSchema, core_schema
 from enum import Enum
-from collections.abc import Sequence, MutableMapping
-from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator, Iterable
+from collections.abc import Sequence
+from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator
 from frozendict import frozendict
 
 from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal, SingleInitializationModel
-from ....util.helpers import script_info
 from ....util.callguard import callguard_class
 from ....util.helpers.frozendict import FrozenDict
 
 from ..uid import Uid
 
 if TYPE_CHECKING:
-    from .entity import Entity  # Avoid circular import issues by using TYPE_CHECKING
-    from ..store.entity_store import EntityStore
+    from .entity import Entity
 
 
+# MARK: Entity Audit Type enum
 class EntityAuditType(Enum):
     CREATED = "created"
     UPDATED = "updated"
@@ -37,6 +34,7 @@ class EntityAuditType(Enum):
         return f"{self.__class__.__name__}.{self.name}"
 
 
+# MARK: Entity Audit class
 class EntityAudit(SingleInitializationModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -45,9 +43,7 @@ class EntityAudit(SingleInitializationModel):
 
     what    : EntityAuditType             = Field(description="The type of action that was performed on the entity.")
     when    : datetime                    = Field(default_factory=datetime.now, description="The date and time when this entity log entry was created.")
-    # TODO: 'who' should be a required field
     who     : str | None                  = Field(description="The actor who performed the action that created this log entry.")
-    # TODO: Instead of a string, this should be the audit log event, or a diff of the changes, etc
     why     : str | None                  = Field(default=None, description="Why this action was performed, if known.")
     diff    : FrozenDict[str, Any] | None = Field(default=None, description="A dictionary containing the changes made to the entity, if applicable. This can be used to track what was changed in the entity during this action.")
     version : PositiveInt                 = Field(ge=1, description="The version of this entity at the time of the audit entry.")
@@ -60,24 +56,22 @@ class EntityAudit(SingleInitializationModel):
         return self
 
 
+# MARK: Entity Audit Log class
 @callguard_class()
 class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinimal):
     TRACK_ENTITY_DIFF = True
 
-    entity_uid : Uid
+    # MARK: Entity
+    _entity_uid : Uid
     _entries : list[EntityAudit]
 
-    @classmethod
-    def _get_entity_store(cls) -> EntityStore:
-        from ..store.entity_store import EntityStore
-        if (uid_storage := EntityStore.get_global_store()) is None:
-            raise ValueError(f"{cls.__name__} must have a valid UID storage. The UID_STORAGE class variable cannot be None.")
-        return uid_storage
-
     def __new__(cls, uid : Uid):
-        if (instance := cls._get_entity_store().get_audit_log(uid)) is None:
-            instance = super(EntityAuditLog, cls).__new__(cls)
-            instance.__dict__['entity_uid'] = uid
+        from ..store import EntityStore
+        if (store := EntityStore.get_global_store()) is None:
+            raise ValueError(f"Could not get entity store for {cls.__name__}. The global EntityStore is not set.")
+        if (instance := store.get_audit_log(uid)) is None:
+            instance = super().__new__(cls)
+            instance.__dict__['_entity_uid'] = uid
         return instance
 
     def __init__(self, uid : Uid):
@@ -86,14 +80,14 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
         if not hasattr(self, '_entries'):
             self._entries = []
-        if not hasattr(self, '_dependents'):
-            self._dependents = set()
-        if not hasattr(self, '_dependencies'):
-            self._dependencies = set()
 
     @classmethod
     def from_entity(cls, entity: Entity) -> EntityAuditLog:
         return cls(entity.uid)
+
+    @property
+    def entity_uid(self) -> Uid:
+        return self._entity_uid
 
     @property
     def entity(self) -> Entity | None:
@@ -106,13 +100,13 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
     @property
     def instance_name(self) -> str:
-        return f"Audit@{str(self.entity_uid)}"
+        return f"{self.__class__.__name__}@{str(self.entity_uid)}"
 
     @property
     def instance_parent(self) -> Entity | None:
         """
-        Returns the parent entity of this audit log, if it exists.
-        If the entity is not set, returns None.
+        Returns the parent entity of this instance, if it exists.
+        If the entity does not exist in the entity store, returns None.
         """
         return self.entity
 
@@ -142,7 +136,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
     # MARK: Entity Diffing
     def _is_diffable_field(self, field_name: str) -> bool:
-        return not field_name.startswith('_') and field_name not in ('uid', 'version', 'entity_log', 'instance_parent_weakref')
+        return not field_name.startswith('_') and field_name not in ('uid', 'version', 'entity_log', 'entity_links', 'instance_parent_weakref')
 
     def _diff(self, old_entity: Entity | None, new_entity: Entity | None) -> frozendict[str, Any] | None:
         """
@@ -228,6 +222,10 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         if entity.version != self.next_version:
             raise ValueError(f"Entity version {entity.version} does not match the expected version {self.next_version}. The version should be incremented when the entity is cloned as part of an update action.")
 
+        what = EntityAuditType.CREATED if not self.exists else EntityAuditType.UPDATED
+
+        session = entity.session_or_none
+
         diff = None
         if self.entity is None or entity is not self.entity:
             old_entity = self.instance_parent
@@ -235,11 +233,10 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             self._reset_log_cache()
 
         self._add_entry(
-            what=EntityAuditType.CREATED if not self.exists else EntityAuditType.UPDATED,
+            what=what,
             when=datetime.now(),
-            # TODO: Grab who/why from Journal
-            who='TODO',
-            why='TODO',
+            who=session.actor if session is not None else None,
+            why=session.reason if session is not None else None,
             diff=diff,
             version=entity.version,
         )
@@ -252,11 +249,17 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             return
         if entity.version > self.version:
             raise ValueError(f"Entity version {entity.version} is greater than the audit log's version {self.version} which is not allowed.")
+        if not self.exists:
+            raise ValueError("Cannot delete an entity that does not exist. The entity must be created first.")
 
         if (parent := self.instance_parent) is None or parent is not entity:
             self.log.warning(t"Entity {entity.uid} does not match the audit log's parent entity {parent}. This indicates that the entity has been modified since the last audit entry, which is not allowed.")
 
         old_entity = self.instance_parent
+        if old_entity is None:
+            raise ValueError("Cannot delete entity because the entity is not available.")
+
+        session = entity.session_or_none
         diff = self._diff(old_entity, None)
 
         self._reset_log_cache()
@@ -264,9 +267,8 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         self._add_entry(
             what=EntityAuditType.DELETED,
             when=datetime.now(),
-            # TODO: Grab who/why from Journal
-            who=who or 'TODO',
-            why=why or 'TODO',
+            who=who or (session.actor if session is not None else None),
+            why=why or (session.reason if session is not None else None),
             diff=diff,
             version=self.next_version,
         )
@@ -318,31 +320,6 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             raise ValueError(f"Entry version {entry.version} does not match the requested version {version}.")
         return entry
 
-
-
-    # MARK: Subscribers (dependents and dependencies)
-    _dependents   : set[Uid]
-    _dependencies : set[Uid]
-
-    def add_dependent(self, uid: Uid) -> None:
-        self._dependents.add(uid)
-
-    def remove_dependent(self, uid: Uid) -> None:
-        self._dependents.discard(uid)
-
-    @property
-    def dependents(self) -> Iterable[Uid]:
-        yield from self._dependents
-
-    def add_dependency(self, uid: Uid) -> None:
-        self._dependencies.add(uid)
-
-    def remove_dependency(self, uid: Uid) -> None:
-        self._dependencies.discard(uid)
-
-    @property
-    def dependencies(self) -> Iterable[Uid]:
-        yield from self._dependencies
 
 
     # MARK: Printing

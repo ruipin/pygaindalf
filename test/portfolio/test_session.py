@@ -7,6 +7,7 @@ from pydantic import Field, PrivateAttr, ValidationError, BaseModel, InstanceOf,
 
 from app.util.mixins.models import LoggableHierarchicalModel
 from app.portfolio.journal.session_manager import SessionManager
+from app.portfolio.models.root import EntityRoot
 from app.portfolio.journal.session import JournalSession
 from app.portfolio.journal.entity_journal import EntityJournal
 from app.portfolio.collections.journalled.sequence import JournalledSequence
@@ -34,33 +35,13 @@ class SampleEntity(IncrementingUidEntity):
     def get_journal_class(cls):
         return EntityJournal
 
-class SampleEntityManager(LoggableHierarchicalModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        validate_assignment=True,
-    )
-
-    entity : InstanceOf[SampleEntity] = Field(default_factory=lambda: SampleEntity(value=1))
-    session_manager : InstanceOf[SessionManager] = Field(default_factory=SessionManager)
-
-    def refresh_entities(self):
-        superseding = self.entity.superseding
-        assert superseding is not None
-        self.entity = superseding
-
 
 # --- Fixtures --------------------------------------------------------------------
-@pytest.fixture()
-def entity_manager() -> SampleEntityManager:
-    return SampleEntityManager()
-
-@pytest.fixture()
-def session_manager(entity_manager : SampleEntityManager) -> SessionManager:
-    return entity_manager.session_manager
-
 @pytest.fixture(scope='function')
-def entity(entity_manager: SampleEntityManager) -> SampleEntity:
-    return entity_manager.entity
+def entity(entity_root: EntityRoot) -> SampleEntity:
+    with entity_root.session_manager(actor="entity fixture", reason="fixture setup"):
+        entity = entity_root.root = SampleEntity(value=1)
+    return entity
 
 
 # --- Tests -----------------------------------------------------------------------
@@ -140,7 +121,7 @@ class TestSessionEntityJournal:
             s.abort()
             assert entity.dirty is False
 
-    def test_start_then_abort_no_edits_noop(self, session_manager: SessionManager):
+    def test_start_then_abort_no_edits_noop(self, entity : SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="noop") as s:
             assert s.dirty is False
             s.abort()  # no edits -> no-op
@@ -157,7 +138,7 @@ class TestSessionEntityJournal:
             assert s.dirty is False
             assert entity.value == 1  # reverted
 
-    def test_session_commit_without_changes_noop(self, session_manager: SessionManager):
+    def test_session_commit_without_changes_noop(self, entity : SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="noop-commit") as s:
             assert s.dirty is False
             s.commit()  # should not raise (no changes)

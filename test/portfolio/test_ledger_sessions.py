@@ -21,75 +21,47 @@ from iso4217 import Currency
 
 from pydantic import Field, ConfigDict, InstanceOf
 
-from app.util.mixins import LoggableHierarchicalModel
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.journal.session import JournalSession
 from app.portfolio.collections.journalled.set import JournalledSetEdit, JournalledSetEditType
 
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
+from app.portfolio.models.root import EntityRoot
 from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 from app.portfolio.models.transaction.transaction_journal import TransactionJournal
 
 
-# --- Minimal owner that provides a SessionManager and hosts a Ledger -----------
-class OneLedgerOwner(LoggableHierarchicalModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        frozen=False,
-        validate_assignment=True,
-    )
-
-    name: str = Field(description="Owner instance name")
-    sm: InstanceOf[SessionManager] = Field(default_factory=SessionManager, repr=False)
-    # Optional host for a ledger under test; assigning to this field seeds instance_parent
-    ledger: InstanceOf[Ledger] | None = Field(default=None)
-
-    @property
-    def session_manager(self) -> SessionManager:
-        return self.sm
-
-
-# --- Fixtures --------------------------------------------------------------------
-
-@pytest.fixture()
-def owner() -> OneLedgerOwner:
-    return OneLedgerOwner(name="owner")
-
-@pytest.fixture()
-def session_manager(owner: OneLedgerOwner):
-    return owner.session_manager
-
-
 # --- Tests -----------------------------------------------------------------------
-
 @pytest.mark.portfolio
 @pytest.mark.ledger
 @pytest.mark.session
 class TestLedgerJournalPropagationSessions:
-    def test_child_sort_key_change_populates_parent_diff(self, owner: OneLedgerOwner, session_manager: SessionManager):
-        inst = Instrument(ticker="AMD", currency=Currency("USD"))
-        # Seed ledger with two transactions ordered by date
-        t1 = Transaction(
-            type=TransactionType.BUY,
-            date=datetime.date(2025, 1, 1),
-            quantity=Decimal("1"),
-            consideration=Decimal("1"),
-        )
-        t2 = Transaction(
-            type=TransactionType.BUY,
-            date=datetime.date(2025, 1, 3),
-            quantity=Decimal("2"),
-            consideration=Decimal("2"),
-        )
-        ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
-        # Attach ledger under owner so it participates in the session-managed hierarchy
-        owner.ledger = ledg
+    def test_child_sort_key_change_populates_parent_diff(self, entity_root: EntityRoot, session_manager: SessionManager):
+        with session_manager(actor="tester", reason="test_child_sort_key_change_populates_parent_diff") as s:
+            inst = Instrument(ticker="AMD", currency=Currency("USD"))
+            # Seed ledger with two transactions ordered by date
+            t1 = Transaction(
+                type=TransactionType.BUY,
+                date=datetime.date(2025, 1, 1),
+                quantity=Decimal("1"),
+                consideration=Decimal("1"),
+            )
+            t2 = Transaction(
+                type=TransactionType.BUY,
+                date=datetime.date(2025, 1, 3),
+                quantity=Decimal("2"),
+                consideration=Decimal("2"),
+            )
+            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
+
+            # Attach ledger under owner so it participates in the session-managed hierarchy
+            entity_root.root = ledg
 
         # Check hierarchy
         assert ledg is t1.instance_parent
         assert ledg is t2.instance_parent
-        assert owner is ledg.instance_parent
+        assert entity_root is ledg.instance_parent
 
         # Modify t1 date inside a session
         with session_manager(actor="tester", reason="tx-date-change") as s:
@@ -105,7 +77,6 @@ class TestLedgerJournalPropagationSessions:
 
         # After invalidation propagation, parent should have an ITEM_UPDATED edit for t1
         diff = lj.get_diff()
-        print(diff)
         assert "transaction_uids" in diff
         journal = diff["transaction_uids"]
         assert isinstance(journal, tuple) and len(journal) == 1
@@ -113,22 +84,23 @@ class TestLedgerJournalPropagationSessions:
         assert edit.type is JournalledSetEditType.ITEM_UPDATED
         assert edit.value == t1.uid
 
-    def test_no_parent_diff_when_sort_key_unchanged(self, owner: OneLedgerOwner, session_manager: SessionManager):
-        inst = Instrument(ticker="MSFT", currency=Currency("USD"))
-        t1 = Transaction(
-            type=TransactionType.BUY,
-            date=datetime.date(2025, 2, 1),
-            quantity=Decimal("1"),
-            consideration=Decimal("1"),
-        )
-        t2 = Transaction(
-            type=TransactionType.BUY,
-            date=datetime.date(2025, 2, 2),
-            quantity=Decimal("2"),
-            consideration=Decimal("2"),
-        )
-        ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
-        owner.ledger = ledg
+    def test_no_parent_diff_when_sort_key_unchanged(self, entity_root: EntityRoot, session_manager: SessionManager):
+        with session_manager(actor="tester", reason="test_no_parent_diff_when_sort_key_unchanged") as s:
+            inst = Instrument(ticker="MSFT", currency=Currency("USD"))
+            t1 = Transaction(
+                type=TransactionType.BUY,
+                date=datetime.date(2025, 2, 1),
+                quantity=Decimal("1"),
+                consideration=Decimal("1"),
+            )
+            t2 = Transaction(
+                type=TransactionType.BUY,
+                date=datetime.date(2025, 2, 2),
+                quantity=Decimal("2"),
+                consideration=Decimal("2"),
+            )
+            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
+            entity_root.root = ledg
 
         with session_manager(actor="tester", reason="no-op-date") as s:
             lj = ledg.journal
@@ -142,23 +114,24 @@ class TestLedgerJournalPropagationSessions:
             assert lj.get_diff() == {}
             s.abort()
 
-    def test_no_parent_diff_when_child_not_in_parent_set(self, owner: OneLedgerOwner, session_manager: SessionManager):
-        inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
-        # Two independent transactions
-        t1 = Transaction(
-            type=TransactionType.BUY,
-            date=datetime.date(2025, 3, 1),
-            quantity=Decimal("1"),
-            consideration=Decimal("1"),
-        )
-        t2 = Transaction(
-            type=TransactionType.BUY,
-            date=datetime.date(2025, 3, 2),
-            quantity=Decimal("1"),
-            consideration=Decimal("1"),
-        )
-        ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
-        owner.ledger = ledg
+    def test_no_parent_diff_when_child_not_in_parent_set(self, entity_root: EntityRoot, session_manager: SessionManager):
+        with session_manager(actor="tester", reason="test_no_parent_diff_when_child_not_in_parent_set") as s:
+            inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
+            # Two independent transactions
+            t1 = Transaction(
+                type=TransactionType.BUY,
+                date=datetime.date(2025, 3, 1),
+                quantity=Decimal("1"),
+                consideration=Decimal("1"),
+            )
+            t2 = Transaction(
+                type=TransactionType.BUY,
+                date=datetime.date(2025, 3, 2),
+                quantity=Decimal("1"),
+                consideration=Decimal("1"),
+            )
+            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
+            entity_root.root = ledg
 
         with session_manager(actor="tester", reason="not-member") as s:
             lj = ledg.journal

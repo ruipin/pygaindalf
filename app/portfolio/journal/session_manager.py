@@ -23,6 +23,20 @@ class SessionManager(LoggableHierarchicalModel):
     _session : JournalSession | None = PrivateAttr(default=None)
 
 
+    # MARK: Global instance behaviour
+    @staticmethod
+    def get_global_manager_or_none() -> SessionManager | None:
+        from ..models.root import EntityRoot
+        if (global_root := EntityRoot.get_global_root_or_none()) is None:
+            return None
+        return global_root.session_manager
+
+    @staticmethod
+    def get_global_manager() -> SessionManager:
+        from ..models.root import EntityRoot
+        return EntityRoot.get_global_root().session_manager
+
+
     # MARK: Instance Parent
     @field_validator('instance_parent_weakref', mode='before')
     def _validate_instance_parent_is_session_manager(cls, v: Any) -> Any:

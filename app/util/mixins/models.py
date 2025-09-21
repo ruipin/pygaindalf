@@ -175,7 +175,8 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
             return
 
         # Do propagation
-        if isinstance(fld, (HierarchicalMutableProtocol, NamedMutableProtocol)):
+        from ...portfolio.models.uid import Uid
+        if isinstance(fld, (HierarchicalMutableProtocol, NamedMutableProtocol, Uid)):
             self._seed_parent_and_name_to_object(obj=fld, name=fldnm, propagate_name=propagate_name, propagate_parent=propagate_parent)
         elif isinstance(fld, (Sequence, Set)) and not isinstance(fld, (str, bytes, bytearray)):
             for i, item in enumerate(fld):
@@ -183,6 +184,7 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
         elif isinstance(fld, Mapping):
             for key, item in fld.items():
                 self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}.{key}", propagate_name=propagate_name, propagate_parent=propagate_parent)
+
 
     @model_validator(mode='after')
     def _validator_seed_parent_and_name(self) -> Any:

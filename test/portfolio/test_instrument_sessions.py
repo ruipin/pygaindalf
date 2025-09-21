@@ -6,52 +6,19 @@ import pytest
 from iso4217 import Currency
 
 from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.journal.entity_journal import EntityJournal
 from app.portfolio.journal.session import JournalSession
 
-from app.portfolio.models.entity.entity import Entity
+from app.portfolio.models.root import EntityRoot
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.instrument.instrument_journal import InstrumentJournal
 
-from pydantic import Field, ConfigDict, InstanceOf
-from app.util.mixins import LoggableHierarchicalModel
-
-
-# --- Minimal owner that behaves like a PortfolioRoot but is an Entity so SessionManager can parent it ---
-class OneInstrumentOwner(LoggableHierarchicalModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        frozen=False,  # owner can mutate its child references during tests
-        validate_assignment=True,
-    )
-
-    name: str = Field(description="Owner instance name")
-    sm: InstanceOf[SessionManager] = Field(default_factory=SessionManager, repr=False)
-    instrument: InstanceOf[Instrument] = Field(
-        default_factory=lambda: Instrument(ticker="AAPL", currency=Currency("USD"))
-    )
-
-    # Expose the session manager via the expected protocol name
-    @property
-    def session_manager(self) -> SessionManager:
-        return self.sm
-
 
 # --- Fixtures --------------------------------------------------------------------
-@pytest.fixture()
-def owner() -> OneInstrumentOwner:
-    o = OneInstrumentOwner(name="owner")
-    return o
-
-
-@pytest.fixture()
-def instrument(owner: OneInstrumentOwner) -> Instrument:
-    return owner.instrument
-
-
-@pytest.fixture()
-def session_manager(owner: OneInstrumentOwner) -> SessionManager:
-    return owner.session_manager
+@pytest.fixture(scope='function')
+def instrument(entity_root: EntityRoot) -> Instrument:
+    with entity_root.session_manager(actor="instrument fixture", reason="fixture setup"):
+        instrument = entity_root.root = Instrument(ticker="AAPL", currency=Currency("USD"))
+    return instrument
 
 
 # --- Tests -----------------------------------------------------------------------

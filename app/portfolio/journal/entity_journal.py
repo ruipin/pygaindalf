@@ -5,11 +5,10 @@ import annotationlib
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, InstanceOf
 from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args, Literal, Final, Union, Iterator, Callable, cast as typing_cast
-from ordered_set import OrderedSet
 from frozendict import frozendict
 import builtins
 
-from collections.abc import Sequence, Mapping, Set
+from collections.abc import Sequence, Mapping, Set, MutableSet
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
@@ -277,7 +276,7 @@ class EntityJournal(LoggableHierarchicalModel):
 
 
     # MARK: Propagation
-    _dirty_children : builtins.set[EntityJournal] = PrivateAttr(default_factory=builtins.set)
+    _dirty_children : MutableSet[Uid] = PrivateAttr(default_factory=set)
     _propagated_has_updates : bool = PrivateAttr(default=False)
 
     def _update_child_dirty_state(self, child : EntityJournal, dirty : bool | None = None):
@@ -285,9 +284,9 @@ class EntityJournal(LoggableHierarchicalModel):
             dirty = child.dirty
 
         if dirty:
-            self._dirty_children.add(child)
+            self._dirty_children.add(child.entity_uid)
         else:
-            self._dirty_children.discard(child)
+            self._dirty_children.discard(child.entity_uid)
 
         self.propagate()
 
@@ -320,6 +319,7 @@ class EntityJournal(LoggableHierarchicalModel):
 
     # MARK: Invalidation
     def on_dependency_invalidated(self, source: EntityJournal) -> None:
+        self.log.debug("EntityJournal %s received invalidation from dependency %s", self, source)
         # Loop through entity fields, and search for OrderedViewSets that referenced the source entity
         for nm, info in self.entity.__class__.model_fields.items():
             original = self.get_original_field(nm)
@@ -351,7 +351,7 @@ class EntityJournal(LoggableHierarchicalModel):
             raise RuntimeError(f"Journal {self} is already invalidated.")
         self._invalidated = True
 
-        for dep in self.entity.dependents:
+        for dep in self.entity.dependent_uids:
             entity = Entity.by_uid(dep)
             if not entity:
                 raise RuntimeError(f"Dependent entity with UID {dep} not found.")
@@ -365,11 +365,15 @@ class EntityJournal(LoggableHierarchicalModel):
             return
 
         # Iterate dirty children journals
-        for child in self._dirty_children:
-            if not condition(child):
+        for child_uid in self._dirty_children:
+            child = Entity.by_uid(child_uid)
+            if child is None or (child_journal := child.get_journal(create=False)) is None:
                 continue
 
-            for inv in child.commit_yield_hierarchy(condition):
+            if not condition(child_journal):
+                continue
+
+            for inv in child_journal.commit_yield_hierarchy(condition):
                 yield inv
 
         if not condition(self):

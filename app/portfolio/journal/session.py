@@ -6,13 +6,14 @@ import weakref
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
 from typing import ClassVar, Any, override, TypedDict, Literal, Iterator, Callable
 from datetime import datetime
-from ordered_set import OrderedSet
+from collections.abc import MutableSet, MutableMapping
 
 from ...util.mixins import LoggableHierarchicalModel
 from ...util.callguard import CallguardClassOptions
 
 from ..models.uid import Uid, IncrementingUidFactory
 from ..models.entity.entity import Entity
+from ..models.entity.entity_audit_log import EntityAuditType
 from ..models.entity.superseded import superseded_check
 
 from .entity_journal import EntityJournal
@@ -91,8 +92,54 @@ class JournalSession(LoggableHierarchicalModel):
         return self.ended
 
 
+    # MARK: Entities created in this session
+    _entities_created : MutableSet[Uid] = PrivateAttr(default_factory=set)
+
+    def on_entity_created(self, entity_or_uid: Entity | Uid) -> None:
+        uid = Entity.narrow_to_uid(entity_or_uid)
+        if isinstance(entity_or_uid, Entity):
+            entity = entity_or_uid
+        else:
+            entity = Entity.by_uid(uid)
+            if entity is None:
+                raise ValueError("Entity with given UID does not exist.")
+
+        log = entity.entity_log.most_recent
+        if log.what != EntityAuditType.CREATED:
+            raise ValueError("Entity was not created, cannot notify session.")
+        if log.when < self.start_time:
+            raise ValueError("Entity was created before this session started.")
+
+        self._entities_created.add(uid)
+
+
+    # MARK: Entities deleted in this session
+    _entities_deleted : MutableSet[Uid] = PrivateAttr(default_factory=set)
+
+    def on_entity_deleted(self, entity_or_uid: Entity | Uid) -> None:
+        uid = Entity.narrow_to_uid(entity_or_uid)
+        if isinstance(entity_or_uid, Entity):
+            entity = entity_or_uid
+        else:
+            entity = Entity.by_uid(uid)
+            if entity is None:
+                raise ValueError("Entity with given UID does not exist.")
+
+        log = entity.entity_log.most_recent
+        if log.what != EntityAuditType.DELETED:
+            raise ValueError("Entity was not deleted, cannot notify session.")
+        if log.when < self.start_time:
+            raise ValueError("Entity was deleted before this session started.")
+
+        self._entities_deleted.add(uid)
+
+        if uid in self._entity_journals:
+            del self._entity_journals[uid]
+
+
+
     # MARK: Entity Journals
-    _entity_journals : dict[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
+    _entity_journals : MutableMapping[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
 
     @property
     def dirty(self) -> bool:
@@ -124,7 +171,8 @@ class JournalSession(LoggableHierarchicalModel):
             if journal.entity is not entity:
                 if not journal.entity.superseded:
                     raise RuntimeError("Entity journal already exists for a different version of this entity. Use the latest version instead.")
-                del self._entity_journals[entity.uid]
+                if create:
+                    del self._entity_journals[entity.uid]
             else:
                 return journal
 
@@ -168,11 +216,11 @@ class JournalSession(LoggableHierarchicalModel):
 
         self._in_commit = True
         self._commit()
+        self._clear()
+        self._call_parent_hook('commit')
         self._in_commit = False
 
-        self._clear()
         self.log.info("Commit concluded.")
-        self._call_parent_hook('commit')
 
     def abort(self) -> None:
         if self.ended:
