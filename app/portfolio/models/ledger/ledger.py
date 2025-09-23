@@ -48,10 +48,7 @@ class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
 
     @property
     def instrument(self) -> Instrument:
-        entity = Instrument.by_uid(self.instrument_uid)
-        if entity is None:
-            raise ValueError(f"No instrument found for UID {self.instrument_uid}.")
-        return entity
+        return Instrument.by_uid(self.instrument_uid)
 
 
 
@@ -59,14 +56,11 @@ class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
     @property
     @override
     def instance_name(self) -> str:
-        instrument = Instrument.by_uid(self.instrument_uid)
-        if instrument is None:
-            return f"{self.__class__.__name__}@None"
-        return f"{self.__class__.__name__}@{self.instrument.instance_name}"
+        return self.calculate_instance_name_from_dict(self.__dict__, allow_missing_instrument=True)
 
     @classmethod
     @override
-    def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
+    def calculate_instance_name_from_dict(cls, data : dict[str, Any], allow_missing_instrument : bool = False) -> str:
         """
         Convert the provided keyword arguments to an instance name.
         This method should be implemented by subclasses to define how to derive the instance name.
@@ -74,12 +68,15 @@ class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
         instrument_uid = data.get('instrument_uid', None)
         if instrument_uid is None:
             raise TypeError(f"{cls.__name__}.calculate_instance_name_from_dict requires 'instrument_uid' in data to generate an instance name.")
-        instrument = Instrument.by_uid(instrument_uid)
+        instrument = Instrument.by_uid_or_none(instrument_uid)
         if instrument is None:
-            raise TypeError(f"{cls.__name__}.calculate_instance_name_from_dict requires 'instrument_uid' to correspond to a valid Instrument to generate an instance name.")
-        instrument_name = instrument.instance_name
-        if instrument_name is None:
-            raise ValueError(f"Instrument with UID '{instrument_uid}' does not have a valid instance name.")
+            if not allow_missing_instrument:
+                raise TypeError(f"{cls.__name__}.calculate_instance_name_from_dict requires 'instrument_uid' to correspond to a valid Instrument to generate an instance name.")
+            instrument_name = 'None'
+        else:
+            instrument_name = instrument.instance_name
+            if instrument_name is None:
+                raise ValueError(f"Instrument with UID '{instrument_uid}' does not have a valid instance name.")
 
         return f"{cls.__name__}@{instrument_name}"
 

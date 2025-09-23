@@ -2,82 +2,31 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import weakref
-from ..helpers.weakref import WeakRef
 
-from pydantic import BaseModel, model_validator, Field, field_validator, PrivateAttr, ConfigDict
+from pydantic import model_validator, ConfigDict
 from pydantic.fields import FieldInfo
-from typing import Any, Self, Annotated, override, ClassVar, final, TYPE_CHECKING, cast as typing_cast
+from typing import Any, override, ClassVar, TYPE_CHECKING
 from collections.abc import Sequence, Mapping, Set
 
-from ..callguard.pydantic_model import CallguardedModelMixin
+from ..mixins import HierarchicalMixinMinimal, HierarchicalMutableProtocol, NamedMutableProtocol, HierarchicalProtocol, NamedProtocol
 
-from . import HierarchicalMutableProtocol, NamedMutableProtocol, HierarchicalMixinMinimal, NamedMixinMinimal, LoggableMixin, HierarchicalProtocol, NamedProtocol
-
-
-class SingleInitializationModel(CallguardedModelMixin, BaseModel):
-    __initialized : bool = PrivateAttr(default=False)
-
-    def __new__(cls, *args, **kwargs):
-        instance = super().__new__(cls)
-        instance.__initialized = False
-        return instance
-
-    def __init__(self, *args, **kwargs):
-        if self.initialized:
-            raise RuntimeError(f"Model {self} is already initialized.")
-
-        super().__init__(*args, **kwargs)
-        self.__initialized = True
-
-    @override
-    def model_post_init(self, context : Any) -> None:
-        super().model_post_init(context)
-
-    @final
-    @property
-    def initialized(self) -> bool:
-        return self.__initialized
+from .single_initialization import SingleInitializationModel
 
 
-class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
+class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal):
+    model_config = ConfigDict(
+        extra='forbid',
+        validate_assignment=True,
+    )
+
     PROPAGATE_FROM_PARENT : ClassVar[bool] = True
     PROPAGATE_TO_CHILDREN : ClassVar[bool] = True
     PROPAGATE_INSTANCE_PARENT_FROM_PARENT : ClassVar[bool] = True
     PROPAGATE_INSTANCE_PARENT_TO_CHILDREN : ClassVar[bool] = True
 
-    instance_parent_weakref : WeakRef[HierarchicalProtocol | NamedProtocol] | None = Field(default=None, repr=False, exclude=True, alias='instance_parent', description="Parent of this instance in the hierarchy. Can be None if this is a root instance.")
-
-    @field_validator('instance_parent_weakref', mode='after')
-    @classmethod
-    def _validate_instance_parent(cls, obj : object | None) -> weakref.ref[HierarchicalProtocol | NamedProtocol] | None:
-        if obj is None:
-            return None
-
-        _obj = obj
-        if isinstance(obj, weakref.ref):
-            _obj = obj()
-            if _obj is None:
-                return None
-        else:
-            obj = weakref.ref(obj)
-
-        if not isinstance(_obj, (HierarchicalProtocol | NamedProtocol)):
-            raise TypeError(f"Expected HierarchicalProtocol | NamedProtocol | None, got {type(obj)}")
-
-        return typing_cast(weakref.ref, obj)
-
     @property
     def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
-        parent = self.instance_parent_weakref
-        if parent is None:
-            return None
-        return parent() if isinstance(parent, weakref.ref) else parent
-
-    @instance_parent.setter
-    def instance_parent(self, new_parent : HierarchicalProtocol | NamedProtocol | None) -> None:
-        self.instance_parent_weakref = weakref.ref(new_parent) if new_parent is not None else None
-
-
+        return None
 
     # NOTE: We use object.__setattr__ to avoid triggering Pydantic's validation which would raise an error if the object is not
     #       mutable.
@@ -98,6 +47,7 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
                 else:
                     raise ValueError(f"{type(obj).__name__} {obj} already has a parent: {obj.instance_parent}. Cannot overwrite with {self}.")
 
+            from .hierarchical import HierarchicalModel
             if isinstance(obj, HierarchicalModel):
                 object.__setattr__(obj, 'instance_parent_weakref', weakref.ref(self))
             else:
@@ -124,7 +74,9 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
         from ...portfolio.models.uid import Uid
         if isinstance(obj, Uid):
             from ...portfolio.models.entity import Entity
-            obj = Entity.by_uid(obj)
+            obj = Entity.by_uid_or_none(obj)
+            if obj is None:
+                return
 
         if propagate_parent:
             self._seed_parent_to_object(obj=obj)
@@ -199,23 +151,3 @@ class HierarchicalModel(SingleInitializationModel, HierarchicalMixinMinimal):
 
             if name in self.__class__.model_fields:
                 self._seed_parent_and_name_to_field(name)
-
-    @override
-    def __str__(self):
-        return super(HierarchicalMixinMinimal, self).__str__()
-
-    @override
-    def __repr__(self):
-        return super(HierarchicalMixinMinimal, self).__repr__()
-
-class HierarchicalNamedModel(HierarchicalModel):
-    PROPAGATE_INSTANCE_NAME_FROM_PARENT : ClassVar[bool] = True
-    PROPAGATE_INSTANCE_NAME_TO_CHILDREN : ClassVar[bool] = True
-
-    instance_name : str | None = Field(default=None, min_length=1, description="Name of the instance.")
-
-class LoggableHierarchicalModel(LoggableMixin, HierarchicalModel):
-    pass
-
-class LoggableHierarchicalNamedModel(LoggableMixin, HierarchicalNamedModel):
-    pass

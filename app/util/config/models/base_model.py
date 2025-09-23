@@ -6,7 +6,7 @@ import rich.repr
 from pydantic import ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator
 from typing import override, Any
 
-from ...mixins.models import LoggableHierarchicalNamedModel
+from ...models import LoggableHierarchicalNamedModel
 
 from ...helpers.classproperty import ClassPropertyDescriptor
 from ..inherit import InheritFactory, Inherit, Default

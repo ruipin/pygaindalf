@@ -39,8 +39,6 @@ class TestPortfolioSessions:
             inst2 = Instrument(ticker="MSFT", currency=Currency("USD"))
             ledg2 = Ledger(instrument_uid=inst2.uid)
 
-        with session_manager(actor="tester", reason="add-ledgers") as s:
-            # Access mutable set via the portfolio's journal
             ledgers_set = p1.journal.ledgers
             ledgers_set.add(ledg1)
             ledgers_set.add(ledg2)
@@ -59,16 +57,16 @@ class TestPortfolioSessions:
 
     def test_add_and_remove_ledger_abort(self, portfolio_root : PortfolioRoot, session_manager):
         p1 = portfolio_root.portfolio
-        with session_manager(actor="tester", reason="setup-ledger"):
+        with session_manager(actor="tester", reason="setup-ledger") as s:
             inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
             ledg = Ledger(instrument_uid=inst.uid)
 
-        with session_manager(actor="tester", reason="add-then-abort") as s:
             ledgers_set = p1.journal.ledgers
             ledgers_set.add(ledg)
             assert ledg in ledgers_set
             assert p1.dirty
             s.abort()  # abort edits
+
             assert not s.dirty
             # Still inside context, but edits cleared
             assert ledg not in p1.ledgers

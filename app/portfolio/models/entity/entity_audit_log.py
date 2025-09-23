@@ -9,7 +9,8 @@ from collections.abc import Sequence
 from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator
 from frozendict import frozendict
 
-from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal, SingleInitializationModel
+from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal
+from ....util.models import SingleInitializationModel
 from ....util.callguard import callguard_class
 from ....util.helpers.frozendict import FrozenDict
 
@@ -71,15 +72,15 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             raise ValueError(f"Could not get entity store for {cls.__name__}. The global EntityStore is not set.")
         if (instance := store.get_audit_log(uid)) is None:
             instance = super().__new__(cls)
-            instance.__dict__['_entity_uid'] = uid
+            instance._post_init(uid)
         return instance
 
     def __init__(self, uid : Uid):
-        if self.entity_uid != uid:
-            raise ValueError(f"EntityAuditLog UID mismatch: {self.entity_uid} != {uid}.")
+        super().__init__()
 
-        if not hasattr(self, '_entries'):
-            self._entries = []
+    def _post_init(self, uid : Uid):
+        self._entity_uid = uid
+        self._entries = []
 
     @classmethod
     def from_entity(cls, entity: Entity) -> EntityAuditLog:
@@ -90,7 +91,12 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         return self._entity_uid
 
     @property
-    def entity(self) -> Entity | None:
+    def entity_or_none(self) -> Entity | None:
+        from .entity import Entity
+        return Entity.by_uid_or_none(self.entity_uid)
+
+    @property
+    def entity(self) -> Entity:
         from .entity import Entity
         return Entity.by_uid(self.entity_uid)
 
@@ -108,7 +114,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         Returns the parent entity of this instance, if it exists.
         If the entity does not exist in the entity store, returns None.
         """
-        return self.entity
+        return self.entity_or_none
 
 
     # MARK: Pydantic schema
@@ -227,7 +233,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         session = entity.session_or_none
 
         diff = None
-        if self.entity is None or entity is not self.entity:
+        if (self_entity := self.entity_or_none) is None or entity is not self_entity:
             old_entity = self.instance_parent
             diff = self._diff(old_entity, entity)
             self._reset_log_cache()

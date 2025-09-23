@@ -31,9 +31,7 @@ class PortfolioBase[T_Uid_Set : OrderedViewFrozenLedgerUidSet, T_Proxy_Set : Uid
             return self.ledgers[index]
 
         if isinstance(index, Uid):
-            if (entity := Entity.by_uid(index)) is None:
-                raise KeyError(f"Entity with UID {index} not found")
-
+            entity = Entity.by_uid(index)
             if isinstance(entity, Ledger):
                 if entity.uid not in self.ledger_uids:
                     raise KeyError(f"Ledger with UID {index} not found in portfolio")

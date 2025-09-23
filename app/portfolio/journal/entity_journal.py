@@ -12,8 +12,9 @@ from collections.abc import Sequence, Mapping, Set, MutableSet
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
+    from .session import Session
 
-from ...util.mixins import LoggableHierarchicalModel
+from ...util.models import LoggableHierarchicalModel
 from ...util.callguard import CallguardClassOptions
 
 from ..models.uid import Uid
@@ -30,7 +31,7 @@ class EntityJournal(LoggableHierarchicalModel):
         decorator=superseded_check,
         decorate_public_methods=True,
         allow_same_module=True,
-        decorate_ignore_patterns=('ended','superseded','dirty','entity_uid','commit_yield_hierarchy','get_diff')
+        decorate_ignore_patterns=('invalid','superseded','dirty','entity_uid','mark_invalid','commit_yield_hierarchy','get_diff')
     )
 
     model_config = ConfigDict(
@@ -59,6 +60,10 @@ class EntityJournal(LoggableHierarchicalModel):
     @property
     def version(self) -> int:
         return self.entity.version
+
+    @property
+    def session(self) -> Session:
+        return self.entity.session
 
     @override
     def __hash__(self) -> int:
@@ -92,17 +97,20 @@ class EntityJournal(LoggableHierarchicalModel):
 
 
     # MARK: Superseded
-    _ended : bool = PrivateAttr(default=False)
+    _invalid : bool = PrivateAttr(default=False)
     @property
-    def ended(self) -> bool:
+    def invalid(self) -> bool:
         try:
-            return getattr(self, '_ended', False)
+            return getattr(self, '_invalid', False)
         except:
             return False
 
+    def mark_invalid(self) -> None:
+        self._invalid = True
+
     @property
     def superseded(self) -> bool:
-        return self.ended or self.entity.superseded
+        return self.invalid or self.entity.superseded
 
     @property
     def dirty(self) -> bool:
@@ -319,17 +327,17 @@ class EntityJournal(LoggableHierarchicalModel):
 
     # MARK: Invalidation
     def on_dependency_invalidated(self, source: EntityJournal) -> None:
-        self.log.debug("EntityJournal %s received invalidation from dependency %s", self, source)
         # Loop through entity fields, and search for OrderedViewSets that referenced the source entity
         for nm, info in self.entity.__class__.model_fields.items():
             original = self.get_original_field(nm)
+            uid = source.entity_uid
 
             if isinstance(original, OrderedViewFrozenSet):
                 value = self.get_field(nm, wrap=False)
 
                 # Only propagate if the invalidated child is present in both the wrapped set *and* the original set
                 # (this avoids propagating invalidations for items that have been added or removed from the set in the same session as the invalidation)
-                if source.entity_uid not in original or (value is not original and source.entity_uid not in value):
+                if uid not in original or (value is not original and uid not in value):
                     continue
 
                 if not self.is_field_updated(nm):
@@ -353,9 +361,9 @@ class EntityJournal(LoggableHierarchicalModel):
 
         for dep in self.entity.dependent_uids:
             entity = Entity.by_uid(dep)
-            if not entity:
-                raise RuntimeError(f"Dependent entity with UID {dep} not found.")
-            entity.on_dependency_invalidated(self)
+
+            if not entity.marked_for_deletion:
+                entity.on_dependency_invalidated(self)
 
     def commit_yield_hierarchy(self, condition : Callable[[EntityJournal], bool]) -> Iterator[EntityJournal]:
         """
@@ -366,7 +374,7 @@ class EntityJournal(LoggableHierarchicalModel):
 
         # Iterate dirty children journals
         for child_uid in self._dirty_children:
-            child = Entity.by_uid(child_uid)
+            child = Entity.by_uid_or_none(child_uid)
             if child is None or (child_journal := child.get_journal(create=False)) is None:
                 continue
 

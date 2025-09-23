@@ -30,10 +30,24 @@ def default_callguard_checker[T : object, **P, R](info : CallguardHandlerInfo[T,
 
     if info.check_self:
         if info.caller_self is not info.callee_self:
+            succeed = False
+
+            if not info.allow_same_class:
+                raise ValueError("Self mismatch and 'allow_same_class' is False")
+
+            if info.allow_same_class and not isinstance(info.caller_self, type) and not isinstance(info.callee_self, type):
+                caller_type = type(info.caller_self)
+                callee_type = type(info.callee_self)
+
+                if caller_type is callee_type or issubclass(caller_type, callee_type) or issubclass(callee_type, caller_type):
+                    succeed = True
+
             if (
+                (not succeed) and
                 (not isinstance(info.callee_self, type) or not isinstance(info.caller_self, info.callee_self)) and
                 (not isinstance(info.caller_self, type) or not isinstance(info.callee_self, info.caller_self))
             ):
+                LOG.info(f"{info.allow_same_class=}, {info.caller_self=}, {info.callee_self=}")
                 LOG.error(t"Self mismatch: caller {info.caller_self}, callee {info.callee_self}")
                 return False
     return True
@@ -75,6 +89,7 @@ class CallguardCallableDecorator[T : object, **P, R]:
 
         frames_up = callguard_options.get('frames_up', 1)
         check_module = callguard_options.get('check_module', False)
+        allow_same_class = callguard_options.get('allow_same_class', True)
         allow_same_module = callguard_options.get('allow_same_module', False)
         method_name = callguard_options.get('method_name', getattr(method, '__name__', '<unknown>'))
         guard = callguard_options.get('guard', True)
@@ -108,6 +123,7 @@ class CallguardCallableDecorator[T : object, **P, R]:
                             method_name=_method_name,
                             check_module=check_module,
                             check_self=True,
+                            allow_same_class=allow_same_class,
                             allow_same_module=allow_same_module,
                             caller_frame=caller_frame,
                             callee_frame=callee_frame,

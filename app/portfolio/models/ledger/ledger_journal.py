@@ -3,7 +3,7 @@
 
 from functools import cached_property
 
-from typing import TYPE_CHECKING, override, Iterator
+from typing import TYPE_CHECKING, override, Iterator, Generic
 from collections.abc import MutableSet
 
 from ...journal.entity_journal import EntityJournal

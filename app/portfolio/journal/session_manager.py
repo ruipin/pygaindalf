@@ -7,9 +7,9 @@ import weakref
 from pydantic import ConfigDict, PrivateAttr, computed_field, field_validator
 from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable, Literal
 
-from ...util.mixins import LoggableHierarchicalModel
+from ...util.models import LoggableHierarchicalModel
 
-from .session import JournalSession, SessionParams
+from .session import Session, SessionParams
 from .protocols import SessionManagerHooksProtocol
 
 
@@ -20,7 +20,7 @@ class SessionManager(LoggableHierarchicalModel):
         validate_assignment=True,
     )
 
-    _session : JournalSession | None = PrivateAttr(default=None)
+    _session : Session | None = PrivateAttr(default=None)
 
 
     # MARK: Global instance behaviour
@@ -51,17 +51,17 @@ class SessionManager(LoggableHierarchicalModel):
             return None
         return parent
 
-    def call_owner_hook(self, hook_name: Literal['start'] | Literal['end'] | Literal['commit'] | Literal['abort'], *args: Any, **kwargs: Any) -> None:
+    def call_owner_hook(self, hook_name: Literal['start'] | Literal['end'] | Literal['apply'] | Literal['commit'] | Literal['abort'], *args: Any, **kwargs: Any) -> None:
         if (owner := self._get_owner()) is not None:
             getattr(owner, f"on_session_{hook_name}")(*args, **kwargs)
 
 
-    # MARK: JournalSession
-    def _start(self, **kwargs : Unpack[SessionParams]) -> JournalSession:
+    # MARK: Session
+    def _start(self, **kwargs : Unpack[SessionParams]) -> Session:
         if self.in_session:
             raise RuntimeError("A session is already active.")
 
-        session = self._session = JournalSession(instance_parent=weakref.ref(self), **kwargs)
+        session = self._session = Session(instance_parent=weakref.ref(self), **kwargs)
         return session
 
     def _commit(self) -> None:
@@ -80,21 +80,21 @@ class SessionManager(LoggableHierarchicalModel):
         self._session = None
 
     @contextlib.contextmanager
-    def __call__(self, **kwargs : Unpack[SessionParams]) -> Iterator[JournalSession]:
+    def __call__(self, **kwargs : Unpack[SessionParams]) -> Iterator[Session]:
         session = self._start(**kwargs)
         try:
             if self._session is not session:
-                raise RuntimeError("JournalSession failed to start.")
+                raise RuntimeError("Session failed to start.")
 
             yield session
 
             if self._session is not session:
-                raise RuntimeError("JournalSession is no longer valid.")
+                raise RuntimeError("Session is no longer valid.")
 
             self._commit()
         except Exception as e:
             if self._session is not session:
-                raise RuntimeError("JournalSession is no longer valid.")
+                raise RuntimeError("Session is no longer valid.")
 
             self._abort()
 
@@ -111,7 +111,7 @@ class SessionManager(LoggableHierarchicalModel):
         return self._session is not None and not self._session.ended
 
     @property
-    def session(self) -> JournalSession | None:
+    def session(self) -> Session | None:
         return self._session if self.in_session else None
 
 

@@ -5,10 +5,9 @@ import pytest
 from typing import Any, Iterator, override, ClassVar
 from pydantic import Field, PrivateAttr, ValidationError, BaseModel, InstanceOf, ConfigDict
 
-from app.util.mixins.models import LoggableHierarchicalModel
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.models.root import EntityRoot
-from app.portfolio.journal.session import JournalSession
+from app.portfolio.journal.session import Session
 from app.portfolio.journal.entity_journal import EntityJournal
 from app.portfolio.collections.journalled.sequence import JournalledSequence
 from app.portfolio.collections.journalled.mapping import JournalledMapping
@@ -154,7 +153,7 @@ class TestSessionEntityJournal:
             assert entity.superseded is True
 
             # Expectations once implemented:
-            new_entity = SampleEntity.by_uid(entity.uid)
+            new_entity = SampleEntity.by_uid_or_none(entity.uid)
             assert new_entity is not None, "Expected a new entity version after commit"
             assert new_entity.version == current_version + 1
             assert new_entity.value == 99
@@ -168,7 +167,7 @@ class TestSessionEntityJournal:
             s.end()  # should commit then mark ended
             assert s.ended is True
 
-            new_entity = SampleEntity.by_uid(entity.uid)
+            new_entity = SampleEntity.by_uid_or_none(entity.uid)
             assert new_entity is not None, "Expected a new entity version after end commit"
             assert new_entity.version == v_old + 1
             assert new_entity.superseded is False
@@ -184,12 +183,10 @@ class TestSessionEntityJournal:
             with pytest.raises(SupersededError):
                 s.get_entity_journal(entity=entity)
 
-    def test_using_ended_journal_fails(self, entity: SampleEntity, session_manager: SessionManager):
+    def test_using_invalid_journal_fails(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test") as s:
-            # Placeholder: once journal.commit/end implemented, accessing after end should raise
             j = entity.journal
-            # Simulate end (future: j.commit() or j.end())
-            object.__setattr__(j, "_ended", True)  # force ended state for placeholder
+            j.mark_invalid()
             with pytest.raises(SupersededError):
                 j.get("value")
 

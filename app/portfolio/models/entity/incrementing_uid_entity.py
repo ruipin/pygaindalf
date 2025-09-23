@@ -2,18 +2,20 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from typing import ClassVar, override, Any
-from pydantic import computed_field
+from typing import override, Any, TYPE_CHECKING
+from abc import ABCMeta
 
-from ....util.helpers import script_info
-
-from ..uid import IncrementingUidFactory, Uid
-
-from .entity import Entity
+from ....util.helpers import mro
 from ...journal.entity_journal import EntityJournal
+from ..uid import Uid
+from .entity import Entity
 
 
-class IncrementingUidEntity[T_Journal : EntityJournal](Entity[T_Journal]):
+class IncrementingUidEntityMixin(Entity if TYPE_CHECKING else object, metaclass=ABCMeta):
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        mro.ensure_mro_order(cls, IncrementingUidEntityMixin, before=Entity)
+
     @classmethod
     @override
     def _calculate_uid(cls, data : dict[str, Any]) -> Uid:
@@ -31,3 +33,7 @@ class IncrementingUidEntity[T_Journal : EntityJournal](Entity[T_Journal]):
     @override
     def instance_name(self) -> str:
         return str(self.uid)
+
+
+class IncrementingUidEntity[T_Journal : EntityJournal](IncrementingUidEntityMixin, Entity[T_Journal], metaclass=ABCMeta):
+    pass

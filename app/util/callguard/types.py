@@ -37,6 +37,7 @@ class CallguardHandlerInfo[T : object, **P, R]:
     method_name : str
     check_module : bool
     check_self : bool
+    allow_same_class : bool
     allow_same_module : bool
     caller_frame : FrameType
     callee_frame : FrameType
@@ -54,6 +55,7 @@ class CallguardOptions[T : object, **P, R](TypedDict):
     frames_up            : NotRequired[int]
     method_name          : NotRequired[str | Callable[Concatenate[T,P], str]]
     check_module         : NotRequired[bool]
+    allow_same_class     : NotRequired[bool]
     allow_same_module    : NotRequired[bool]
     guard                : NotRequired[bool]
     property_setter_only : NotRequired[bool]
@@ -81,6 +83,7 @@ class CallguardClassOptions[T : object](TypedDict):
     decorate_ignore_patterns       : NotRequired[Iterable[str | re.Pattern[str]]]
     decorator                      : NotRequired[CallguardWrappedDecorator[T,...,Any]]
     decorator_factory              : NotRequired[CallguardWrappedDecoratorFactory[T,...,Any]]
+    allow_same_class               : NotRequired[bool]
     allow_same_module              : NotRequired[bool]
 
 

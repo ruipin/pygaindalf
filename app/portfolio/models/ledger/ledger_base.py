@@ -30,9 +30,7 @@ class LedgerBase[T_Uid_Set : OrderedViewFrozenTransactionUidSet, T_Proxy_Set : U
         elif isinstance(index, Uid):
             if index not in self.transaction_uids:
                 raise KeyError(f"Transaction with UID {index} not found in ledger")
-            if (transaction := Transaction.by_uid(index)) is None:
-                raise KeyError(f"Transaction with UID {index} not found")
-            return transaction
+            return Transaction.by_uid(index)
 
         else:
             raise KeyError(f"Index must be an int or Uid, got {type(index).__name__}")

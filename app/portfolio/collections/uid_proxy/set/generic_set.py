@@ -22,7 +22,7 @@ class GenericUidProxyFrozenSet[T : Entity, T_Collection : Set[Uid]](Set[T], UidP
         proxy_type = self.get_concrete_proxy_type()
 
         for uid in self._get_field():
-            entity = proxy_type.by_uid(uid)
+            entity = proxy_type.by_uid_or_none(uid)
             if entity is None:
                 raise KeyError(f"Entity with UID {uid} not found")
             yield entity

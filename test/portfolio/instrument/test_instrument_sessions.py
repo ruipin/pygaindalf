@@ -6,7 +6,7 @@ import pytest
 from iso4217 import Currency
 
 from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.journal.session import JournalSession
+from app.portfolio.journal.session import Session
 
 from app.portfolio.models.root import EntityRoot
 from app.portfolio.models.instrument.instrument import Instrument
@@ -34,7 +34,7 @@ class TestInstrumentJournalWithSessions:
 
     def test_stage_updates_via_journal_methods_and_entity_unchanged(self, instrument: Instrument, session_manager: SessionManager):
         with session_manager(actor="tester", reason="stage") as s:
-            assert isinstance(s, JournalSession)
+            assert isinstance(s, Session)
 
             # Acquire journal and stage updates via API methods
             j: InstrumentJournal = instrument.journal

@@ -7,7 +7,7 @@ import re
 
 from dataclasses import dataclass, field
 
-from typing import Protocol, override, Hashable, runtime_checkable, ClassVar, Self, Any
+from typing import Protocol, override, Hashable, runtime_checkable, ClassVar, Self, Any, TYPE_CHECKING
 from pydantic import BaseModel, Field, model_validator, ModelWrapValidatorHandler
 from abc import ABCMeta, abstractmethod
 
@@ -15,8 +15,11 @@ from ...util.helpers import classproperty
 from ...util.mixins import NamedMixinMinimal, NamedProtocol, NamedMutableProtocol
 from ...util.helpers import script_info
 
+if TYPE_CHECKING:
+    from .entity import Entity
 
-UID_SEPARATOR = '#'
+
+UID_SEPARATOR = '-'
 UID_ID_REGEX = re.compile(r'^[a-zA-Z0-9@_-]+$')
 
 
@@ -82,6 +85,16 @@ class Uid:
             return NotImplemented
         return self.as_tuple() >= other.as_tuple()
 
+    @property
+    def entity_or_none(self) -> Entity | None:
+        from .entity import Entity
+        return Entity.by_uid_or_none(self)
+
+    @property
+    def entity(self) -> Entity:
+        from .entity import Entity
+        return Entity.by_uid(self)
+
     @override
     def __str__(self):
         return f"{self.namespace}{UID_SEPARATOR}{self.id_as_str}"
@@ -89,6 +102,7 @@ class Uid:
     @override
     def __repr__(self):
         return f"<Uid: {self!s}>"
+
 
 
 # MARK: Incrementing Uid Factory

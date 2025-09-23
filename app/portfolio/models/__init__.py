@@ -2,4 +2,5 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from .entity import *
+from .root import *
 from .store import *

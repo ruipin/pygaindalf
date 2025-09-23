@@ -14,7 +14,6 @@ from ....util.callguard import callguard_class
 
 from ..entity import Entity
 from ..entity.entity_audit_log import EntityAuditLog
-from ..entity.entity_links import EntityLinks
 from ..uid import IncrementingUidFactory, Uid
 
 if TYPE_CHECKING:
@@ -106,7 +105,6 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
     # MARK: Entity Store
     _entity_store : MutableMapping[Uid, Entity]
     _audit_log_store : MutableMapping[Uid, EntityAuditLog]
-    _entity_links_store : MutableMapping[Uid, EntityLinks]
 
     @override
     def update(self, value : Entity | Mapping[Uid, Entity], /) -> None: # pyright: ignore[reportIncompatibleMethodOverride]
@@ -126,10 +124,6 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
     def get_audit_log(self, key : Uid | Entity) -> EntityAuditLog | None:
         uid = Entity.narrow_to_uid(key)
         return self._audit_log_store.get(uid, None)
-
-    def get_entity_links(self, key : Uid | Entity) -> EntityLinks | None:
-        uid = Entity.narrow_to_uid(key)
-        return self._entity_links_store.get(uid, None)
 
 
     # MARK: MutableMapping ABC
@@ -153,7 +147,6 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
         self._entity_store[uid] = entity
         self._audit_log_store[uid] = entity.entity_log
-        self._entity_links_store[uid] = entity.entity_links
 
     @override
     def __delitem__(self, value: Uid | Entity) -> None:
@@ -219,14 +212,14 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
             if entity is None:
                 continue
 
-            for child in entity.get_child_uids():
+            for child in entity.children_uids:
                 assert child in self
                 if child not in reachable and child not in stack:
                     stack.append(child)
 
         return reachable
 
-    def mark_and_sweep(self, roots : Uid | Iterable[Uid], who : str = 'system', why : str = 'mark and sweep') -> int:
+    def mark_and_sweep(self, roots : Uid | Iterable[Uid]) -> int:
         reachable = self.get_reachable_uids(roots)
 
         unreachable = self._entity_store.keys() - reachable
@@ -237,7 +230,7 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
             if entity is None:
                 raise RuntimeError(f"Entity with UID {uid} not found in store during mark and sweep.")
 
-            entity.delete(who=who, why=why)
+            entity.delete()
             #del self[uid]
 
             removed += 1

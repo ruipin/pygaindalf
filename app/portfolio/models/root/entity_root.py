@@ -7,11 +7,11 @@ from typing import Any, override, ClassVar, TYPE_CHECKING
 from requests import Session
 
 from ....util.callguard import callguard_property
-from ....util.mixins import LoggableHierarchicalModel
+from ....util.models import LoggableHierarchicalRootModel
 from ....util.helpers import script_info
 
 from ...journal.session_manager import SessionManager
-from ...journal.session import JournalSession
+from ...journal.session import Session
 
 from ..uid import Uid
 from ..store.entity_store import EntityStore
@@ -19,7 +19,7 @@ from ..entity import Entity
 
 
 
-class EntityRoot(LoggableHierarchicalModel):
+class EntityRoot(LoggableHierarchicalRootModel):
     model_config = ConfigDict(
         extra='forbid',
         frozen=False,
@@ -74,7 +74,7 @@ class EntityRoot(LoggableHierarchicalModel):
     @root.setter
     def root(self, value : Uid | Entity) -> None:
         uid = Entity.narrow_to_uid(value)
-        if Entity.by_uid(uid) is None:
+        if Entity.by_uid_or_none(uid) is None:
             raise ValueError(f"No Entity found with uid {value}")
         self.root_uid = uid
 
@@ -89,8 +89,6 @@ class EntityRoot(LoggableHierarchicalModel):
             raise TypeError(f"Expected Uid, got {type(root_uid).__name__}")
 
         root = Entity.by_uid(root_uid)
-        if root is None:
-            raise ValueError(f"No Entity found with uid {root_uid}")
         if root.superseded:
             raise ValueError(f"Entity '{root_uid}' is superseded.")
 
@@ -115,13 +113,13 @@ class EntityRoot(LoggableHierarchicalModel):
     # MARK: Session Manager
     session_manager : InstanceOf[SessionManager] = Field(default_factory=SessionManager, description="Session manager associated with this entity root")
 
-    def on_session_start(self, session : JournalSession) -> None:
+    def on_session_start(self, session : Session) -> None:
         pass
 
-    def on_session_end(self, session : JournalSession) -> None:
+    def on_session_end(self, session : Session) -> None:
         pass
 
-    def on_session_commit(self, session : JournalSession) -> None:
+    def on_session_apply(self, session : Session) -> None:
         superseding = self.root.superseding
         if superseding is None:
             raise ValueError("Cannot refresh entities: entity root has no superseding root.")
@@ -129,9 +127,12 @@ class EntityRoot(LoggableHierarchicalModel):
         if superseding is not self.root:
             self.root = superseding
 
-        self.garbage_collect(who=session.actor, why=session.reason)
+        self.garbage_collect()
 
-    def on_session_abort(self, session : JournalSession) -> None:
+    def on_session_commit(self, session : Session) -> None:
+        pass
+
+    def on_session_abort(self, session : Session) -> None:
         pass
 
 
@@ -142,4 +143,4 @@ class EntityRoot(LoggableHierarchicalModel):
         if self.root_uid is None:
             self.entity_store.reset()
         else:
-            self.entity_store.mark_and_sweep(self.root_uid, who=who, why=why)
+            self.entity_store.mark_and_sweep(self.root_uid)

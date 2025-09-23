@@ -42,8 +42,6 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
     def item_sort_key(self, item : T) -> SupportsRichComparison:
         if isinstance(item, Uid):
             item = Entity.by_uid(item)
-            if item is None:
-                raise ValueError(f"No entity found for UID {item}.")
         if isinstance(item, SortKeyProtocol):
             return item.sort_key()
         return typing_cast('SupportsRichComparison', item)

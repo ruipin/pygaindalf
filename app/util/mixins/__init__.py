@@ -41,6 +41,3 @@ class LoggableHierarchicalNamedMixin(LoggableMixin, HierarchicalMixin, NamedMixi
     Mixin combining logging, hierarchy, and naming support.
     """
     pass
-
-# Import models
-from .models import *

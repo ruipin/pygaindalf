@@ -22,7 +22,7 @@ from iso4217 import Currency
 from pydantic import Field, ConfigDict, InstanceOf
 
 from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.journal.session import JournalSession
+from app.portfolio.journal.session import Session
 from app.portfolio.collections.journalled.set import JournalledSetEdit, JournalledSetEditType
 
 from app.portfolio.models.instrument.instrument import Instrument
@@ -65,7 +65,7 @@ class TestLedgerJournalPropagationSessions:
 
         # Modify t1 date inside a session
         with session_manager(actor="tester", reason="tx-date-change") as s:
-            assert isinstance(s, JournalSession)
+            assert isinstance(s, Session)
 
             # Parent journal initially has no diff
             lj = ledg.journal

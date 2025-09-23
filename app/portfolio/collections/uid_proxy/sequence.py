@@ -33,11 +33,7 @@ class UidProxyFrozenSequence[T : Entity](Sequence[T], UidProxyFrozenCollection[T
         if not isinstance(uid, Uid):
             raise TypeError(f"Expected Uid, got {type(uid)}")
 
-        entity = self.get_concrete_proxy_type().by_uid(uid)
-        if entity is None:
-            raise KeyError(f"Entity with UID {uid} not found")
-
-        return entity
+        return self.get_concrete_proxy_type().by_uid(uid)
 
 
 

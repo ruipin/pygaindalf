@@ -302,6 +302,7 @@ class CallguardClassDecorator[T : object]:
                 class_options= callguard_class_options,
                 value= value,
                 check_module= name.startswith('__') or name.startswith(f"_{klass.__name__}__"),
+                allow_same_class= bool(callguard_class_options.get('allow_same_class', True)),
                 allow_same_module= bool(callguard_class_options.get('allow_same_module', False)),
                 method_name= name,
                 guard= guard,
@@ -324,31 +325,3 @@ class CallguardClassDecorator[T : object]:
 
 def callguard_class[T : object](**callguard_options : Unpack[CallguardClassOptions[T]]) -> CallguardClassDecorator[T]:
     return CallguardClassDecorator(**callguard_options)
-
-
-# MARK: Generic Decorator
-@overload
-def callguard[T : property](obj : T, **callguard_options : Unpack[CallguardOptions]) -> T: ...
-
-@overload
-def callguard[T : classmethod](obj : T, **callguard_options : Unpack[CallguardOptions]) -> T: ...
-
-@overload
-def callguard[T : type](obj : T, **callguard_options : Unpack[CallguardClassOptions]) -> T: ...
-
-@overload
-def callguard[T : Callable](obj : T, **callguard_options : Unpack[CallguardOptions]) -> T: ...
-
-def callguard[T](obj : T, **callguard_options) -> T:
-    if isinstance(obj, staticmethod):
-        raise ValueError("callguard cannot be applied to staticmethods, as they have no self/cls")
-    elif isinstance(obj, property):
-        return CallguardPropertyDecorator.guard(obj, **callguard_options)
-    elif isinstance(obj, classmethod):
-        return CallguardClassmethodDecorator.guard(obj, **callguard_options)
-    elif isinstance(obj, type):
-        return CallguardClassDecorator.guard(obj, **callguard_options)
-    elif callable(obj):
-        return CallguardCallableDecorator.guard(obj, **callguard_options)
-    else:
-        raise TypeError("callguard can only be applied to classes, methods, or properties")

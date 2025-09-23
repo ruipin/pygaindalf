@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import typing
+import typing, types
 import pydantic
 import weakref
 
 from pydantic_core import core_schema as core_schema
+
+from .generics import get_arg, get_concrete_arg
 
 
 class PydanticWeakrefAnnotation:

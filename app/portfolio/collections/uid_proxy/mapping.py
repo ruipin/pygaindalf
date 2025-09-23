@@ -19,7 +19,7 @@ class UidProxyFrozenMapping[K, V : Entity](Mapping[K,V], UidProxyFrozenCollectio
         if not isinstance(uid, Uid):
             raise TypeError(f"Expected Uid, got {type(uid)}")
 
-        entity = self.get_concrete_proxy_type().by_uid(uid)
+        entity = self.get_concrete_proxy_type().by_uid_or_none(uid)
         if entity is None:
             raise KeyError(f"Entity with UID {uid} not found")
 
