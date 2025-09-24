@@ -1,242 +1,394 @@
-"""Tests for generic helper utilities.
+"""Tests for generic helper utilities aligned with the new generics module API.
 
-Style mirrors other test modules: SPDX header, class-based tests with a pytest
-marker (helpers) and descriptive method names.
+Covers all public functions (excluding private ones) and ignores GenericIntrospectionMixin.
 """
 
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import typing
 import pytest
 from typing import TypeVar
 
 from app.util.helpers.generics import (
     GenericsError,
-    get_arg_info,
-    get_arg,
-    get_concrete_arg,
+    ParameterInfo,
+    ArgumentInfo,
+    get_original_bases,
+    get_origin_or_none,
+    get_origin,
+    get_generic_base_or_none,
+    get_generic_base,
+    iter_parameter_infos,
+    get_parameter_infos,
+    get_parameter_info_or_none,
+    get_parameter_info,
+    has_parameter,
+    get_argument_info,
+    iter_argument_infos,
+    get_argument_infos,
+    get_argument,
+    get_concrete_argument,
     get_bases_between,
-    get_parent_arg,
-    get_concrete_parent_arg,
-    has_arg,
+    get_parent_argument_info_or_none,
+    get_parent_argument_info,
+    get_parent_argument,
+    get_concrete_parent_argument,
 )
 
-#-------------------------------------------------------------------------------
-# MARK: Class definitions
-#-------------------------------------------------------------------------------
-
-# Define generic classes using Python 3.12 syntax
-class Base[T, U: int]:
-    """A simple generic base with two type variables, one of them bound to int."""
-    pass
-
-
-class Concrete(Base[str, int]):
-    pass
-
-
-class Partial[U: int](Base[str, U]):  # leaves U unresolved (still a TypeVar)
-    pass
-
-
-class WrongBound(Base[str, str]):  # violates bound for U (expects int)  # type: ignore[reportInvalidTypeArguments]
-    pass
-
-
-class Other[T]:
-    pass
-
-
-class Unrelated:
-    pass
-
-
-# Multi-level inheritance chain to test parent traversal
-class P[T]:
-    pass
-
-
-class Q[X](P[X]):
-    pass
-
-
-class R(Q[int]):
-    pass
-
-
-class QPartial[X](P[X]):
-    pass
-
-
-class RPartial[Z](QPartial[Z]):
-    pass
-
-
-# Renaming generics between parent and child (positional mapping but different names)
-class A[T, U]:
-    pass
-
-
-class B[X, Y](A[X, Y]):  # child uses X,Y instead of T,U
-    pass
-
-
-# Mismatched names where parent name reused differently plus extra shadowing
-class C1[T, U]:
-    pass
-
-
-class C2[X, T, Y](C1[Y, T]):  # introduces X and reuses T creating potential ambiguity
-    pass
-
+"""
+Test suite is split into intent-based classes. Each test class defines local
+generic types to keep names focused and reusable across classes.
+"""
 
 #-------------------------------------------------------------------------------
-# MARK: Unit tests
+# MARK: Origin and base helpers
 #-------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
-class TestGenericHelpers:
-    #-------------------------------------------------------------------------------
-    # MARK: Generic parameter introspection (arg info)
-    #-------------------------------------------------------------------------------
-    def test_get_arg_info_success(self):
-        index_t, tv_t = get_arg_info(Base, "T")
-        index_u, tv_u = get_arg_info(Base, "U")
-        assert (index_t, tv_t.__name__) == (0, "T")
-        assert (index_u, tv_u.__name__) == (1, "U")
+class TestOriginAndBases:
+    # Local intent-based classes
+    class Pair[T, U: int]:
+        pass
 
-    def test_get_arg_info_missing(self):
+    class Plain:
+        pass
+
+    class Parent[T]:
+        pass
+
+    class Mid[X](Parent[X]):
+        pass
+
+    class Leaf(Mid[int]):
+        pass
+
+    def test_get_origin_and_generic_base(self):
+        Pair = TestOriginAndBases.Pair
+        Plain = TestOriginAndBases.Plain
+        Parent = TestOriginAndBases.Parent
+        Mid = TestOriginAndBases.Mid
+        Leaf = TestOriginAndBases.Leaf
+
+        assert get_origin_or_none(Pair) is None
+        assert get_origin_or_none(Pair[str, int]) is Pair
+        assert get_origin(Pair[str, int]) is Pair
         with pytest.raises(GenericsError) as ei:
-            get_arg_info(Base, "Z")
-        assert "Could not find generic argument Z in Base" == str(ei.value)
+            get_origin(Pair)
+        assert str(ei.value) == "Pair is not a generic class"
 
-    #-------------------------------------------------------------------------------
-    # MARK: has_arg existence checks
-    #-------------------------------------------------------------------------------
-    def test_has_arg_concrete(self):
-        assert has_arg(Base[str, int], "T") is True
-        assert has_arg(Base[str, int], "U") is True
+        assert get_generic_base_or_none(Pair) is not None
+        assert get_generic_base_or_none(Plain) is None
+        assert get_generic_base(Pair) is not None
+        with pytest.raises(GenericsError) as ei2:
+            get_generic_base(Plain)
+        assert str(ei2.value) == "Plain is not a generic class"
 
-    def test_has_arg_unsubscripted(self):
-        # Unsubscripted generic class should not report having resolvable args
-        assert has_arg(Base, "T") is False
-        assert has_arg(Base, "U") is False
+        bases = get_original_bases(Leaf)
+        # Should include Mid[int] as an original base for Leaf
+        assert any(get_origin_or_none(b) is Mid for b in bases)
 
-    def test_has_arg_missing_name(self):
-        assert has_arg(Base[str, int], "Z") is False
-        assert has_arg(Base, "Z") is False
 
-    def test_has_arg_partial_and_unresolved(self):
-        # Partial[int] resolves U, unsubscripted Partial leaves it unresolved
-        assert has_arg(Partial[int], "U") is True
-        assert has_arg(Partial, "U") is False
+#-------------------------------------------------------------------------------
+# MARK: Generic parameter introspection (arg info) and has_arg
+#-------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestArgInfoAndHasArg:
+    class Pair[T, U: int]:
+        pass
 
-    def test_has_arg_other_generic(self):
-        assert has_arg(Other[int], "T") is True
-        assert has_arg(Other, "T") is False
+    class Wrapper[T]:
+        pass
 
-    #-------------------------------------------------------------------------------
-    # MARK: Direct concrete argument resolution
-    #-------------------------------------------------------------------------------
-    def test_get_concrete_arg_success(self):
-        assert get_concrete_arg(Base[str, int], "T") is str
-        assert get_concrete_arg(Base[str, int], "U") is int
+    def test_iter_and_get_parameter_infos(self):
+        Pair = TestArgInfoAndHasArg.Pair
+        infos = list(iter_parameter_infos(Pair))
+        assert [i.name for i in infos] == ["T", "U"]
+        assert [i.position for i in infos] == [0, 1]
+        assert all(isinstance(i, ParameterInfo) for i in infos)
 
-    #-------------------------------------------------------------------------------
-    # MARK: Unresolved TypeVar handling
-    #-------------------------------------------------------------------------------
-    def test_get_arg_returns_typevar_for_unresolved(self):
-        # Using a parametrized instantiation keeps U as a TypeVar
-        arg = get_arg(Base[str, TypeVar("U", bound=int)], "U")
-        assert isinstance(arg, TypeVar)
-        assert arg.__name__ == "U"
+        infos_map = get_parameter_infos(Pair)
+        assert set(infos_map.keys()) == {"T", "U"}
+        assert infos_map["T"].position == 0 and infos_map["U"].position == 1
+
+    def test_get_parameter_info_and_or_none(self):
+        Pair = TestArgInfoAndHasArg.Pair
+        t_info = get_parameter_info(Pair, "T")
+        u_info = get_parameter_info(Pair, "U")
+        assert isinstance(t_info, ParameterInfo) and t_info.name == "T" and t_info.position == 0
+        assert isinstance(u_info, ParameterInfo) and u_info.name == "U" and u_info.position == 1
+
+        assert get_parameter_info_or_none(Pair, "Z") is None
+        with pytest.raises(GenericsError) as ei:
+            get_parameter_info(Pair, "Z")
+        assert str(ei.value) == "Could not find generic parameter Z in Pair"
+
+    def test_has_arg_variants(self):
+        Pair = TestArgInfoAndHasArg.Pair
+        Wrapper = TestArgInfoAndHasArg.Wrapper
+        # Declared generics exist even if unsubscripted
+        assert has_parameter(Pair, "T") is True
+        assert has_parameter(Pair, "U") is True
+        # Wrong name
+        assert has_parameter(Pair, "Z") is False
+        # On alias
+        assert has_parameter(Pair[str, int], "T") is True
+        assert has_parameter(Wrapper[int], "T") is True
+
+
+#-------------------------------------------------------------------------------
+# MARK: Argument specialization and iteration
+#-------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestSpecializations:
+    class Pair[T, U: int]:
+        pass
+
+    def test_get_argument_info_and_iteration(self):
+        Pair = TestSpecializations.Pair
+        alias = Pair[str, int]
+        spec_t = get_argument_info(alias, "T")
+        spec_u = get_argument_info(alias, "U")
+        assert isinstance(spec_t, ArgumentInfo) and spec_t.is_concrete and spec_t.value is str
+        assert isinstance(spec_u, ArgumentInfo) and spec_u.is_concrete and spec_u.value is int
+
+        specs = list(iter_argument_infos(alias))
+        assert {s.parameter.name: s.value for s in specs} == {"T": str, "U": int}
+
+        specs_map = get_argument_infos(alias)
+        assert specs_map["T"].value is str and specs_map["U"].value is int
+
+
+#-------------------------------------------------------------------------------
+# MARK: Direct argument access and bounds
+#-------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestDirectArgAccess:
+    class Pair[T, U: int]:
+        pass
+
+    class Wrapper[T]:
+        pass
+
+    def test_get_arg_returns_values(self):
+        Pair = TestDirectArgAccess.Pair
+        Wrapper = TestDirectArgAccess.Wrapper
+        assert get_argument(Pair[str, int], "T") is str
+        assert get_argument(Pair[str, int], "U") is int
+        assert get_argument(Wrapper[int], "T") is int
+
+    def test_get_concrete_arg_for_generic_typeargs_and_errors(self):
+        Pair = TestDirectArgAccess.Pair
+        # Concrete generic type argument returns its origin
+        assert get_concrete_argument(Pair[list[int], int], "T") is list
+        # Non-generic type arguments are rejected
+        with pytest.raises(GenericsError) as ei:
+            get_concrete_argument(Pair[list[int], int], "U")
+        assert str(ei.value) == "Pair.U type argument is not a generic type, got <int>"
+
+    def test_get_arg_bound_violation(self):
+        Pair = TestDirectArgAccess.Pair
+        with pytest.raises(TypeError) as ei:
+            get_argument(Pair[str, str], "U") # pyright: ignore[reportInvalidTypeArguments]
+        assert "Pair.U type argument <str> is not a subclass of its bound <int>" == str(ei.value)
 
     def test_get_concrete_arg_unresolved_typevar(self):
+        Pair = TestDirectArgAccess.Pair
         with pytest.raises(GenericsError) as ei:
-            get_concrete_arg(Base[str, TypeVar("U", bound=int)], "U")
-        assert "Could not resolve Base.U type argument to a concrete type" == str(ei.value)
+            get_concrete_argument(Pair[str, TypeVar("U", bound=int)], "U")
+        assert str(ei.value) == "Could not resolve Pair.U type argument to a concrete type"
 
-    #-------------------------------------------------------------------------------
-    # MARK: Resolved TypeVar handling
-    #-------------------------------------------------------------------------------
-    def test_get_arg_returns_concrete_for_resolved(self):
-        assert get_arg(Base[str, int], "T") is str
-        assert get_arg(Base[str, int], "U") is int
 
-    def test_get_parent_arg_resolved(self):
-        assert get_parent_arg(R, P, "T") is int
-        assert get_concrete_parent_arg(R, P, "T") is int
+#-------------------------------------------------------------------------------
+# MARK: Parent chain traversal & inheritance mapping
+#-------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestParentTraversal:
+    # Intent-based chain types
+    class ParentGeneric[T]:
+        pass
 
-    #-------------------------------------------------------------------------------
-    # MARK: Bound violations
-    #-------------------------------------------------------------------------------
-    def test_get_arg_bound_violation(self):
-        with pytest.raises(TypeError) as ei:
-            get_arg(Base[str, str], "U")  # pyright: ignore[reportInvalidTypeArguments]
-        assert "Base.U type argument <str> is not a subclass of its bound <int>" == str(ei.value)
+    class PassThroughMid[X](ParentGeneric[X]):
+        pass
 
-    def test_get_concrete_arg_bound_violation(self):
-        with pytest.raises(TypeError) as ei:
-            get_concrete_arg(Base[str, str], "U")  # pyright: ignore[reportInvalidTypeArguments]
-        assert "Base.U type argument <str> is not a subclass of its bound <int>" == str(ei.value)
+    class LeafConcrete(PassThroughMid[int]):
+        pass
 
-    #-------------------------------------------------------------------------------
-    # MARK: Non-generic / incorrectly used bases
-    #-------------------------------------------------------------------------------
-    def test_get_arg_missing_base(self):
-        with pytest.raises(GenericsError) as ei:
-            get_arg(Unrelated, "T")
-        assert str(ei.value) == "Unrelated is not a generic class"
+    class LeafUnresolved[Z](PassThroughMid[Z]):
+        pass
 
-    def test_get_concrete_arg_missing_base(self):
-        with pytest.raises(GenericsError) as ei:
-            get_concrete_arg(Unrelated, "T")
-        assert str(ei.value) == "Unrelated is not a generic class"
-
-    def test_get_arg_wrong_generic_class(self):
-        with pytest.raises(GenericsError):
-            get_arg(Other, "T")
-        assert get_arg(Other[int], "T") is int
-
-    def test_get_concrete_arg_wrong_generic_class(self):
-        with pytest.raises(GenericsError):
-            get_concrete_arg(Other, "T")
-        assert get_concrete_arg(Other[int], "T") is int
-
-    #-------------------------------------------------------------------------------
-    # MARK: Parent chain traversal & inheritance mapping
-    #-------------------------------------------------------------------------------
     def test_get_bases_between_simple(self):
-        chain = get_bases_between(R, P)
-        # Expect R -> Q[int] -> P
+        ParentGeneric = TestParentTraversal.ParentGeneric
+        PassThroughMid = TestParentTraversal.PassThroughMid
+        LeafConcrete = TestParentTraversal.LeafConcrete
+
+        chain = get_bases_between(LeafConcrete, ParentGeneric)
+        # Expect LeafConcrete -> PassThroughMid[int] -> ParentGeneric[X]
         assert len(chain) == 3
-        assert chain[0].__name__ == "R"
-        assert chain[-1].__name__ == "P"
+        assert chain[0] is LeafConcrete
+        assert get_origin_or_none(chain[1]) is PassThroughMid
+        assert get_origin_or_none(chain[2]) is ParentGeneric
 
-    def test_get_parent_arg_partial_and_concrete(self):
-        assert get_parent_arg(RPartial[str], P, "T") is str
-        assert get_concrete_parent_arg(RPartial[str], P, "T") is str
+    def test_get_parent_arg_specialization_and_helpers(self):
+        ParentGeneric = TestParentTraversal.ParentGeneric
+        LeafConcrete = TestParentTraversal.LeafConcrete
+        LeafUnresolved = TestParentTraversal.LeafUnresolved
 
-    def test_get_parent_arg_unresolved(self):
-        tv = get_parent_arg(RPartial, P, "T")
-        assert isinstance(tv, TypeVar)
-        assert tv.__name__ == "Z"
-        with pytest.raises(GenericsError):
-            get_concrete_parent_arg(RPartial, P, "T")
+        spec = get_parent_argument_info(LeafConcrete, ParentGeneric, "T")
+        assert isinstance(spec, ArgumentInfo)
+        assert spec.is_concrete and spec.value is int
+        assert get_parent_argument(LeafConcrete, ParentGeneric, "T") is int
+        assert get_concrete_parent_argument(LeafConcrete, ParentGeneric, "T") is int
 
-    def test_get_parent_arg_error_not_subclass(self):
+        # Or-none variant: unresolved through LeafUnresolved
+        spec2 = get_parent_argument_info_or_none(LeafUnresolved, ParentGeneric, "T")
+        assert isinstance(spec2, ArgumentInfo)
+        assert not spec2.is_concrete and isinstance(spec2.value, TypeVar)
+        assert spec2.value.__name__ == "Z"
         with pytest.raises(GenericsError) as ei:
-            get_bases_between(Unrelated, P)
-        assert "Unrelated is not a subclass of P" == str(ei.value)
+            get_concrete_parent_argument(LeafUnresolved, ParentGeneric, "T")
+        assert str(ei.value) == "Could not resolve LeafUnresolved.T type argument to a concrete type, got <Z>"
 
-    #-------------------------------------------------------------------------------
-    # MARK: Generic name remapping & shadowing
-    #-------------------------------------------------------------------------------
+
+    def test_get_bases_between_not_subclass(self):
+        class Unrelated:
+            pass
+        ParentGeneric = TestParentTraversal.ParentGeneric
+        with pytest.raises(GenericsError) as ei:
+            get_bases_between(Unrelated, ParentGeneric)
+        assert str(ei.value) == "Unrelated is not a subclass of ParentGeneric"
+
+
+#-------------------------------------------------------------------------------
+# MARK: Generic name remapping & shadowing
+#-------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestNameRemappingAndShadowing:
+    # Renaming generics between parent and child (positional mapping but different names)
+    class ParentPair[T, U]:
+        pass
+
+    class ChildPair[X, Y](ParentPair[X, Y]):  # child uses X,Y instead of T,U
+        pass
+
+    # Mismatched names where parent name reused differently plus extra shadowing
+    class ShadowParent[T, U]:
+        pass
+
+    class ShadowChild[X, T, Y](ShadowParent[Y, T]):  # introduces X and reuses T creating potential ambiguity
+        pass
+
     def test_parent_arg_different_child_generic_names(self):
-        assert get_parent_arg(B[int, str], A, "T") is int
-        assert get_parent_arg(B[int, str], A, "U") is str
-
+        ParentPair = TestNameRemappingAndShadowing.ParentPair
+        ChildPair = TestNameRemappingAndShadowing.ChildPair
+        assert get_parent_argument(ChildPair[int, str], ParentPair, "T") is int
+        assert get_parent_argument(ChildPair[int, str], ParentPair, "U") is str
 
     def test_parent_arg_mismatched_and_shadowed_names(self):
-        assert get_parent_arg(C2[int, int, str], C1, "T") is str
-        assert get_parent_arg(C2[int, int, str], C1, "U") is int
+        ShadowParent = TestNameRemappingAndShadowing.ShadowParent
+        ShadowChild = TestNameRemappingAndShadowing.ShadowChild
+        assert get_parent_argument(ShadowChild[int, int, str], ShadowParent, "T") is str
+        assert get_parent_argument(ShadowChild[int, int, str], ShadowParent, "U") is int
+
+    # Bound-related renaming/shadowing tests moved to TestBoundsAndPropagation
+
+#-------------------------------------------------------------------------------
+# MARK: Bounds propagation and enforcement
+#-------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestBoundsAndPropagation:
+    # Shared base and subclasses for bound tests
+    class Animal: ...
+    class Dog(Animal): ...
+    class Cat(Animal): ...
+
+    # Shared generic classes for bounds scenarios
+    class BoundOnly[A: Animal]:
+        pass
+    class UnboundAndBound[X, Y: int]:
+        pass
+    class Kennel[P: Animal]:
+        pass
+    class ParentBound[T: Animal]:
+        pass
+    class MidPass[X: Animal](ParentBound[X]):
+        pass
+    class LeafDog(MidPass[Dog]):
+        pass
+    class LeafInt(MidPass[int]):  # pyright: ignore[reportInvalidTypeArguments]
+        pass
+    class ParentPairBound[T: Animal, U]:
+        pass
+    class ChildRenamed[X: Animal, Y](ParentPairBound[X, Y]):
+        pass
+    class Parent[T: Animal, U]:
+        pass
+    class Child[X, T, Y: Animal](Parent[Y, T]):
+        pass
+
+    def test_default_to_bound_for_unsubscripted(self):
+        Animal = TestBoundsAndPropagation.Animal
+        BoundOnly = TestBoundsAndPropagation.BoundOnly
+        UnboundAndBound = TestBoundsAndPropagation.UnboundAndBound
+
+        spec_a = get_argument_info(BoundOnly, "A")
+        assert spec_a.value_or_bound is Animal
+
+        spec_x = get_argument_info(UnboundAndBound, "X")
+        spec_y = get_argument_info(UnboundAndBound, "Y")
+        assert not spec_x.is_concrete and isinstance(spec_x.value, TypeVar) and spec_x.value.__name__ == "X"
+        assert not spec_y.is_concrete and isinstance(spec_y.value, TypeVar)
+        assert spec_y.value_or_bound is int
+
+    def test_subclass_of_bound_is_accepted(self):
+        Dog = TestBoundsAndPropagation.Dog
+        Kennel = TestBoundsAndPropagation.Kennel
+        assert get_argument(Kennel[Dog], "P") is Dog
+
+    def test_bound_enforced_through_traversal(self):
+        Dog = TestBoundsAndPropagation.Dog
+        ParentBound = TestBoundsAndPropagation.ParentBound
+        LeafDog = TestBoundsAndPropagation.LeafDog
+        LeafInt = TestBoundsAndPropagation.LeafInt
+
+        # Concrete subtype of bound resolves correctly
+        assert get_parent_argument(LeafDog, ParentBound, "T") is Dog
+
+        # Violating bound during traversal should raise
+        with pytest.raises(TypeError) as ei:
+            get_parent_argument(LeafInt, ParentBound, "T")
+        assert str(ei.value) == "ParentBound.T type argument <int> is not a subclass of its bound <Animal>"
+
+    def test_renamed_with_bound_enforced(self):
+        Dog = TestBoundsAndPropagation.Dog
+        ParentPairBound = TestBoundsAndPropagation.ParentPairBound
+        ChildRenamed = TestBoundsAndPropagation.ChildRenamed
+
+        # Subclass of bound accepted
+        assert get_parent_argument(ChildRenamed[Dog, int], ParentPairBound, "T") is Dog
+        assert get_parent_argument(ChildRenamed[Dog, int], ParentPairBound, "U") is int
+
+        # Violates bound
+        with pytest.raises(TypeError) as ei:
+            get_parent_argument(ChildRenamed[int, str], ParentPairBound, "T")  # pyright: ignore[reportInvalidTypeArguments]
+        assert str(ei.value) == "ParentPairBound.T type argument <int> is not a subclass of its bound <Animal>"
+
+    def test_shadowed_and_reordered_with_bound_enforced(self):
+        Cat = TestBoundsAndPropagation.Cat
+        Parent = TestBoundsAndPropagation.Parent
+        Child = TestBoundsAndPropagation.Child
+
+        # Valid: T mapped from child's Y which is Cat (subclass of Animal)
+        assert get_parent_argument(Child[int, int, Cat], Parent, "T") is Cat
+        assert get_parent_argument(Child[int, int, Cat], Parent, "U") is int
+
+        # Invalid: T mapped from child's Y which is int (not Animal)
+        with pytest.raises(TypeError) as ei:
+            get_parent_argument(Child[int, int, int], Parent, "T")  # pyright: ignore[reportInvalidTypeArguments]
+        assert str(ei.value) == "Parent.T type argument <int> is not a subclass of its bound <Animal>"

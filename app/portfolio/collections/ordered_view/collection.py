@@ -26,7 +26,7 @@ from .sort_key_protocol import SortKeyProtocol
 class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
     @classmethod
     def get_concrete_content_type(cls, source : type[Self] | None = None) -> type[T]:
-        return generics.get_concrete_parent_arg(source or cls, OrderedViewCollection, "T")
+        return generics.get_concrete_parent_argument_origin(source or cls, OrderedViewCollection, "T")
 
     def __init__(self, data : Iterable[T] | None = None, /):
         self._initialize_container(data)

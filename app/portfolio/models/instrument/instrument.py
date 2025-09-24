@@ -15,12 +15,6 @@ from .instrument_journal import InstrumentJournal
 
 
 class Instrument(InstanceStoreEntityMixin, Entity[InstrumentJournal]):
-    @classmethod
-    @override
-    def get_journal_class(cls) -> type[InstrumentJournal]:
-        return InstrumentJournal
-
-
     # MARK: Fields
     isin     : str | None = Field(default=None, min_length=1, description="International Securities Identification Number (ISIN) of the instrument.")
     ticker   : str | None = Field(default=None, min_length=1, description="Ticker symbol of the instrument, used for trading and identification.")

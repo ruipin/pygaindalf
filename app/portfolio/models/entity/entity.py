@@ -6,14 +6,15 @@ import inspect
 
 from frozendict import frozendict
 from pydantic import ConfigDict, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr, BaseModel
-from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable, cast as typing_cast
+from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable, cast as typing_cast, TypeVar
 from abc import abstractmethod, ABCMeta
 from collections.abc import Set, MutableSet
 from functools import cached_property
 
+from ....util.helpers.generics import GenericIntrospectionMixin
 from ....util.mixins import NamedProtocol, NamedMixinMinimal
 from ....util.models import LoggableHierarchicalModel
-from ....util.helpers import script_info
+from ....util.helpers import script_info, generics
 from ....util.callguard import CallguardClassOptions
 
 if TYPE_CHECKING:
@@ -30,7 +31,7 @@ from .superseded import superseded_check
 from .entity_audit_log import EntityAuditLog, EntityAuditType
 
 
-class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinMinimal, metaclass=ABCMeta):
+class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMinimal, metaclass=ABCMeta):
     __callguard_class_options__ = CallguardClassOptions['Entity'](
         decorator=superseded_check, decorate_public_methods=True, decorate_skip_properties=True
     )
@@ -42,6 +43,7 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
     )
 
 
+    # MARK: Metaclass infrastructure
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
@@ -469,8 +471,7 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
 
     @classmethod
     def get_journal_class(cls) -> type[T_Journal]:
-        from ...journal import EntityJournal
-        return typing_cast(type[T_Journal], EntityJournal)
+        return typing_cast(type[T_Journal], generics.get_concrete_parent_argument(cls, Entity, 'T_Journal'))
 
     def get_journal(self, *, create : bool = True, fail : bool = True) -> EntityJournal | None:
         session = self.session if fail else self.session_or_none
@@ -482,7 +483,7 @@ class Entity[T_Journal : 'EntityJournal'](LoggableHierarchicalModel, NamedMixinM
         if result is None:
             raise RuntimeError("Entity does not have an associated journal.")
         journal_cls = self.get_journal_class()
-        if not isinstance(result, journal_cls):
+        if type(result) is not journal_cls:
             raise RuntimeError(f"Expected journal of type {journal_cls}, got {type(result)}.")
         return result
 

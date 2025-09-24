@@ -23,12 +23,6 @@ from .transaction_type import TransactionType
 
 
 class Transaction(IncrementingUidEntity[TransactionJournal]):
-    @classmethod
-    @override
-    def get_journal_class(cls) -> type[TransactionJournal]:
-        return TransactionJournal
-
-
     # MARK: Fields
     type           : TransactionType = Field(description="The type of transaction.")
     date           : datetime.date   = Field(description="The date of the transaction.")

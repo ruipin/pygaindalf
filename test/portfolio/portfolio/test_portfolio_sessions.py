@@ -39,6 +39,8 @@ class TestPortfolioSessions:
             inst2 = Instrument(ticker="MSFT", currency=Currency("USD"))
             ledg2 = Ledger(instrument_uid=inst2.uid)
 
+            from app.portfolio.models.portfolio.portfolio_journal import PortfolioJournal
+            assert type(p1.journal) is PortfolioJournal
             ledgers_set = p1.journal.ledgers
             ledgers_set.add(ledg1)
             ledgers_set.add(ledg2)

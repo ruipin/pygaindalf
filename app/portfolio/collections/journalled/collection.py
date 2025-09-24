@@ -19,19 +19,19 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
     # MARK: Generics
     @classmethod
     def get_concrete_value_type(cls, source : type[Self] | None = None) -> type[T_Value]:
-        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Value")
+        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Value")
 
     @classmethod
     def get_concrete_mutable_type(cls, source : type[Self] | None = None) -> type[T_Mutable]:
-        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Mutable")
+        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Mutable")
 
     @classmethod
     def get_concrete_immutable_type(cls, source : type[Self] | None = None) -> type[T_Immutable]:
-        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Immutable")
+        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Immutable")
 
     @classmethod
     def get_concrete_journal_type(cls, source : type[Self] | None = None) -> type[T_Journal]:
-        return generics.get_concrete_parent_arg(source or cls, JournalledCollection, "T_Journal")
+        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Journal")
 
 
     # MARK: Hooks

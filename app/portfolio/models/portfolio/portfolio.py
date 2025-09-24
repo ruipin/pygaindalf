@@ -16,13 +16,6 @@ from .portfolio_journal import PortfolioJournal
 
 
 class Portfolio(PortfolioBase, IncrementingUidEntity[PortfolioJournal]):
-    @classmethod
-    @override
-    def get_journal_class(cls) -> type[PortfolioJournal]:
-        return PortfolioJournal
-
-
-
     # MARK: Ledgers
     if TYPE_CHECKING:
         ledger_uids : Set[Uid] = Field(default_factory=frozenset)

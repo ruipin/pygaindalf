@@ -154,7 +154,7 @@ class Session(LoggableHierarchicalModel):
 
         journal_cls = entity.get_journal_class()
         if not issubclass(journal_cls, EntityJournal):
-            raise TypeError(f"Entity journal class {journal_cls} is not a subclass of EntityJournal.")
+            raise TypeError(f"{entity.__class__.__name__} journal class {journal_cls} is not a subclass of EntityJournal.")
         journal = journal_cls(entity=entity)
         self._entity_journals[entity.uid] = journal
         return journal

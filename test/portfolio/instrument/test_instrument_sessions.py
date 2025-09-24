@@ -37,6 +37,8 @@ class TestInstrumentJournalWithSessions:
             assert isinstance(s, Session)
 
             # Acquire journal and stage updates via API methods
+            from app.util.helpers import generics
+            from app.portfolio.models.entity import Entity
             j: InstrumentJournal = instrument.journal
             assert isinstance(j, InstrumentJournal)
 

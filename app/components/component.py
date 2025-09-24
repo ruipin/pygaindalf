@@ -104,7 +104,7 @@ class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMi
         """
         Introspects the class to find the configuration class.
         """
-        arg = generics.get_parent_arg(cls, ComponentSubclassMeta, "C")
+        arg = generics.get_parent_argument(cls, ComponentSubclassMeta, "C")
         return typing_cast(type[C], arg)
 
 

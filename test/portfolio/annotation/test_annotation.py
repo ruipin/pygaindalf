@@ -51,8 +51,6 @@ class TestAnnotationBasic:
         # Instance name and uid tie to parent
         assert u1.uid.namespace == SampleUniqueAnnotation.uid_namespace()
         assert str(host.uid) in u1.instance_name
-        print(u1.instance_name)
-        print(u1.uid)
 
         # Second creation for same parent should produce same UID and conflict in store
         with pytest.raises(ValueError):

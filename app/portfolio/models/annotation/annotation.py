@@ -11,13 +11,6 @@ from .annotation_journal import AnnotationJournal
 
 
 class Annotation[T_Journal : AnnotationJournal](Entity[T_Journal]):
-    @classmethod
-    @override
-    def get_journal_class(cls) -> type[T_Journal]:
-        from .annotation_journal import AnnotationJournal
-        return typing_cast(type[T_Journal], AnnotationJournal)
-
-
     # MARK: Construction / Initialization
     @classmethod
     def create[T : Annotation](cls : type[T], entity : Entity, /, **kwargs) -> T:

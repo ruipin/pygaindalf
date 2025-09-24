@@ -7,8 +7,6 @@ import weakref
 
 from pydantic_core import core_schema as core_schema
 
-from .generics import get_arg, get_concrete_arg
-
 
 class PydanticWeakrefAnnotation:
     @classmethod

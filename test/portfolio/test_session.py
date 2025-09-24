@@ -29,11 +29,6 @@ class SampleEntity(IncrementingUidEntity):
     data: list[int] = Field(default_factory=lambda: [10, 20].copy())
     note: str = Field(default="initial")
 
-    @classmethod
-    @override
-    def get_journal_class(cls):
-        return EntityJournal
-
 
 # --- Fixtures --------------------------------------------------------------------
 @pytest.fixture(scope='function')

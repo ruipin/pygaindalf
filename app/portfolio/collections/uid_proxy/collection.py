@@ -28,11 +28,11 @@ class UidProxyFrozenCollection[T_Proxy : Entity, T_Collection : object](metaclas
 
     @classmethod
     def get_concrete_proxy_type(cls, source : type[Self] | None = None) -> type[T_Proxy]:
-        return generics.get_concrete_parent_arg(source or cls, UidProxyFrozenCollection, "T_Proxy")
+        return generics.get_concrete_parent_argument_origin(source or cls, UidProxyFrozenCollection, "T_Proxy")
 
     @classmethod
     def get_concrete_collection_type(cls, source : type[Self] | None = None) -> type[T_Collection]:
-        return generics.get_concrete_parent_arg(source or cls, UidProxyFrozenCollection, "T_Collection")
+        return generics.get_concrete_parent_argument_origin(source or cls, UidProxyFrozenCollection, "T_Collection")
 
     @override
     def __str__(self) -> str:
@@ -53,4 +53,4 @@ class UidProxyCollection[T_Proxy : Entity, T_Collection : object, T_Mut_Collecti
 
     @classmethod
     def get_concrete_mutable_collection_type(cls, source : type[Self] | None = None) -> type[T_Mut_Collection]:
-        return generics.get_concrete_parent_arg(source or cls, UidProxyCollection, "T_Mut_Collection")
+        return generics.get_concrete_parent_argument_origin(source or cls, UidProxyCollection, "T_Mut_Collection")

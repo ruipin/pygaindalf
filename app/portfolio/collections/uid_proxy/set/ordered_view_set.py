@@ -18,7 +18,7 @@ from ..sequence import UidProxySequence
 class UidProxyOrderedViewFrozenSet[T : Entity, T_Proxy_Seq : UidProxySequence](GenericUidProxyFrozenSet[T, OrderedViewFrozenSet[Uid]]):
     @classmethod
     def get_concrete_proxy_sequence_type(cls, source : type[Self] | None = None) -> type[T_Proxy_Seq]:
-        return generics.get_concrete_parent_arg(source or cls, UidProxyOrderedViewFrozenSet, 'T_Proxy_Seq')
+        return generics.get_concrete_parent_argument_origin(source or cls, UidProxyOrderedViewFrozenSet, 'T_Proxy_Seq')
 
     # MARK: OrderedViewSet
     @cached_property

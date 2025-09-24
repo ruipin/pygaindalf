@@ -4,22 +4,21 @@
 import functools
 
 from pydantic import model_validator, BaseModel, ModelWrapValidatorHandler, PrivateAttr
-from typing import Any, Self, ClassVar, override
+from typing import Any, Self, ClassVar, override, TYPE_CHECKING
 from abc import ABCMeta, abstractmethod
 
 from ....util.mixins import NamedProtocol
-from ....util.helpers import script_info
+from ....util.helpers import script_info, mro
 
 from . import Entity
 
 
-class InstanceStoreEntityMixin(metaclass=ABCMeta):
+class InstanceStoreEntityMixin(Entity if TYPE_CHECKING else object, metaclass=ABCMeta):
     __initialized : bool = PrivateAttr(default=False)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
-        if (not issubclass(cls, Entity)) and (type(cls) is not ABCMeta):
-            raise TypeError(f"{cls.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
+        mro.ensure_mro_order(cls, InstanceStoreEntityMixin, before=Entity)
 
     # MARK: Abstract Methods
     @classmethod
@@ -45,9 +44,6 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
 
     # MARK: Handle (re-)initialization
     def __init__(self, **kwargs):
-        if not isinstance(self, Entity):
-            raise TypeError(f"{self.__class__.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
-
         if not self.__initialized:
             super().__init__(**kwargs)
             self.__class__._instance_store_add(self)
@@ -56,9 +52,6 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
 
 
     def _validate_reinitialization(self, data : dict[str, Any]) -> None:
-        if not isinstance(self, Entity):
-            raise TypeError(f"{self.__class__.__name__} must inherit from Entity to use InstanceStoreEntityMixin.")
-
         keys = set()
 
         for key, info in self.__class__.model_fields.items():
@@ -112,8 +105,6 @@ class InstanceStoreEntityMixin(metaclass=ABCMeta):
 class NamedInstanceStoreEntityMixin(InstanceStoreEntityMixin, metaclass=ABCMeta):
     @classmethod
     def _get_name_store(cls):
-        if not issubclass(cls, Entity):
-            raise TypeError(f"{cls.__name__} must inherit from Entity to use NamedInstanceStoreEntityMixin.")
         return cls._get_entity_store().get_string_uid_mapping(cls.__name__)
 
     @classmethod
@@ -136,9 +127,6 @@ class NamedInstanceStoreEntityMixin(InstanceStoreEntityMixin, metaclass=ABCMeta)
 
     @classmethod
     def instance(cls, instance_name: str) -> Entity | None:
-        if not issubclass(cls, Entity):
-            raise TypeError(f"{cls.__name__} must inherit from Entity to use NamedInstanceStoreEntityMixin.")
-
         uid = cls._get_name_store().get(instance_name, None)
         if uid is None:
             return uid
@@ -146,5 +134,6 @@ class NamedInstanceStoreEntityMixin(InstanceStoreEntityMixin, metaclass=ABCMeta)
 
     @classmethod
     @abstractmethod
+    @override
     def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
         raise NotImplementedError(f"{cls.__name__} must implement the 'calculate_instance_name_from_dict' method to generate a name for the instance.")

@@ -35,5 +35,5 @@ class IncrementingUidEntityMixin(Entity if TYPE_CHECKING else object, metaclass=
         return str(self.uid)
 
 
-class IncrementingUidEntity[T_Journal : EntityJournal](IncrementingUidEntityMixin, Entity[T_Journal], metaclass=ABCMeta):
+class IncrementingUidEntity[T_Journal2 : EntityJournal](IncrementingUidEntityMixin, Entity[T_Journal2], metaclass=ABCMeta):
     pass

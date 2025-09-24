@@ -27,13 +27,6 @@ from .ledger_journal import LedgerJournal
 
 
 class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
-    @classmethod
-    @override
-    def get_journal_class(cls) -> type[LedgerJournal]:
-        return LedgerJournal
-
-
-
     # MARK: Instrument
     instrument_uid: Uid = Field(description="The financial instrument associated with this ledger, such as a stock, bond, or currency.")
 
