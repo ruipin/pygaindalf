@@ -37,6 +37,7 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
         self._original  : T_Original = original
         self._container : T_Mutable | None = None
         self._journal   : list[T_Journal] = []
+        self._frozen    : bool = False
 
 
     # MARK: JournalledCollection ABC
@@ -45,6 +46,9 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
         return typing_cast(T_Immutable, container if container is not None else self._original)
 
     def _get_mut_container(self) -> T_Mutable:
+        if self._frozen:
+            raise RuntimeError(f"Cannot modify frozen {self.instance_hierarchy} of type {self.__class__.__name__}.")
+
         self._copy_on_write()
         return typing_cast(T_Mutable, self._container)
 
@@ -111,3 +115,6 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
         concrete = cls.get_concrete_immutable_type()
 
         return concrete(value) # pyright: ignore[reportCallIssue]
+
+    def freeze(self) -> None:
+        self._frozen = True

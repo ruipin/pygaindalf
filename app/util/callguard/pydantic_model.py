@@ -23,7 +23,7 @@ def callguarded_model_mixin(**options : Unpack[CallguardClassOptions]):
     decorator = options.get('decorator', None) if decorate else None
     decorator_factory = options.get('decorator_factory', None) if decorate else None
 
-    allow_same_module = options.get('allow_same_module', False)
+    allow_same_module = options.get('allow_same_module', True)
 
     if not guard and not decorate:
         raise ValueError("At least one of 'guard_private_methods' or 'decorate_private_methods' must be True")

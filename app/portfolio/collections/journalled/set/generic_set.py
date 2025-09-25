@@ -25,6 +25,14 @@ class JournalledSetEdit[T]:
     type: JournalledSetEditType
     value : T
 
+    @override
+    def __str__(self) -> str:
+        return f"{self.type.value}({self.value})"
+
+    @override
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 
 class GenericJournalledSet[T : Any, T_Original : Set, T_Mutable : MutableSet, T_Immutable : Set](JournalledCollection[T, T_Original, T_Mutable, T_Immutable, JournalledSetEdit], MutableSet[T]):

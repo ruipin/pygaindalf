@@ -7,7 +7,7 @@ from abc import ABCMeta
 
 from ....util.helpers import mro
 from ...journal.entity_journal import EntityJournal
-from ..uid import Uid
+from ..uid import Uid, UID_SEPARATOR
 from .entity import Entity
 
 
@@ -32,8 +32,11 @@ class IncrementingUidEntityMixin(Entity if TYPE_CHECKING else object, metaclass=
     @property
     @override
     def instance_name(self) -> str:
-        return str(self.uid)
+        try:
+            return str(self.uid)
+        except:
+            return f"{self.__class__.__name__}{UID_SEPARATOR}<invalid-uid>"
 
 
-class IncrementingUidEntity[T_Journal2 : EntityJournal](IncrementingUidEntityMixin, Entity[T_Journal2], metaclass=ABCMeta):
+class IncrementingUidEntity[T_Journal : EntityJournal](IncrementingUidEntityMixin, Entity[T_Journal], metaclass=ABCMeta):
     pass

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import contextlib
 import weakref
+import logging
 
 from typing import Iterator, override, ClassVar, TYPE_CHECKING, Iterable
 from collections.abc import Mapping, MutableMapping, Set, Sequence
@@ -14,6 +14,7 @@ from ....util.callguard import callguard_class
 
 from ..entity import Entity
 from ..entity.entity_audit_log import EntityAuditLog
+from ..entity.entity_dependents import EntityDependents
 from ..uid import IncrementingUidFactory, Uid
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
 ENTITY_STORE_WEAKREF = False
 ENTITY_AUDIT_LOG_STORE_WEAKREF = False
-ENTITY_LINKS_STORE_WEAKREF = True
+ENTITY_DEPENDENTS_STORE_WEAKREF = True
 
 @callguard_class()
 class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
@@ -66,9 +67,9 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
     def __init__(self, *args : Entity | Mapping[Uid, Entity]):
         super().__init__()
 
-        self._entity_store       = (dict if not ENTITY_STORE_WEAKREF           else weakref.WeakValueDictionary)()
-        self._audit_log_store    = (dict if not ENTITY_AUDIT_LOG_STORE_WEAKREF else weakref.WeakValueDictionary)()
-        self._entity_links_store = (dict if not ENTITY_LINKS_STORE_WEAKREF     else weakref.WeakValueDictionary)()
+        self._entity_store            = (dict if not ENTITY_STORE_WEAKREF            else weakref.WeakValueDictionary)()
+        self._audit_log_store         = (dict if not ENTITY_AUDIT_LOG_STORE_WEAKREF  else weakref.WeakValueDictionary)()
+        self._entity_dependents_store = (dict if not ENTITY_DEPENDENTS_STORE_WEAKREF else weakref.WeakValueDictionary)()
 
         self._uid_factory = IncrementingUidFactory()
         self._string_uid_mappings = {}
@@ -79,7 +80,7 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
     def reset(self):
         self._entity_store.clear()
         self._audit_log_store.clear()
-        self._entity_links_store.clear()
+        self._entity_dependents_store.clear()
         self._uid_factory.reset()
         for mapping in self._string_uid_mappings.values():
             mapping.reset()
@@ -103,8 +104,9 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
 
     # MARK: Entity Store
-    _entity_store : MutableMapping[Uid, Entity]
-    _audit_log_store : MutableMapping[Uid, EntityAuditLog]
+    _entity_store            : MutableMapping[Uid, Entity]
+    _audit_log_store         : MutableMapping[Uid, EntityAuditLog]
+    _entity_dependents_store : MutableMapping[Uid, EntityDependents]
 
     @override
     def update(self, value : Entity | Mapping[Uid, Entity], /) -> None: # pyright: ignore[reportIncompatibleMethodOverride]
@@ -124,6 +126,10 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
     def get_audit_log(self, key : Uid | Entity) -> EntityAuditLog | None:
         uid = Entity.narrow_to_uid(key)
         return self._audit_log_store.get(uid, None)
+
+    def get_entity_dependents(self, key : Uid | Entity) -> EntityDependents | None:
+        uid = Entity.narrow_to_uid(key)
+        return self._entity_dependents_store.get(uid, None)
 
 
     # MARK: MutableMapping ABC
@@ -145,8 +151,9 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
         if entity.superseded:
             raise ValueError(f"Cannot add entity with UID {uid} because it has been superseded.")
 
-        self._entity_store[uid] = entity
-        self._audit_log_store[uid] = entity.entity_log
+        self._entity_store           [uid] = entity
+        self._audit_log_store        [uid] = entity.entity_log
+        self._entity_dependents_store[uid] = entity.entity_dependents
 
     @override
     def __delitem__(self, value: Uid | Entity) -> None:
@@ -192,7 +199,7 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
 
     # MARK: Garbage Collection
-    def get_reachable_uids(self, roots : Uid | Iterable[Uid]) -> Set[Uid]:
+    def get_reachable_uids(self, roots : Uid | Iterable[Uid], *, use_journal : bool = False) -> Set[Uid]:
         reachable = set()
         stack = deque()
 
@@ -212,29 +219,33 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
             if entity is None:
                 continue
 
-            for child in entity.children_uids:
+            for child in (entity.children_uids if not use_journal else entity.journal_children_uids):
                 assert child in self
                 if child not in reachable and child not in stack:
                     stack.append(child)
 
         return reachable
 
-    def mark_and_sweep(self, roots : Uid | Iterable[Uid]) -> int:
-        reachable = self.get_reachable_uids(roots)
+    def mark_and_sweep(self, roots : Uid | Iterable[Uid], *, use_journal : bool = False) -> int:
+        self.log.debug(t"Mark and sweep running...")
+
+        reachable = self.get_reachable_uids(roots, use_journal=use_journal)
 
         unreachable = self._entity_store.keys() - reachable
 
-        removed = 0
+        removed = set()
         for uid in unreachable:
             entity = self._entity_store.get(uid, None)
             if entity is None:
                 raise RuntimeError(f"Entity with UID {uid} not found in store during mark and sweep.")
+            if entity.marked_for_deletion:
+                continue
 
             entity.delete()
-            #del self[uid]
 
-            removed += 1
+            removed.add(uid)
 
-        self.log.debug("Mark and sweep completed, removed %d entities.", removed)
+        n_removed = len(removed)
+        self.log.debug(t"Mark and sweep completed, found {n_removed} unreachable entities: {removed}")
 
-        return removed
+        return n_removed

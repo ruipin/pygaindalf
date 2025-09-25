@@ -122,7 +122,6 @@ class TestInstrument:
         if EntityAuditLog.TRACK_ENTITY_DIFF:
             assert entry_v1.diff == {
                 'ticker'  : 'AAPL',
-                'isin'    : None,
                 'currency': Currency('USD'),
             }
 

@@ -13,11 +13,13 @@ from .annotation_journal import AnnotationJournal
 class Annotation[T_Journal : AnnotationJournal](Entity[T_Journal]):
     # MARK: Construction / Initialization
     @classmethod
-    def create[T : Annotation](cls : type[T], entity : Entity, /, **kwargs) -> T:
+    def create[T : Annotation](cls : type[T], entity_or_uid : Entity | Uid, /, **kwargs) -> T:
         if 'instance_parent' in kwargs or 'instance_parent_weakref' in kwargs:
             raise ValueError("instance_parent cannot be specified directly; use the entity parameter instead.")
-        if entity is None or not isinstance(entity, Entity):
-            raise ValueError("entity must be a valid Entity instance")
+
+        entity = Entity.narrow_to_entity(entity_or_uid)
+        if entity.superseded:
+            raise ValueError(f"Cannot create annotation for superseded entity {entity}.")
 
         return cls(instance_parent=weakref.ref(entity), **kwargs)
 
@@ -28,3 +30,9 @@ class Annotation[T_Journal : AnnotationJournal](Entity[T_Journal]):
 
         # Add self to parent's annotations
         self.entity_parent.on_annotation_created(self)
+
+    @override
+    def _propagate_deletion(self) -> None:
+        self.entity_parent.on_annotation_deleted(self)
+
+        super()._propagate_deletion()

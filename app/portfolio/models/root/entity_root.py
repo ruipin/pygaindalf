@@ -120,14 +120,17 @@ class EntityRoot(LoggableHierarchicalRootModel):
         pass
 
     def on_session_apply(self, session : Session) -> None:
-        superseding = self.root.superseding
+        pass
+
+    def on_session_invalidate(self, session : Session) -> None:
+        superseding = self.root.superseding_or_none
         if superseding is None:
             raise ValueError("Cannot refresh entities: entity root has no superseding root.")
 
         if superseding is not self.root:
             self.root = superseding
 
-        self.garbage_collect()
+        self.garbage_collect(use_journal=True)
 
     def on_session_commit(self, session : Session) -> None:
         pass
@@ -139,8 +142,9 @@ class EntityRoot(LoggableHierarchicalRootModel):
     # MARK: Entity Store
     entity_store : InstanceOf[EntityStore] = Field(default_factory=EntityStore, description="The entity store associated with this manager's portfolio.")
 
-    def garbage_collect(self, who : str = 'system', why : str = 'garbage collect') -> None:
+    def garbage_collect(self, *, use_journal : bool = False, who : str = 'system', why : str = 'garbage collect') -> None:
         if self.root_uid is None:
             self.entity_store.reset()
         else:
-            self.entity_store.mark_and_sweep(self.root_uid)
+            with self.session_manager(reuse=use_journal, actor=who, reason=why):
+                self.entity_store.mark_and_sweep(self.root_uid, use_journal=use_journal)

@@ -24,22 +24,30 @@ class TestAnnotationSessions:
         with session_manager(actor="tester", reason="add-annotations") as s:
             a1 = SampleIncrementingAnnotation.create(host, payload=1)
             a2 = SampleIncrementingAnnotation.create(host, payload=2)
-            assert s.dirty is True  # session tracks created entities
-            # Parent is not marked dirty since annotations are external
-            assert host.dirty is False
+            assert a1 is not a2
+            assert s.dirty is True
+            assert host.dirty is True
 
-        # After commit, host superseding is itself (no changes); annotations exist
-        assert list(host.get_annotations(SampleIncrementingAnnotation))
+        # After commit, annotations exist
+        host = host.superseding
+        assert len(host.annotation_uids) == 2
+        assert a1.uid in host.annotation_uids and a2.uid in host.annotation_uids
+        assert a1.uid in host.children_uids and a2.uid in host.children_uids
+
         # Remove one annotation in a new session
         with session_manager(actor="tester", reason="remove-annotation") as s:
-            # Delete does not dirty the parent host
-            a = next(iter(host.get_annotations(SampleIncrementingAnnotation)), None)
-            assert a is not None
-            a.delete()
-            assert host.dirty is False
+            assert a1.superseded is False
+            a1.delete()
+
+            assert a1.marked_for_deletion is True
+            assert a2.marked_for_deletion is False
+            assert host.dirty is True
             assert s.dirty is True
+        assert a1.deleted is True
+        assert a2.deleted is False
 
         # Exactly one annotation remains
+        host = host.superseding
         anns = list(host.get_annotations(SampleIncrementingAnnotation))
         assert len(anns) == 1
 
@@ -50,8 +58,9 @@ class TestAnnotationSessions:
         # Create unique annotation; parent remains clean
         with session_manager(actor="tester", reason="unique-add") as s:
             u = SampleUniqueAnnotation.create(host, payload=5)
-            assert host.dirty is False
+            assert host.dirty is True
             assert s.dirty is True
+        host = host.superseding
 
         # Creating another unique annotation for same parent should fail
         with session_manager(actor="tester", reason="unique-dup"):
@@ -62,5 +71,6 @@ class TestAnnotationSessions:
         with session_manager(actor="tester", reason="unique-recreate") as s:
             u.delete()
             s.commit()
+            host = host.superseding
             u2 = SampleUniqueAnnotation.create(host, payload=7)
             assert u2.payload == 7

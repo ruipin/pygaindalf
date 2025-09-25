@@ -81,7 +81,7 @@ class TestSessionEntityJournal:
             meta_original = entity.journal.get_original_field("meta")
             assert isinstance(meta_original, dict)
             entity.journal.meta = meta_original  # identity -> no update created
-            assert not entity.journal.is_field_updated("meta")
+            assert not entity.journal.is_field_edited("meta")
 
             # Modify field with a different object
             new_meta = {"a": 10, "b": 2}
@@ -91,7 +91,7 @@ class TestSessionEntityJournal:
 
             # Revert to original identity -> clears update
             entity.journal.meta = meta_original
-            assert not entity.journal.is_field_updated("meta")
+            assert not entity.journal.is_field_edited("meta")
             assert entity.dirty is False
 
             s.abort()
@@ -181,7 +181,7 @@ class TestSessionEntityJournal:
     def test_using_invalid_journal_fails(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test") as s:
             j = entity.journal
-            j.mark_invalid()
+            j.mark_superseded()
             with pytest.raises(SupersededError):
                 j.get("value")
 

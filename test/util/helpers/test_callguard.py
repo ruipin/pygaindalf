@@ -14,8 +14,8 @@ from app.util.callguard import (
     no_callguard,
     CallguardWrapped,
     CallguardHandlerInfo,
-    CallguardedModelMixin,
-    CallguardError
+    CallguardError,
+    callguarded_model_mixin,
 )
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ class MethodSample:
     def __init__(self) -> None:
         self.invocations: list[str] = []
 
-    @callguard_callable()
+    @callguard_callable(allow_same_module=False)
     def _secret(self) -> str:
         self.invocations.append("_secret")
         return "ok"
@@ -57,7 +57,7 @@ class PropertySample:
     def __init__(self) -> None:
         self._value = 123
 
-    @callguard_property()
+    @callguard_property(allow_same_module=False)
     @property
     def _value_prop(self) -> int:
         return self._value
@@ -83,6 +83,8 @@ class TestCallguardProperties:
 # MARK: Mixin sample
 # ---------------------------------------------------------------------------
 class MixinSample(CallguardMixin):
+    __callguard_class_options__ = CallguardClassOptions(allow_same_module=False)
+
     def __init__(self) -> None:
         self.calls: list[str] = []
 
@@ -108,7 +110,7 @@ class TestCallguardMixin:
 # ---------------------------------------------------------------------------
 # MARK: Decorator sample
 # ---------------------------------------------------------------------------
-@callguard_class()
+@callguard_class(allow_same_module=False)
 class DecoratedSample:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -215,7 +217,7 @@ class TestCallguardInitSubclass:
     def test_callguard_preserves_init_subclass(self):
         call_log: list[type] = []
 
-        @callguard_class()
+        @callguard_class(allow_same_module=False)
         class BaseWithInitSubclass:
             @classmethod
             def __init_subclass__(cls):
@@ -247,7 +249,7 @@ class TestCallguardInitSubclass:
 @pytest.mark.callguard
 class TestCallguardHandler:
     def test_custom_handler_enforces_and_logs(self):
-        @callguard_class()
+        @callguard_class(allow_same_module=False)
         class HandlerSample:
             logs: list[tuple[str, bool]] = []  # (method_name, is_internal)
 
@@ -276,7 +278,7 @@ class TestCallguardHandler:
         assert HandlerSample.logs[-1] == ("_private", True)
 
     def test_permissive_handler_allows_external_calls(self):
-        @callguard_class()
+        @callguard_class(allow_same_module=False)
         class PermissiveSample:
             calls: list[str] = []
 
@@ -294,7 +296,7 @@ class TestCallguardHandler:
         assert PermissiveSample.calls == ["_private"]
 
     def test_handler_predicate_distinguishes_internal_vs_external(self):
-        @callguard_class()
+        @callguard_class(allow_same_module=False)
         class PredicateSample:
             predicate_results: list[bool] = []
 
@@ -325,7 +327,7 @@ class TestCallguardHandler:
         assert PredicateSample.predicate_results[-1] is True
 
     def test_property_handler_method_name(self):
-        @callguard_class()
+        @callguard_class(allow_same_module=False)
         class HandlerPropertySample:
             handler_logs: list[tuple[str, bool]] = []
 
@@ -404,7 +406,7 @@ class TestCallguardHandler:
 @pytest.mark.callguard
 class TestCallguardFilter:
     def test_callguard_filter_skips_methods(self):
-        @callguard_class()
+        @callguard_class(allow_same_module=False)
         class FilterSample:
             @classmethod
             def __callguard_filter__(cls, attribute : str, **kwargs):
@@ -458,7 +460,7 @@ def custom_decorator[**P,R](func: Callable[P,R]) -> Callable[P,R]:
 class TestCallguardCustomDecorator:
     def test_custom_decorator_applied_private_method(self):
         # Disable public method decoration so only the private method is decorated once
-        @callguard_class(decorator=custom_decorator, decorate_private_methods=True, decorate_public_methods=False)
+        @callguard_class(allow_same_module=False, decorator=custom_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:
                 self.invoked: list[str] = []
@@ -480,7 +482,7 @@ class TestCallguardCustomDecorator:
 
     def test_custom_decorator_applied_private_property(self):
         # Disable public method decoration so only the private property getter is decorated
-        @callguard_class(decorator=custom_decorator, decorate_private_methods=True, decorate_public_methods=False)
+        @callguard_class(allow_same_module=False, decorator=custom_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class SampleProp:
             def __init__(self) -> None:
                 self._value = 10
@@ -499,7 +501,7 @@ class TestCallguardCustomDecorator:
         assert sp.read() == 11
 
     def test_custom_decorator_applied_public_method(self):
-        @callguard_class(decorate_public_methods=True, decorator=custom_decorator)
+        @callguard_class(allow_same_module=False, decorate_public_methods=True, decorator=custom_decorator)
         class PublicSample:
             def public(self) -> str:
                 return "ok"
@@ -514,7 +516,7 @@ class TestCallguardCustomDecorator:
         assert ps.caller() == "wrapped:wrapped:ok"
 
     def test_custom_decorator_public_and_private_methods(self):
-        @callguard_class(decorator=custom_decorator, decorate_public_methods=True, decorate_private_methods=True)
+        @callguard_class(allow_same_module=False, decorator=custom_decorator, decorate_public_methods=True, decorate_private_methods=True)
         class MixedSample:
             def __init__(self) -> None:
                 self.calls: list[str] = []
@@ -541,7 +543,7 @@ class TestCallguardCustomDecorator:
         assert ms.calls == ["_secret", "_secret"]  # called once via public, once via access_private
 
     def test_custom_decorator_applied_public_int_method(self):
-        @callguard_class(decorator=custom_decorator, decorate_public_methods=True)
+        @callguard_class(allow_same_module=False, decorator=custom_decorator, decorate_public_methods=True)
         class PublicInt:
             def value(self) -> int:
                 return 10
@@ -569,7 +571,7 @@ class AllowSameModuleSample:
         return self._secret()
 
 
-@callguard_class()
+@callguard_class(allow_same_module=False)
 class NoAllowSameModuleSample:
     def _secret(self) -> str:
         return "ok"
@@ -613,7 +615,7 @@ def _decorator_factory(**options: Any):
     return _decorator
 
 
-@callguard_class(decorator_factory=_decorator_factory, decorate_private_methods=True)
+@callguard_class(allow_same_module=False, decorator_factory=_decorator_factory, decorate_private_methods=True)
 class FactorySample:
     def _secret(self) -> str:
         return "ok"
@@ -650,7 +652,7 @@ def _attr_factory(**options: Any):
     return _decorator
 
 
-@callguard_class(decorate_private_methods=True)
+@callguard_class(allow_same_module=False, decorate_private_methods=True)
 class AttrFactorySample:
     __callguard_decorator_factory__ = staticmethod(_attr_factory)
 
@@ -675,7 +677,7 @@ class TestCallguardClassDecoratorFactoryAttribute:
 # ---------------------------------------------------------------------------
 # MARK: guard_ignore_patterns
 # ---------------------------------------------------------------------------
-@callguard_class(guard_private_methods=True, guard_ignore_patterns=[r"_skip_guard$"])
+@callguard_class(allow_same_module=False, guard_private_methods=True, guard_ignore_patterns=[r"_skip_guard$"])
 class GuardIgnoreSample:
     def _will_guard(self) -> str:
         return "guarded"
@@ -701,7 +703,7 @@ class TestCallguardGuardIgnorePatterns:
 # ---------------------------------------------------------------------------
 # MARK: decorate_ignore_patterns
 # ---------------------------------------------------------------------------
-@callguard_class(
+@callguard_class(allow_same_module=False,
     decorator=custom_decorator,
     decorate_private_methods=True,
     decorate_ignore_patterns=[r"_skip_decorate$"]
@@ -736,7 +738,7 @@ class TestCallguardDecorateIgnorePatterns:
 @pytest.mark.callguard
 class TestCallguardGuardSkipOptions:
     def test_guard_skip_classmethods(self):
-        @callguard_class(guard_skip_classmethods=True)
+        @callguard_class(allow_same_module=False, guard_skip_classmethods=True)
         class Sample:
             def _inst(self) -> str:
                 return "i"
@@ -763,7 +765,7 @@ class TestCallguardGuardSkipOptions:
         assert Sample.call_cm() == "c"
 
     def test_guard_skip_instancemethods(self):
-        @callguard_class(guard_skip_instancemethods=True)
+        @callguard_class(allow_same_module=False, guard_skip_instancemethods=True)
         class Sample2:
             def _inst(self) -> str:
                 return "i"
@@ -786,7 +788,7 @@ class TestCallguardGuardSkipOptions:
         assert Sample2.call_cm() == "c"
 
     def test_guard_skip_properties(self):
-        @callguard_class(guard_skip_properties=True)
+        @callguard_class(allow_same_module=False, guard_skip_properties=True)
         class Sample3:
             def __init__(self) -> None:
                 self._v = 5
@@ -820,7 +822,7 @@ class TestCallguardGuardSkipOptions:
 @pytest.mark.callguard
 class TestCallguardDecorateSkipOptions:
     def test_decorate_skip_classmethods(self):
-        @callguard_class(
+        @callguard_class(allow_same_module=False,
             decorator=custom_decorator,
             decorate_private_methods=True,
             decorate_skip_classmethods=True,
@@ -852,7 +854,7 @@ class TestCallguardDecorateSkipOptions:
         assert Sample.call_cm() == "c"
 
     def test_decorate_skip_instancemethods(self):
-        @callguard_class(
+        @callguard_class(allow_same_module=False,
             decorator=custom_decorator,
             decorate_private_methods=True,
             decorate_skip_instancemethods=True,
@@ -884,7 +886,7 @@ class TestCallguardDecorateSkipOptions:
         assert Sample2.call_cm() == "wrapped:c"
 
     def test_decorate_skip_properties(self):
-        @callguard_class(
+        @callguard_class(allow_same_module=False,
             decorator=custom_decorator,
             decorate_private_methods=True,
             decorate_skip_properties=True,
@@ -921,7 +923,11 @@ class TestCallguardDecorateSkipOptions:
 # ---------------------------------------------------------------------------
 # MARK: Pydantic model attributes
 # ---------------------------------------------------------------------------
+CallguardedModelMixin = callguarded_model_mixin(allow_same_module=False)
+
 class ModelSample(CallguardedModelMixin, pydantic.BaseModel):
+    #__callguard_class_options__ = CallguardClassOptions['ModelSample'](allow_same_module=False)
+
     test       : int = pydantic.Field      (default=0)
     _priv      : int = pydantic.PrivateAttr(default=1)
     __dpriv    : int = pydantic.PrivateAttr(default=2)
@@ -931,6 +937,7 @@ class ModelSample(CallguardedModelMixin, pydantic.BaseModel):
 
 class ModelSample2(ModelSample):
     __callguard_class_options__ = CallguardClassOptions['ModelSample2'](
+        #allow_same_module=False,
         guard_public_methods=True
     )
 

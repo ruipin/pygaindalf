@@ -232,7 +232,6 @@ class TestPortfolioSessions:
             assert list(seq) == [t1, t2, t3]
 
         p3 = p2.superseding
-        assert p3 is not None
         new_ledger = p3[ledg.uid]
         assert list(new_ledger.transactions) == [t1, t2, t3]
 

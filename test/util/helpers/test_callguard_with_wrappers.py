@@ -20,7 +20,7 @@ class TestCallguardWithWrappers:
                 return f"W:{result}"
             return result
 
-        @callguard_class(decorator=custom_wrapper, decorate_private_methods=True, decorate_public_methods=False)
+        @callguard_class(allow_same_module=False, decorator=custom_wrapper, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:
                 self.invoked: list[str] = []
@@ -47,7 +47,7 @@ class TestCallguardWithWrappers:
         def log_before(wrapped, *args, **kwargs):  # type: ignore
             events.append(f"before:{wrapped.__name__}")
 
-        @callguard_class(decorator=log_before, decorate_private_methods=True, decorate_public_methods=False)
+        @callguard_class(allow_same_module=False, decorator=log_before, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def _a(self) -> str:
                 return "A"
@@ -65,7 +65,7 @@ class TestCallguardWithWrappers:
     def test_before_attribute_check_pass_internal_fail_external(self):
     # Use attribute check decorator as the custom decorator for guarding
         attr_check_decorator = before_attribute_check(attribute='state', desired='ready')
-        @callguard_class(decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
+        @callguard_class(allow_same_module=False, decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:
                 self.state = 'ready'
@@ -85,7 +85,7 @@ class TestCallguardWithWrappers:
 
     def test_before_attribute_check_fails_internal(self):
         attr_check_decorator = before_attribute_check(attribute='state', desired='ready')
-        @callguard_class(decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
+        @callguard_class(allow_same_module=False, decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:
                 self.state = 'not_ready'

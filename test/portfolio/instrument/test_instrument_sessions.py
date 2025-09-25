@@ -53,8 +53,8 @@ class TestInstrumentJournalWithSessions:
             # Journal reflects updates
             assert j.get_field("ticker") == "MSFT"
             assert j.get_field("currency") == Currency("EUR")
-            assert j.is_field_updated("ticker") is True
-            assert j.is_field_updated("currency") is True
+            assert j.is_field_edited("ticker") is True
+            assert j.is_field_edited("currency") is True
             assert j.dirty is True
 
             # Entity remains unchanged until commit is implemented
@@ -72,12 +72,12 @@ class TestInstrumentJournalWithSessions:
             # Stage a change
             original_currency = j.get_original_field("currency")
             j.set_field("currency", Currency("GBP"))
-            assert j.is_field_updated("currency") is True
+            assert j.is_field_edited("currency") is True
             assert j.dirty is True
 
             # Revert by identity to the exact original object -> clears update
             j.set_field("currency", original_currency)
-            assert j.is_field_updated("currency") is False
+            assert j.is_field_edited("currency") is False
             assert j.dirty is False
 
             s.abort()

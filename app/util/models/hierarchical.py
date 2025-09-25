@@ -37,7 +37,7 @@ class HierarchicalModel(HierarchicalRootModel):
     @property
     @override
     def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
-        parent = self.instance_parent_weakref
+        parent = getattr(self, 'instance_parent_weakref', None)
         if parent is None:
             return None
         return parent() if isinstance(parent, weakref.ref) else parent

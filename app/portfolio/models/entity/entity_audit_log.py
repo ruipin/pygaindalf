@@ -8,6 +8,7 @@ from enum import Enum
 from collections.abc import Sequence
 from typing import override, ClassVar, Any, TYPE_CHECKING, Self, Iterator
 from frozendict import frozendict
+from collections.abc import Collection
 
 from ....util.mixins import LoggableMixin, NamedMixinMinimal, HierarchicalMixinMinimal
 from ....util.models import SingleInitializationModel
@@ -66,11 +67,15 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
     _entity_uid : Uid
     _entries : list[EntityAudit]
 
-    def __new__(cls, uid : Uid):
+    @classmethod
+    def _get_audit_log(cls, uid : Uid):
         from ..store import EntityStore
         if (store := EntityStore.get_global_store()) is None:
             raise ValueError(f"Could not get entity store for {cls.__name__}. The global EntityStore is not set.")
-        if (instance := store.get_audit_log(uid)) is None:
+        return store.get_audit_log(uid)
+
+    def __new__(cls, uid : Uid):
+        if (instance := cls._get_audit_log(uid)) is None:
             instance = super().__new__(cls)
             instance._post_init(uid)
         return instance
@@ -83,8 +88,12 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         self._entries = []
 
     @classmethod
-    def from_entity(cls, entity: Entity) -> EntityAuditLog:
-        return cls(entity.uid)
+    def by_entity(cls, entity: Entity) -> EntityAuditLog | None:
+        return cls._get_audit_log(entity.uid)
+
+    @classmethod
+    def by_uid(cls, uid: Uid) -> EntityAuditLog | None:
+        return cls._get_audit_log(uid)
 
     @property
     def entity_uid(self) -> Uid:
@@ -142,7 +151,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
     # MARK: Entity Diffing
     def _is_diffable_field(self, field_name: str) -> bool:
-        return not field_name.startswith('_') and field_name not in ('uid', 'version', 'entity_log', 'entity_links', 'instance_parent_weakref')
+        return not field_name.startswith('_') and field_name not in ('uid', 'version', 'entity_log', 'entity_dependents', 'instance_parent_weakref')
 
     def _diff(self, old_entity: Entity | None, new_entity: Entity | None) -> frozendict[str, Any] | None:
         """
@@ -162,7 +171,12 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             for fldnm in new_entity.__class__.model_fields.keys():
                 if not self._is_diffable_field(fldnm):
                     continue
-                diff[fldnm] = getattr(new_entity, fldnm, None)
+                v = getattr(new_entity, fldnm, None)
+                if v is None:
+                    continue
+                if isinstance(v, Collection) and len(v) == 0:
+                    continue
+                diff[fldnm] = v
             return frozendict(diff)
 
         # If there is no new entity, then all model fields in the old entity are removed
@@ -171,8 +185,12 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             for fldnm in old_entity.__class__.model_fields.keys():
                 if not self._is_diffable_field(fldnm):
                     continue
-                if getattr(old_entity, fldnm, None) is not None:
-                    diff[fldnm] = None
+                v = getattr(old_entity, fldnm, None)
+                if v is None:
+                    continue
+                if isinstance(v, Collection) and len(v) == 0:
+                    continue
+                diff[fldnm] = None
             return frozendict(diff)
 
         # Otherwise, both entities exist, and we take the journal diff
@@ -221,7 +239,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             raise ValueError("Cannot add a DELETED entry to an entity that does not exist. The entity must be created first.")
         self._entries.append(entry)
 
-    def on_create(self, entity: Entity) -> None:
+    def on_init(self, entity: Entity) -> None:
         if entity.uid != self.entity_uid:
             raise ValueError(f"Entity UID {entity.uid} does not match the audit log's entity UID {self.entity_uid}.")
 

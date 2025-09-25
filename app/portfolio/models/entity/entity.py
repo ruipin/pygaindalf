@@ -6,7 +6,7 @@ import inspect
 
 from frozendict import frozendict
 from pydantic import ConfigDict, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr, BaseModel
-from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable, cast as typing_cast, TypeVar
+from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable, cast as typing_cast, TypeVar, Callable
 from abc import abstractmethod, ABCMeta
 from collections.abc import Set, MutableSet
 from functools import cached_property
@@ -18,6 +18,7 @@ from ....util.helpers import script_info, generics
 from ....util.callguard import CallguardClassOptions
 
 if TYPE_CHECKING:
+    from ...collections.uid_proxy import UidProxyFrozenSet
     from ...journal.entity_journal import EntityJournal
     from ...journal.session_manager import SessionManager
     from ...journal.session import Session
@@ -29,11 +30,18 @@ from ..uid import Uid
 
 from .superseded import superseded_check
 from .entity_audit_log import EntityAuditLog, EntityAuditType
+from .entity_dependents import EntityDependents
+from .dependency_event_handler import *
+from .entity_base import EntityBase
 
 
-class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMinimal, metaclass=ABCMeta):
+ENTITY_SUBCLASSES = set()
+
+
+class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, NamedMixinMinimal, metaclass=ABCMeta):
     __callguard_class_options__ = CallguardClassOptions['Entity'](
-        decorator=superseded_check, decorate_public_methods=True, decorate_skip_properties=True
+        decorator=superseded_check, decorate_public_methods=True,
+        ignore_patterns=('superseding', 'superseded', 'deleted', 'marked_for_deletion', 'uid', 'version')
     )
 
     model_config = ConfigDict(
@@ -46,6 +54,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
     # MARK: Metaclass infrastructure
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
+        ENTITY_SUBCLASSES.add(cls)
 
         # Collect field aliases into a single collection
         aliases : dict[str,str] = dict()
@@ -59,13 +68,16 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
         cls.model_field_aliases = frozendict(aliases)
         cls.model_field_reverse_aliases = frozendict(reverse)
 
+        # Initialise dependencies
+        cls.__init_dependencies__()
+
     @classmethod
-    def is_update_allowed(cls, *, in_commit_only : bool = True, allow_in_abort : bool = False) -> bool:
+    def is_update_allowed(cls, *, in_commit_only : bool = True, allow_in_abort : bool = False, force_session : bool = False) -> bool:
         # Check if we are in the middle of a commit
         from ...journal.session_manager import SessionManager
         session_manager = SessionManager.get_global_manager_or_none()
         if session_manager is None:
-            if not script_info.is_unit_test():
+            if force_session or not script_info.is_unit_test():
                 return False
         else:
             if not session_manager.in_session or (session := session_manager.session) is None:
@@ -89,7 +101,8 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
     def model_post_init(self, context : Any) -> None:
         super().model_post_init(context)
 
-        self.entity_log.on_create(self)
+        self.entity_log.on_init(self)
+        self.entity_dependents.on_init(self)
         if self.entity_log.most_recent.what == EntityAuditType.CREATED and (session := self.session_or_none) is not None:
             session.on_entity_created(self)
 
@@ -114,6 +127,8 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
         if not self.is_update_allowed(in_commit_only=False):
             raise RuntimeError(f"Not allowed to delete {self.__class__.__name__} instances outside of a session.")
 
+        self.log.debug(t"Entity delete called for {self}.")
+
         session = self.session_or_none
         if session is not None:
             session.mark_entity_for_deletion(self)
@@ -127,7 +142,6 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
             if child is not None and not child.marked_for_deletion:
                 child.delete()
 
-
     def apply_deletion(self, *, who : str | None = None, why : str | None = None) -> None:
         if not self.is_update_allowed(allow_in_abort=True):
             raise RuntimeError(f"Not allowed to apply deletion to {self.__class__.__name__} instances outside of a session commit.")
@@ -135,24 +149,42 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
         self._apply_deletion(who=who, why=why)
 
     def _apply_deletion(self, *, who : str | None = None, why : str | None = None) -> None:
-        if not self.marked_for_deletion:
-            self._deleted = True
-            self._propagate_deletion()
-        else:
-            self._deleted = True
+        try:
+            if not self.marked_for_deletion:
+                self._deleted = True
+                self._propagate_deletion()
+            else:
+                self._deleted = True
 
-        self.entity_log.on_delete(self, who=who, why=why)
-        self._announce_deletion()
+            if not self.deletion_announced:
+                self.announce_deletion()
 
-        entity_store = self.__class__._get_entity_store()
-        del entity_store[self.uid]
+            self.entity_log.on_delete(self, who=who, why=why)
+            self.entity_dependents.on_delete(self)
+
+            entity_store = self.__class__._get_entity_store()
+            del entity_store[self.uid]
+        except:
+            self._deleted = False
+            raise
 
     @property
     def marked_for_deletion(self) -> bool:
         if self._deleted:
             return True
+        if self.superseded:
+            return False
         session = self.session_or_none
         if session is not None and session.is_entity_marked_for_deletion(self):
+            return True
+        return False
+
+    @property
+    def deletion_announced(self) -> bool:
+        if self._deleted:
+            return True
+        session = self.session_or_none
+        if session is not None and session.has_entity_deletion_been_announced(self):
             return True
         return False
 
@@ -160,15 +192,19 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
     def deleted(self) -> bool:
         return self._deleted
 
-    def _announce_deletion(self) -> None:
+    def announce_deletion(self) -> None:
         if not self.is_update_allowed(allow_in_abort=True):
             raise RuntimeError(f"Not allowed to announce deletion of {self.__class__.__name__} instances outside of a session commit.")
+
+        if self.deletion_announced:
+            return
 
         for uid in self.dependent_uids:
             dep = Entity.by_uid_or_none(uid)
             if dep is None or dep.marked_for_deletion:
                 continue
             dep.on_dependency_deleted(self)
+
 
 
     # MARK: Instance Name
@@ -235,6 +271,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
             raise ValueError(f"{cls.__name__} must have an instance name when calculating its UID.")
 
         instance_name = instance_name.removeprefix(cls.uid_namespace())
+        instance_name = instance_name.removeprefix('@')
 
         return Uid(namespace=cls.uid_namespace(), id=instance_name)
 
@@ -353,12 +390,14 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
         parent = self.instance_parent
         if parent is None or not isinstance(parent, Entity):
             return None
+        if parent.superseded:
+            return None
         return parent
 
     @property
     def entity_parent(self) -> Entity:
         if (parent := self.entity_parent_or_none) is None:
-            raise ValueError(f"{self.__class__.__name__} instance {self} has no valid entity parent.")
+            raise ValueError(f"{self.__class__.__name__} instance {self.uid} has no valid entity parent.")
         return parent
 
 
@@ -401,10 +440,16 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
         return self.entity_log.version > self.version
 
     @property
-    def superseding[T : Entity](self : T) -> T | None:
+    def superseding_or_none[T : Entity](self : T) -> T | None:
         if not self.superseded:
             return self
         return self.__class__.by_uid_or_none(self.uid)
+
+    @property
+    def superseding[T : Entity](self : T) -> T:
+        if (result := self.superseding_or_none) is None:
+            raise ValueError(f"Entity {self} has been superseded but the superseding entity could not be found.")
+        return result
 
     def update[T : Entity](self : T, **kwargs: Any) -> T:
         """
@@ -485,13 +530,19 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
         return session.get_entity_journal(entity=self, create=create) if session is not None else None
 
     @property
-    def journal(self) -> T_Journal:
+    def journal_or_none(self) -> T_Journal | None:
         result = self.get_journal(create=True)
         if result is None:
-            raise RuntimeError("Entity does not have an associated journal.")
+            return None
         journal_cls = self.get_journal_class()
         if type(result) is not journal_cls:
             raise RuntimeError(f"Expected journal of type {journal_cls}, got {type(result)}.")
+        return result
+
+    @property
+    def journal(self) -> T_Journal:
+        if (result := self.journal_or_none) is None:
+            raise RuntimeError(f"No journal found for entity {self}.")
         return result
 
     @property
@@ -537,14 +588,23 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
 
 
 
-
     # MARK: Children
     # These are all entities that are considered reachable (and therefore not garbage collected) by the existence of this entity.
     # I.e. those referenced by fields in the entity as well as annotations.
-    def _get_children_uids(self) -> Iterable[Uid]:
+    def _get_children_field_ignore(self, field_name: str) -> bool:
+        return field_name.startswith('_') or field_name in ('uid', 'extra_dependency_uids')
+
+    def iter_children_uids(self, *, use_journal : bool = False) -> Iterable[Uid]:
         # Inspect all fields of the entity for UIDs or Entities
         for attr in self.__class__.model_fields.keys():
-            value = getattr(self, attr, None)
+            if self._get_children_field_ignore(attr):
+                continue
+
+            if use_journal and (journal := self.get_journal(create=False)) is not None and journal.is_field_edited(attr):
+                value = getattr(journal, attr, None)
+            else:
+                value = getattr(self, attr, None)
+
             if value is None:
                 continue
 
@@ -559,114 +619,193 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
                     elif isinstance(item, Entity):
                         yield item.uid
 
-        # Annotations are also considered children
-        yield from self.annotation_uids
-
     @cached_property
     def children_uids(self) -> Iterable[Uid]:
-        return frozenset(self._get_children_uids())
+        return frozenset(self.iter_children_uids())
+
+    @property
+    def journal_children_uids(self) -> Iterable[Uid]:
+        journal = self.get_journal(create=False)
+        return self.children_uids if journal is None else journal.children_uids
 
     @property
     def children(self) -> Iterable[Entity]:
         for uid in self.children_uids:
             yield Entity.by_uid(uid)
 
-    def _reset_children_cache(self) -> None:
-        try:
-            del self.__dict__['children_uids']
-        except KeyError:
-            pass
+    def iter_hierarchy(self, *, condition : Callable[[Entity], bool] | None = None, check_condition_on_return : bool = True) -> Iterable[Entity]:
+        """
+        Return a flat ordered set of all entities in this hierarchy
+        """
+        if condition is not None and not condition(self):
+            return
+
+        # Iterate dirty children journals
+        for uid in self.children_uids:
+            child = Entity.by_uid_or_none(uid)
+            if child is None:
+                continue
+
+            if condition is not None and not condition(child):
+                continue
+
+            yield from child.iter_hierarchy(condition=condition)
+
+        if check_condition_on_return and condition is not None and not condition(self):
+            raise RuntimeError(f"Entity {self} failed condition check on return of yield_hierarchy.")
+
+        # Yield self, then return
+        yield self
+
+    def is_reachable(self, *, use_journal : bool = False) -> bool:
+        from ..root import EntityRoot
+        parent = self.instance_parent
+        if parent is None:
+            raise ValueError(f"Entity {self} has no parent, cannot determine reachability.")
+        if isinstance(parent, EntityRoot):
+            return True
+        if not isinstance(parent, Entity):
+            raise TypeError(f"Entity {self} has a parent of type {type(parent).__name__}, expected Entity or EntityRoot.")
+
+        # Check if parent contains us
+        iterable = parent.children_uids if not use_journal else parent.journal_children_uids
+        if self.uid not in iterable:
+            return False
+
+        # Recurse up the tree
+        return parent.is_reachable(use_journal=use_journal)
+
 
 
     # MARK: Annotations
-    _annotation_uids : MutableSet[Uid] = PrivateAttr(default_factory=set)
-
-    @computed_field(description="The UIDs of annotations associated with this entity.")
-    @property
-    def annotation_uids(self) -> Iterable[Uid]:
-        yield from self._annotation_uids
-
-    def get_annotations[T : Annotation](self, cls : type[T]) -> Iterable[T]:
-        from ..annotation import Annotation
-        for uid in self.annotation_uids:
-            annotation = Annotation.narrow_to_entity(uid)
-            if not isinstance(annotation, cls):
-                continue
-            yield annotation
-
-    def get_annotation_uids(self, cls : type[Annotation]) -> Iterable[Uid]:
-        for annotation in self.get_annotations(cls):
-            yield annotation.uid
+    annotation_uids : frozenset[Uid] = Field(default_factory=frozenset, description="The UIDs of annotations associated with this entity.")
 
     @property
-    def annotations(self) -> Iterable[Annotation]:
-        from ..annotation import Annotation
-        yield from self.get_annotations(Annotation)
+    def annotations(self) -> UidProxyFrozenSet[Entity]:
+        from ...collections.uid_proxy import UidProxyFrozenSet
+        return UidProxyFrozenSet[Entity](owner=self, field='annotation_uids')
 
     def on_annotation_created(self, annotation_or_uid : Annotation | Uid) -> None:
+        if not self.is_update_allowed(in_commit_only=False, force_session=True):
+            raise RuntimeError(f"Not allowed to modify annotations of {self.__class__.__name__} instances outside of a session.")
+
         from ..annotation import Annotation
-        annotation = Annotation.narrow_to_entity(annotation_or_uid)
-        if annotation.uid in self._annotation_uids:
+        uid = Annotation.narrow_to_uid(annotation_or_uid)
+        if uid in self.journal.annotation_uids:
             return
 
-        self._annotation_uids.add(annotation.uid)
-        self._reset_children_cache()
+        self.journal.annotation_uids.add(uid)
 
     def on_annotation_deleted(self, annotation_or_uid : Annotation | Uid) -> None:
+        self.log.debug(t"Entity {self} received deletion notice for annotation {annotation_or_uid}.")
+
+        if not self.is_update_allowed(in_commit_only=False, force_session=True):
+            raise RuntimeError(f"Not allowed to modify annotations of {self.__class__.__name__} instances outside of a session.")
+
         from ..annotation import Annotation
-        annotation = Annotation.narrow_to_entity(annotation_or_uid)
-        if annotation.uid not in self._annotation_uids:
+        uid = Annotation.narrow_to_uid(annotation_or_uid)
+        if uid not in self.journal.annotation_uids:
             return
 
-        self._annotation_uids.remove(annotation.uid)
-        self._reset_children_cache()
+        self.journal.annotation_uids.discard(uid)
 
 
-    # MARK: Links
-    #_manual_dependent_uids : Set[Uid] = PrivateAttr(default_factory=frozenset)
-    #_manual_dependency_uids : Set[Uid] = PrivateAttr(default_factory=frozenset)
+    # MARK: Dependents
+    entity_dependents : EntityDependents = Field(default_factory=lambda data: EntityDependents(data['uid']), validate_default=True, repr=False, exclude=True, description="The dependents of this entity, which tracks other entities that depend on this entity.")
 
     @property
     def dependent_uids(self) -> Iterable[Uid]:
-        parent = self.entity_parent_or_none
-        if parent is not None:
-            yield parent.uid
-
-        yield from self.children_uids
-        #yield from self._manual_dependent_uids
+        return self.entity_dependents.dependent_uids
 
     @property
     def dependents(self) -> Iterable[Entity]:
-        for uid in self.dependent_uids:
-            yield uid.entity
+        return self.entity_dependents.dependents
 
-    #@property
-    #def _manual_dependencies(self) -> Iterable[Entity]:
-    #    for uid in self._manual_dependency_uids:
-    #        entity = Entity.by_uid(uid)
-    #        if entity is None:
-    #            raise RuntimeError(f"Dependency entity with UID {uid} not found in store.")
-    #        yield entity
 
+    # MARK: Dependencies
+    extra_dependency_uids : frozenset[Uid] = Field(default_factory=frozenset, exclude=True, repr=False, json_schema_extra={'propagate': False}, description="Extra dependency UIDs. These can be used to create dependencies in addition to those automatically tracked by the entity.")
+
+    @property
+    def extra_dependencies(self) -> UidProxyFrozenSet[Entity]:
+        from ...collections.uid_proxy import UidProxyFrozenSet
+        return UidProxyFrozenSet[Entity](owner=self, field='extra_dependency_uids')
+
+
+    # MARK: Dependency Events
+    __entity_dependency_event_handler_records__ : ClassVar[MutableSet[EntityDependencyEventHandlerRecord]]
+
+    @classmethod
+    def __init_dependencies__(cls) -> None:
+        cls.__entity_dependency_event_handler_records__ = set()
+
+    @classmethod
+    def register_dependency_event_handler(cls, record : EntityDependencyEventHandlerRecord) -> None:
+        cls.__entity_dependency_event_handler_records__.add(record)
+
+    if script_info.is_unit_test():
+        @classmethod
+        def clear_dependency_event_handlers(cls) -> None:
+            if hasattr(cls, '__entity_dependency_event_handler_records__'):
+                cls.__entity_dependency_event_handler_records__.clear()
+                cls.__init_dependencies__()
+
+            for t in ENTITY_SUBCLASSES:
+                if issubclass(t, cls):
+                    if hasattr(t, '__entity_dependency_event_handler_records__'):
+                        t.__entity_dependency_event_handler_records__.clear()
+                        t.__init_dependencies__()
+
+    @classmethod
+    def iter_dependency_event_handlers(cls) -> Iterable[EntityDependencyEventHandlerRecord]:
+        for subclass in cls.__mro__:
+            if not issubclass(subclass, Entity):
+                continue
+            if not hasattr(subclass, '__entity_dependency_event_handler_records__'):
+                continue
+            for record in subclass.__entity_dependency_event_handler_records__:
+                yield record
+
+    @overload
+    def _call_dependency_event_handlers(self, event : Literal[EntityDependencyEventType.INVALIDATED], entity : Entity, journal : EntityJournal) -> bool: ...
+    @overload
+    def _call_dependency_event_handlers(self, event : Literal[EntityDependencyEventType.DELETED], entity : Entity, journal : None = None) -> bool: ...
+    def _call_dependency_event_handlers(self, event : EntityDependencyEventType, entity : Entity, journal : EntityJournal | None = None) -> bool:
+        matched = False
+        for record in self.__class__.iter_dependency_event_handlers():
+            if event is EntityDependencyEventType.DELETED:
+                assert journal is None
+                matched_current = record(owner=self, event=event, entity=entity)
+            elif event is EntityDependencyEventType.INVALIDATED:
+                assert journal is not None
+                matched_current = record(owner=self, event=event, entity=entity, journal=journal)
+            else:
+                raise ValueError(f"Unknown event type: {event}")
+
+            matched |= matched_current
+
+            # Abort if one of the handlers marks this entity for deletion
+            if matched_current and self.marked_for_deletion:
+                break
+        return matched
 
     def on_dependency_invalidated(self, source: EntityJournal) -> None:
-        self.log.debug(t"Entity {self} received invalidation from dependency entity {source.entity}.")
+        entity = source.entity
+
+        self.log.debug(t"Entity {self} received invalidation from dependency entity {entity}.")
+
+        # TODO: It should be possible to do this without creating a journal unless strictly necessary
         self.journal.on_dependency_invalidated(source)
+
+        # Call event handlers
+        self._call_dependency_event_handlers(event=EntityDependencyEventType.INVALIDATED, entity=entity, journal=source)
 
     def on_dependency_deleted(self, entity: Entity) -> None:
         self.log.debug(t"Entity {self} received deletion notice from dependency entity {entity}.")
 
         # If the entity is the parent of this entity, then we should delete ourselves too
         if (parent := self.entity_parent_or_none) is not None and parent.uid == entity.uid:
-            self.log.debug(t"Entity {self} is a child of deleted entity {entity}, deleting itself too.")
+            self.log.warning(t"Entity {self} is a child of deleted entity {entity}, deleting itself too.")
             self.delete()
-            return
-
-        # If the entity is an annotation of this entity, we need to delete it from our annotations set
-        from ..annotation import Annotation
-        if isinstance(entity, Annotation) and entity.uid in self._annotation_uids:
-            self.log.debug(t"Entity {self} has annotation {entity} deleted, removing annotation.")
-            self.on_annotation_deleted(entity)
             return
 
         # Sanity check: Entity cannot be the parent of this entity
@@ -674,11 +813,23 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
             raise RuntimeError(f"Entity {entity} is the parent of {self} and cannot be deleted without deleting the child first.")
 
         # Sanity check: Entity cannot be a child of this entity
-        if entity.uid in self.children_uids:
-            raise RuntimeError(f"Entity {entity} is a child of {self} and cannot be deleted.")
+        if entity.uid in self.journal_children_uids:
+            if self.is_reachable(use_journal=True):
+                raise RuntimeError(f"Entity {entity} is a child of {self} and cannot be deleted.")
+            else:
+                # TODO: As part of _propagate_delete, entities should try to remove themselves from their parent. This is hack here to handle the situation where they don't.
+                self.log.warning(t"Entity {self} is no longer reachable, but is not deleted. Marking for deletion.")
+                self.delete()
+                return
 
-        # Delete dependency link
-        #self._manual_dependency_uids.discard(entity.uid)
+        # Call event handlers
+        self._call_dependency_event_handlers(event=EntityDependencyEventType.DELETED, entity=entity)
+        if self.marked_for_deletion:
+            return
+
+        # If the entity is in our extra dependencies, we remove it
+        if entity.uid in self.extra_dependency_uids:
+            self.journal.remove_dependency(entity.uid)
 
 
 
@@ -693,8 +844,10 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
 
     @override
     def __str__(self) -> str:
-        return super().__str__().replace('>', f" v{self.version}>")
+        version = getattr(self, 'version', '?')
+        return super().__str__().replace('>', f" v{version}>")
 
     @override
     def __repr__(self) -> str:
-        return super().__repr__().replace('>', f" v{self.version}>")
+        version = getattr(self, 'version', '?')
+        return super().__repr__().replace('>', f" v{version}>")

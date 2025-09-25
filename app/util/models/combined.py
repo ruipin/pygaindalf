@@ -4,10 +4,16 @@
 from pydantic import Field
 from typing import ClassVar
 
+from .single_initialization import SingleInitializationModel
 from .hierarchical_root import HierarchicalRootModel
 from .hierarchical import HierarchicalModel
 
-from ..mixins import HierarchicalProtocol, NamedProtocol, LoggableMixin
+from ..mixins import LoggableMixin
+
+
+# Loggable + Single Initialization
+class LoggableModel(LoggableMixin, SingleInitializationModel):
+    pass
 
 
 # Hierarchical + Named

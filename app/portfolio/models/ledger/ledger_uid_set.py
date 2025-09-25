@@ -31,8 +31,8 @@ class OrderedViewFrozenLedgerUidSet(OrderedViewFrozenSet[Uid]):
         transaction_ns = Ledger.uid_namespace()
         if not isinstance(item, Uid):
             raise TypeError(f"Expected 'value' elements to be Uid instances, got {type(item).__name__}.")
-        if not item.namespace.startswith(transaction_ns):
-            raise ValueError(f"Invalid transaction UID namespace: expected it to start with '{transaction_ns}', got '{item.namespace}'.")
+        if item.namespace != transaction_ns:
+            raise ValueError(f"Invalid transaction UID namespace: expected '{transaction_ns}', got '{item.namespace}'.")
 
 
 

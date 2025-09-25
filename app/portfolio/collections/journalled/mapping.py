@@ -25,6 +25,14 @@ class JournalledMappingEdit[K,V]:
     key : K
     value : V | None
 
+    @override
+    def __str__(self) -> str:
+        return f"{self.type.value}({self.key}: {self.value})"
+
+    @override
+    def __repr__(self) -> str:
+        return self.__str__()
+
 class JournalledMapping[K,V](JournalledCollection[V, Mapping[K,V], dict[K,V], frozendict[K,V], JournalledMappingEdit[K,V]], MutableMapping[K,V]):
     # MARK: JournalledCollection ABC
     @override

@@ -99,7 +99,9 @@ class LoggingManager:
             self.ch.setFormatter(self.ch_formatter)
 
         self.ch.setLevel(self.config.levels.tty.value)
-        logging.root.addHandler(self.ch)
+
+        if not script_info.is_unit_test():
+            logging.root.addHandler(self.ch)
 
         self.ch_filter = HandlerFilter('tty')
         self.ch.addFilter(self.ch_filter)

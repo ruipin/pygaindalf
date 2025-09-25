@@ -12,4 +12,4 @@ from .class_decorator import callguard_class
 from .generic import callguard
 from .no_callguard_decorator import no_callguard
 from .mixin import CallguardMixin
-from .pydantic_model import CallguardedModelMixin
+from .pydantic_model import CallguardedModelMixin, callguarded_model_mixin

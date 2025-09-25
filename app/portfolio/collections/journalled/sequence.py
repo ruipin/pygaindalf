@@ -25,6 +25,15 @@ class JournalledSequenceEdit[T]:
     index: int | slice
     value: T | Iterable[T] | None
 
+    @override
+    def __str__(self) -> str:
+        return f"{self.type.value}({self.index}: {self.value})"
+
+    @override
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
 class JournalledSequence[T](JournalledCollection[T, Sequence[T], list[T], tuple[T,...], JournalledSequenceEdit[T]], MutableSequence[T]):
     # MARK: JournalledCollection ABC
     @override

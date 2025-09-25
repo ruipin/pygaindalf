@@ -10,7 +10,7 @@ from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable
 from ...util.models import LoggableHierarchicalModel
 
 from .session import Session, SessionParams
-from .protocols import SessionManagerHooksProtocol
+from .protocols import SessionManagerHooksProtocol, SessionManagerHookLiteral
 
 
 class SessionManager(LoggableHierarchicalModel):
@@ -51,7 +51,7 @@ class SessionManager(LoggableHierarchicalModel):
             return None
         return parent
 
-    def call_owner_hook(self, hook_name: Literal['start'] | Literal['end'] | Literal['apply'] | Literal['commit'] | Literal['abort'], *args: Any, **kwargs: Any) -> None:
+    def call_owner_hook(self, hook_name: SessionManagerHookLiteral, *args: Any, **kwargs: Any) -> None:
         if (owner := self._get_owner()) is not None:
             getattr(owner, f"on_session_{hook_name}")(*args, **kwargs)
 
@@ -80,7 +80,11 @@ class SessionManager(LoggableHierarchicalModel):
         self._session = None
 
     @contextlib.contextmanager
-    def __call__(self, **kwargs : Unpack[SessionParams]) -> Iterator[Session]:
+    def __call__(self, *, reuse : bool = False, **kwargs : Unpack[SessionParams]) -> Iterator[Session]:
+        if reuse and (session := self._session) is not None and not session.ended:
+            yield session
+            return
+
         session = self._start(**kwargs)
         try:
             if self._session is not session:

@@ -19,8 +19,8 @@ if TYPE_CHECKING:
     from .entity import Entity
 
 
-UID_SEPARATOR = '-'
-UID_ID_REGEX = re.compile(r'^[a-zA-Z0-9@_-]+$')
+UID_SEPARATOR = '#'
+UID_ID_REGEX = re.compile(r'^[a-zA-Z0-9@_#-]+$')
 
 
 # MARK: Uid Class

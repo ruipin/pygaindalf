@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from app.util.callguard import callguard
+from app.util.callguard import callguard_class
 
 
-@callguard
+@callguard_class(allow_same_module=False)
 class TestDoubleUnderscore:
     def normal(self) -> str:
         return "normal ok"

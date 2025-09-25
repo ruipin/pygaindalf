@@ -2,6 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
+from math import e
 import pydantic
 
 from typing import Unpack, runtime_checkable, Protocol, cast as typing_cast, overload
@@ -232,26 +233,47 @@ class CallguardClassDecorator[T : object]:
                 raise TypeError(f"Class {klass.__name__} has a non-classmethod __init_subclass__, cannot wrap it")
 
             @classmethod
+            def __get_callguard_class_options__(subcls) -> CallguardClassOptions[T] | None:
+                options = getattr(subcls, '__callguard_class_options__', None)
+                if options is None:
+                    raise ValueError(f"Could not find a valid '__callguard_class_options__' attribute in {subcls.__name__}")
+
+                for mro in subcls.__mro__:
+                    if mro is subcls:
+                        continue
+                    if hasattr(mro, '__get_callguard_class_options__'):
+                        break
+                else:
+                    return options
+
+                LOG.error(t"Found {subcls.__name__} superclass {mro.__name__} with __get_callguard_class_options__")
+                options_super = mro.__get_callguard_class_options__()
+                if options_super is None:
+                    return options
+
+                result = options_super.copy()
+                result.update(options)
+                return result
+
+            setattr(klass, '__get_callguard_class_options__', __get_callguard_class_options__)
+
+            @classmethod
             def init_subclass_wrapper(subcls):
-                LOG.error(t"__init_subclass__: {cls.__name__} -> {klass.__name__} -> {subcls.__name__}")
+                LOG.debug(t"__init_subclass__: {cls.__name__} -> {klass.__name__} -> {subcls.__name__}")
 
                 if original_init_subclass is not None:
                     original_init_subclass.__func__(subcls)
                 else:
                     super(klass, subcls).__init_subclass__()
 
-                options = getattr(subcls, '__callguard_class_options__', None)
-                if options is None:
-                    raise ValueError(f"Could not find a valid '__callguard_class_options__' attribute in {subcls.__name__}")
-                LOG.error(options)
-
+                options = subcls.__get_callguard_class_options__()
                 CallguardClassDecorator.guard(subcls, **options)
 
             setattr(klass, '__init_subclass__', init_subclass_wrapper)
 
     @classmethod
     def guard(cls, klass: type[T], **callguard_class_options: Unpack[CallguardClassOptions[T]]) -> type[T]:
-        LOG.debug(t"Callguard: Guarding class {klass.__name__}")
+        LOG.error(t"Callguard: Guarding class {klass.__name__}")
 
         # Check if we should proceed
         if not callguard_enabled(klass, skip_if_already_guarded=False):
@@ -303,7 +325,7 @@ class CallguardClassDecorator[T : object]:
                 value= value,
                 check_module= name.startswith('__') or name.startswith(f"_{klass.__name__}__"),
                 allow_same_class= bool(callguard_class_options.get('allow_same_class', True)),
-                allow_same_module= bool(callguard_class_options.get('allow_same_module', False)),
+                allow_same_module= bool(callguard_class_options.get('allow_same_module', True)),
                 method_name= name,
                 guard= guard,
                 decorator= decorator if decorate else None,
@@ -314,7 +336,7 @@ class CallguardClassDecorator[T : object]:
 
         # Apply modifications
         for name, value in modifications.items():
-            LOG.debug(t"Callguard: Patching {klass.__name__}.{name}")
+            LOG.info(t"Callguard: Patching {klass.__name__}.{name}")
             setattr(klass, name, value)
 
         # Mark class as callguarded

@@ -5,6 +5,7 @@ import pytest
 
 from typing import Generator
 
+from app.portfolio.models.entity import Entity
 from app.portfolio.models.root import PortfolioRoot, EntityRoot
 from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.store import EntityStore
@@ -21,6 +22,11 @@ def autouse_entity_store() -> Generator[EntityStore]:
     entity_store = EntityStore.create_global_store()
     yield entity_store
     EntityStore.clear_global_store()
+
+@pytest.fixture(scope='function', autouse=True)
+def autouse_entity_dependency_event_handlers() -> Generator[None]:
+    yield
+    Entity.clear_dependency_event_handlers()
 
 
 # Provide a per-test PortfolioRoot and make it the global root so EntityStore/SessionManager

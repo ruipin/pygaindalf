@@ -2,21 +2,23 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import weakref
+import itertools
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
-from typing import ClassVar, Any, override, TypedDict, Literal, Iterator, Callable
+from typing import ClassVar, Any, override, TypedDict, Literal, Iterable, Callable
 from datetime import datetime
 from collections.abc import MutableSet, MutableMapping
 
 from ...util.models import LoggableHierarchicalModel
 from ...util.callguard import CallguardClassOptions
 
-from ..models.uid import Uid, IncrementingUidFactory
+from ..models.uid import Uid, IncrementingUidFactory, UID_SEPARATOR
 from ..models.entity.entity import Entity
 from ..models.entity.entity_audit_log import EntityAuditType
 from ..models.entity.superseded import superseded_check
 
 from .entity_journal import EntityJournal
+from .protocols import SessionManagerHookLiteral
 
 
 class SessionParams(TypedDict):
@@ -29,6 +31,8 @@ class Session(LoggableHierarchicalModel):
         decorator=superseded_check,
         decorate_public_methods=True,
         decorate_ignore_patterns=('superseded','ended'),
+        allow_same_module=True,
+        ignore_patterns=('_commit_invalidate_travel_hierarchy_condition', '_commit_apply_travel_hierarchy_condition'),
     )
 
     model_config = ConfigDict(
@@ -46,7 +50,7 @@ class Session(LoggableHierarchicalModel):
             raise TypeError("Session parent must be a SessionManager object")
         return v
 
-    def _call_parent_hook(self, hook_name: Literal['start'] | Literal['end'] | Literal['apply'] | Literal['commit'] | Literal['abort'], *args: Any, **kwargs: Any) -> None:
+    def _call_parent_hook(self, hook_name: SessionManagerHookLiteral, *args: Any, **kwargs: Any) -> None:
         from .session_manager import SessionManager
         parent = self.instance_parent
         if not isinstance(parent, SessionManager):
@@ -61,7 +65,10 @@ class Session(LoggableHierarchicalModel):
     @computed_field(description="A human-readable name for this session, derived from its UID.")
     @property
     def instance_name(self) -> str:
-        return str(self.uid)
+        try:
+            return str(self.uid)
+        except:
+            return f"{self.__class__.__name__}{UID_SEPARATOR}<invalid-uid>"
 
 
     # MARK: Metadata
@@ -119,18 +126,35 @@ class Session(LoggableHierarchicalModel):
 
     # MARK: Entities deleted in this session
     _entities_deleted : MutableSet[Uid] = PrivateAttr(default_factory=set)
+    _deletions_announced : MutableSet[Uid] = PrivateAttr(default_factory=set)
 
     def mark_entity_for_deletion(self, entity_or_uid: Entity | Uid) -> None:
+        if self._after_invalidate:
+            raise RuntimeError("Cannot mark an entity for deletion after invalidation.")
+
         uid = Entity.narrow_to_uid(entity_or_uid)
         self._entities_deleted.add(uid)
 
         journal = self._entity_journals.pop(uid, None)
         if journal is not None:
-            journal.mark_invalid()
+            journal.mark_superseded()
+
+    def mark_entity_deletion_as_announced(self, entity_or_uid: Entity | Uid) -> None:
+        if self._after_invalidate:
+            raise RuntimeError("Cannot mark an entity for deletion after invalidation.")
+
+        uid = Entity.narrow_to_uid(entity_or_uid)
+        if uid not in self._entities_deleted:
+            raise ValueError("Entity is not marked for deletion in this session; cannot mark deletion as announced.")
+        self._deletions_announced.add(uid)
 
     def is_entity_marked_for_deletion(self, entity_or_uid: Entity | Uid) -> bool:
         uid = Entity.narrow_to_uid(entity_or_uid)
         return uid in self._entities_deleted
+
+    def has_entity_deletion_been_announced(self, entity_or_uid: Entity | Uid) -> bool:
+        uid = Entity.narrow_to_uid(entity_or_uid)
+        return uid in self._deletions_announced
 
 
 
@@ -149,7 +173,12 @@ class Session(LoggableHierarchicalModel):
         if self.ended:
             raise RuntimeError("Cannot add an entity journal to an ended session.")
 
-        if self._after_invalidate or self._in_abort:
+        if self._after_invalidate:
+            self.log.warning("Cannot add an entity journal after invalidation.")
+            return None
+
+        if self._in_abort:
+            self.log.warning("Cannot add an entity journal during abort.")
             return None
 
         journal_cls = entity.get_journal_class()
@@ -164,9 +193,11 @@ class Session(LoggableHierarchicalModel):
             raise RuntimeError("Cannot get an entity journal from an ended session.")
 
         if entity.superseded:
+            self.log.warning(f"Entity {entity.instance_name} is superseded; cannot create or retrieve journal.")
             return None
 
         if entity.uid in self._entities_deleted:
+            self.log.warning(f"Entity {entity.instance_name} is marked for deletion in this session; cannot create or retrieve journal.")
             return None
 
         journal = self._entity_journals.get(entity.uid, None)
@@ -186,7 +217,7 @@ class Session(LoggableHierarchicalModel):
 
     def _clear_journals(self) -> None:
         for j in self._entity_journals.values():
-            j.mark_invalid()
+            j.mark_superseded()
 
         self._entity_journals.clear()
 
@@ -194,6 +225,7 @@ class Session(LoggableHierarchicalModel):
         self._clear_journals()
         self._entities_created.clear()
         self._entities_deleted.clear()
+        self._deletions_announced.clear()
 
     def contains(self, uid: Uid) -> bool:
         return (
@@ -236,6 +268,7 @@ class Session(LoggableHierarchicalModel):
             self._call_parent_hook('commit')
         finally:
             self._in_commit = False
+            self._after_invalidate = False
 
         self.log.info("Commit concluded.")
 
@@ -248,7 +281,7 @@ class Session(LoggableHierarchicalModel):
             return
 
         # TODO: Log abort
-        self.log.debug("Aborting session...")
+        self.log.warning("Aborting session...")
         self._in_abort = True
 
         try:
@@ -269,7 +302,7 @@ class Session(LoggableHierarchicalModel):
                     entity.apply_deletion()
 
             self._clear()
-            self.log.debug("Session aborted.")
+            self.log.warning("Session aborted.")
             self._call_parent_hook('abort')
         finally:
             self._in_abort = False
@@ -291,65 +324,88 @@ class Session(LoggableHierarchicalModel):
     # MARK: Commit
     def _commit(self) -> None:
         self._commit_invalidate()
-        self._after_invalidate = True
         self._commit_apply()
         self._commit_deletions()
 
-    def _commit_announce_deletions(self) -> None:
-        """
-        Announce deletions to dependents, which may in turn mark themselves for deletion.
-        """
-        self.log.debug("Announcing entity deletions...")
+    def _commit_travel_hierarchy(self, iterable : Iterable[Uid], *, condition : Callable[[Entity], bool] | None = None, copy : bool = False) -> Iterable[Entity]:
+        if copy:
+            iterable = list(iterable)
+        for uid in iterable:
+            yield from uid.entity.iter_hierarchy(condition=condition)
 
-        announced = set()
-
-        while True:
-            deletions = list(self._entities_deleted)
-            len_deletions = len(deletions)
-
-            for uid in self._entities_deleted:
-                if uid in announced:
-                    continue
-
-                self.log.debug(f"Announcing deletion of entity {uid}...")
-                entity = uid.entity
-
-                for dep in entity.dependents:
-                    if not dep.marked_for_deletion:
-                        dep.on_dependency_deleted(entity)
-
-                announced.add(uid)
-
-                if (new_len := len(self._entities_deleted)) != len_deletions:
-                    # New deletions were added during announcement, restart
-                    break
-            else:
-                break
-
-    def _commit_travel_hierarchy(self, condition : Callable[[EntityJournal], bool]) -> Iterator[EntityJournal]:
-        for ej in self._entity_journals.values():
-            for inv in ej.commit_yield_hierarchy(condition):
-                yield inv
+    def _commit_invalidate_travel_hierarchy_condition(self, e: Entity) -> bool:
+        j = self._entity_journals.get(e.uid, None)
+        if j is not None:
+            return not j.invalidated
+        elif e.uid in self._entities_deleted:
+            return e.uid not in self._deletions_announced
+        else:
+            return False
 
     def _commit_invalidate(self):
         """
         Invalidate all computed fields in all journals.
         """
-        self.log.debug("Invalidating all entities with a journal...")
+        self.log.debug("Invalidating all entities with a journal or that have been deleted...")
 
-        len_journals = len(self._entity_journals)
+        len_journals = len(self._entity_journals )
+        len_deleted  = len(self._entities_deleted)
 
+        def should_restart() -> bool:
+            nonlocal len_journals, len_deleted
+
+            new_len_journals = len(self._entity_journals )
+            new_len_deleted  = len(self._entities_deleted)
+            restart = (new_len_journals != len_journals) or (new_len_deleted != len_deleted)
+
+            if restart:
+                len_journals = new_len_journals
+                len_deleted  = new_len_deleted
+            return restart
+
+        pass_count = 0
         while True:
-            for ej in self._commit_travel_hierarchy(lambda x: not x.invalidated):
-                self.log.debug(f"Invalidating entity journal for {ej.entity.instance_name}...")
-                ej.invalidate()
+            pass_count += 1
+            self.log.debug(t"Starting invalidation pass {pass_count}...")
 
-                if (new_len := len(self._entity_journals)) != len_journals:
-                    # New journals were added during invalidation, restart
-                    len_journals = new_len
+            finished = False
+            for e in self._commit_travel_hierarchy(
+                itertools.chain(self._entities_deleted, self._entity_journals.keys()),
+                condition=self._commit_invalidate_travel_hierarchy_condition,
+                copy=True
+            ):
+                if e.uid in self._entities_deleted:
+                    self.log.debug(t"Announcing deletion of entity {e!s}...")
+                    assert e.uid not in self._deletions_announced
+                    e.announce_deletion()
+                    self._deletions_announced.add(e.uid)
+                else:
+                    self.log.debug(t"Invalidating entity {e!s}...")
+                    j = self._entity_journals[e.uid]
+                    j.invalidate()
+
+                if should_restart():
                     break
             else:
+                finished = True
+            if not finished:
+                continue
+
+            self._call_parent_hook('invalidate')
+            if not should_restart():
                 break
+
+        assert self._deletions_announced >= (self._entities_deleted)
+        assert all(j.invalidated for j in self._entity_journals.values())
+
+        self._after_invalidate = True
+
+
+    def _commit_apply_travel_hierarchy_condition(self, e: Entity) -> bool:
+        j = self._entity_journals.get(e.uid, None)
+        if j is None or j.superseded:
+            return False
+        return True
 
     def _commit_apply(self) -> None:
         """
@@ -358,9 +414,14 @@ class Session(LoggableHierarchicalModel):
         """
         self.log.debug("Committing journals...")
 
-        for journal in self._commit_travel_hierarchy(lambda x: not x.superseded):
-            self.log.debug(f"Committing entity journal for {journal.entity_uid}...")
-            journal.commit()
+        for e in self._commit_travel_hierarchy(
+            self._entity_journals.keys(),
+            condition=self._commit_apply_travel_hierarchy_condition,
+            copy=False
+        ):
+            self.log.debug(f"Committing entity {e.uid}...")
+            j = self._entity_journals[e.uid]
+            j.commit()
 
         self._call_parent_hook('apply')
 
