@@ -3,7 +3,7 @@ API Reference
 
 .. autosummary::
    :toctree: api
-   :template: custom-module-template.rst
+   :template: module.rst
    :recursive:
 
    app
