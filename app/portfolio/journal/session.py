@@ -230,10 +230,12 @@ class Session(LoggableHierarchicalModel):
         self.log.info("Committing session...")
 
         self._in_commit = True
-        self._commit()
-        self._clear()
-        self._call_parent_hook('commit')
-        self._in_commit = False
+        try:
+            self._commit()
+            self._clear()
+            self._call_parent_hook('commit')
+        finally:
+            self._in_commit = False
 
         self.log.info("Commit concluded.")
 
@@ -249,26 +251,28 @@ class Session(LoggableHierarchicalModel):
         self.log.debug("Aborting session...")
         self._in_abort = True
 
-        # Forcefully delete any entities created in this session
-        if self._entities_created:
-            self._clear_journals()
-            entities = set()
+        try:
+            # Forcefully delete any entities created in this session
+            if self._entities_created:
+                self._clear_journals()
+                entities = set()
 
-            for uid in self._entities_created:
-                entity = Entity.by_uid_or_none(uid)
-                if entity is None or entity.superseded:
-                    continue
-                entities.add(entity)
-                if not entity.marked_for_deletion:
-                    entity.delete()
+                for uid in self._entities_created:
+                    entity = Entity.by_uid_or_none(uid)
+                    if entity is None or entity.superseded:
+                        continue
+                    entities.add(entity)
+                    if not entity.marked_for_deletion:
+                        entity.delete()
 
-            for entity in entities:
-                entity.apply_deletion()
+                for entity in entities:
+                    entity.apply_deletion()
 
-        self._clear()
-        self.log.debug("Session aborted.")
-        self._call_parent_hook('abort')
-        self._in_abort = False
+            self._clear()
+            self.log.debug("Session aborted.")
+            self._call_parent_hook('abort')
+        finally:
+            self._in_abort = False
 
     def end(self) -> None:
         if self.ended:

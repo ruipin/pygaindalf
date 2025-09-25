@@ -108,20 +108,18 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
             self._apply_deletion(who='system', why='__del__')
 
     def delete(self) -> None:
-        if self._deleted:
+        if self.marked_for_deletion:
             return
 
         if not self.is_update_allowed(in_commit_only=False):
             raise RuntimeError(f"Not allowed to delete {self.__class__.__name__} instances outside of a session.")
 
-        self._deleted = True
-        self._propagate_deletion()
-
         session = self.session_or_none
-        if session is None:
-            self._apply_deletion()
+        if session is not None:
+            session.mark_entity_for_deletion(self)
+            self._propagate_deletion()
         else:
-            self.session.mark_entity_for_deletion(self)
+            self._apply_deletion()
 
     def _propagate_deletion(self) -> None:
         for uid in self.children_uids:
@@ -137,9 +135,11 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
         self._apply_deletion(who=who, why=why)
 
     def _apply_deletion(self, *, who : str | None = None, why : str | None = None) -> None:
-        if not self._deleted:
+        if not self.marked_for_deletion:
+            self._deleted = True
             self._propagate_deletion()
-        self._deleted = True
+        else:
+            self._deleted = True
 
         self.entity_log.on_delete(self, who=who, why=why)
         self._announce_deletion()
@@ -149,6 +149,15 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
 
     @property
     def marked_for_deletion(self) -> bool:
+        if self._deleted:
+            return True
+        session = self.session_or_none
+        if session is not None and session.is_entity_marked_for_deletion(self):
+            return True
+        return False
+
+    @property
+    def deleted(self) -> bool:
         return self._deleted
 
     def _announce_deletion(self) -> None:
