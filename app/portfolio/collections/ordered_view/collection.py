@@ -24,9 +24,7 @@ from .sort_key_protocol import SortKeyProtocol
 
 @callguard_class()
 class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
-    @classmethod
-    def get_concrete_content_type(cls, source : type[Self] | None = None) -> type[T]:
-        return generics.get_concrete_parent_argument_origin(source or cls, OrderedViewCollection, "T")
+    get_concrete_content_type = generics.GenericIntrospectionMethod[T]()
 
     def __init__(self, data : Iterable[T] | None = None, /):
         self._initialize_container(data)

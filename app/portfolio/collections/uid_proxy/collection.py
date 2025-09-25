@@ -26,13 +26,8 @@ class UidProxyFrozenCollection[T_Proxy : Entity, T_Collection : object](metaclas
     def _get_field(self) -> T_Collection:
         return typing_cast(T_Collection, getattr(self._get_owner(), self._field))
 
-    @classmethod
-    def get_concrete_proxy_type(cls, source : type[Self] | None = None) -> type[T_Proxy]:
-        return generics.get_concrete_parent_argument_origin(source or cls, UidProxyFrozenCollection, "T_Proxy")
-
-    @classmethod
-    def get_concrete_collection_type(cls, source : type[Self] | None = None) -> type[T_Collection]:
-        return generics.get_concrete_parent_argument_origin(source or cls, UidProxyFrozenCollection, "T_Collection")
+    get_concrete_proxy_type      = generics.GenericIntrospectionMethod[T_Proxy     ]()
+    get_concrete_collection_type = generics.GenericIntrospectionMethod[T_Collection]()
 
     @override
     def __str__(self) -> str:
@@ -47,10 +42,8 @@ class UidProxyFrozenCollection[T_Proxy : Entity, T_Collection : object](metaclas
 class UidProxyCollection[T_Proxy : Entity, T_Collection : object, T_Mut_Collection : object](UidProxyFrozenCollection[T_Proxy, T_Collection], metaclass=ABCMeta):
     def _get_mut_field(self) -> T_Mut_Collection:
         field = self._get_field()
-        if not isinstance(field, (mut_type := self.get_concrete_mutable_collection_type())):
+        if not isinstance(field, (mut_type := self.get_concrete_mutable_collection_type(origin=True))):
             raise TypeError(f"Field '{self._get_owner()}.{self._field}' is not a {mut_type.__name__}.")
         return typing_cast(T_Mut_Collection, field)
 
-    @classmethod
-    def get_concrete_mutable_collection_type(cls, source : type[Self] | None = None) -> type[T_Mut_Collection]:
-        return generics.get_concrete_parent_argument_origin(source or cls, UidProxyCollection, "T_Mut_Collection")
+    get_concrete_mutable_collection_type = generics.GenericIntrospectionMethod[T_Mut_Collection]()

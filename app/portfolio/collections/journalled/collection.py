@@ -17,21 +17,10 @@ from .protocols import JournalledCollectionHooksProtocol
 @callguard_class()
 class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : Collection, T_Immutable : Collection, T_Journal : object](HierarchicalNamedMixin, metaclass=ABCMeta):
     # MARK: Generics
-    @classmethod
-    def get_concrete_value_type(cls, source : type[Self] | None = None) -> type[T_Value]:
-        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Value")
-
-    @classmethod
-    def get_concrete_mutable_type(cls, source : type[Self] | None = None) -> type[T_Mutable]:
-        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Mutable")
-
-    @classmethod
-    def get_concrete_immutable_type(cls, source : type[Self] | None = None) -> type[T_Immutable]:
-        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Immutable")
-
-    @classmethod
-    def get_concrete_journal_type(cls, source : type[Self] | None = None) -> type[T_Journal]:
-        return generics.get_concrete_parent_argument_origin(source or cls, JournalledCollection, "T_Journal")
+    get_concrete_value_type     = generics.GenericIntrospectionMethod[T_Value    ]()
+    get_concrete_mutable_type   = generics.GenericIntrospectionMethod[T_Mutable  ]()
+    get_concrete_immutable_type = generics.GenericIntrospectionMethod[T_Immutable]()
+    get_concrete_journal_type   = generics.GenericIntrospectionMethod[T_Journal  ]()
 
 
     # MARK: Hooks

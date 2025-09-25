@@ -469,9 +469,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, NamedMixinMin
             raise RuntimeError("No active session found in the session manager.")
         return session
 
-    @classmethod
-    def get_journal_class(cls) -> type[T_Journal]:
-        return typing_cast(type[T_Journal], generics.get_concrete_parent_argument(cls, Entity, 'T_Journal'))
+    get_journal_class = generics.GenericIntrospectionMethod[T_Journal]()
 
     def get_journal(self, *, create : bool = True, fail : bool = True) -> EntityJournal | None:
         session = self.session if fail else self.session_or_none

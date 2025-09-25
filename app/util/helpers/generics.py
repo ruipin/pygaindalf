@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPLv3
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import typing, types, annotationlib
+import typing, types, annotationlib, functools
 from frozendict import frozendict
 
 from . import mro
@@ -360,8 +360,12 @@ def get_bases_between(cls : type | GenericAlias, parent : type, result : list[ty
         result = []
 
     result.append(cls)
+    if cls is parent:
+        return result
 
     cls_origin = get_origin(cls, passthrough=True)
+    if cls_origin is parent:
+        return result
 
     bases = get_original_bases(cls_origin)
     for base in bases:
@@ -434,25 +438,90 @@ def get_parent_argument_info(cls : type | GenericAlias, parent : type, param : P
 
 
 # MARK: get_parent_argument
-def get_parent_argument[T : type](cls : T, parent : T, param : ParamType, *, bound : type | None = None) -> ArgType:
+class GetParentArgumentKwargs(typing.TypedDict, total=True):
+    bound  : typing.NotRequired[type]
+
+def get_parent_argument[T : type](cls : T, parent : T, param : ParamType, **kwargs : typing.Unpack[GetParentArgumentKwargs]) -> ArgType:
     arg = get_parent_argument_info(cls, parent, param)
     result = arg.value_or_bound
-    if bound is not None and not isinstance(result, bound):
-        raise GenericsError(f"{cls.__name__}.{param} type argument <{result}> is not a subclass of <{bound.__name__}>")
+
+    bound = kwargs.get('bound', None)
+    if bound is not None:
+        result_origin = get_origin(result, passthrough=True)
+        if not issubclass(result_origin, bound):
+            raise GenericsError(f"{cls.__name__}.{param} type argument {result} is not a subclass of {bound}")
     return result
 
-def get_concrete_parent_argument[T : type](cls : T, parent : T, param : ParamType, *, bound : type | None = None, origin : bool = False) -> ArgType:
-    arg = get_parent_argument(cls, parent, param, bound=bound)
+
+class GetConcreteParentArgumentKwargs(GetParentArgumentKwargs, total=True):
+    origin : typing.NotRequired[bool]
+
+def get_concrete_parent_argument[T : type](cls : T, parent : T, param : ParamType, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> ArgType:
+    arg = get_parent_argument(cls, parent, param, **kwargs)
 
     if arg is None or isinstance(arg, typing.TypeVar):
         raise GenericsError(f"Could not resolve {cls.__name__}.{param} type argument to a concrete type, got <{arg}>")
     if isinstance(arg, typing.ForwardRef):
         raise NotImplementedError("ForwardRef resolution not yet implemented")
 
-    if origin:
+    if kwargs.get('origin', False):
         return get_origin(arg, passthrough=True)
 
     return arg
 
-def get_concrete_parent_argument_origin[T : type](cls : T, parent : T, param : ParamType, *, bound : type | None = None) -> type:
-    return typing.cast(type, get_concrete_parent_argument(cls, parent, param, bound=bound, origin=True))
+def get_concrete_parent_argument_origin[T : type](cls : T, parent : T, param : ParamType, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> type:
+    if kwargs.get('origin', None) is False:
+        raise ValueError("get_concrete_parent_argument_origin always sets origin=True, do not pass it in kwargs")
+    kwargs['origin'] = True
+    return typing.cast(type, get_concrete_parent_argument(cls, parent, param, **kwargs))
+
+
+# MARK: introspection method descriptor
+class GenericIntrospectionMethod[R : object](classmethod[typing.Any, ..., type[R]]):
+    __callguarded__ : typing.ClassVar[bool] = True # Prevent callguard from acting on this descriptor
+    _parent : type | None = None
+    _param : typing.TypeVar
+
+    @typing.override
+    def __class_getitem__(cls, arg : typing.TypeVar) -> GenericAlias:
+        if not isinstance(arg, typing.TypeVar):
+            raise TypeError(f"GenericIntrospectionMethod expects a TypeVar parameter, got {type(arg).__name__}")
+        return functools.partial(GenericIntrospectionMethod, arg)
+
+    @property
+    def _bound(self) -> type | None:
+        if (evaluate_bound := getattr(self._param, 'evaluate_bound', None)) is None:
+            return None
+        bound = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        return bound if isinstance(bound, type) else None
+
+    def __init__(self, param : typing.TypeVar | None = None, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> None:
+        if param is None:
+            raise TypeError("GenericIntrospectionMethod must be subscripted with a TypeVar parameter, e.g. GenericIntrospectionMethod[T](), or explicitly passed a TypeVar parameter, e.g. GenericIntrospectionMethod(T)")
+        self._param  = param
+        self._kwargs = kwargs
+        super().__init__(self.introspect)
+
+    def __set_name__(self, owner : type, name : str):
+        self._parent = owner
+        self.__name__ = name
+        self.__qualname__ = f"{owner.__qualname__}.{name}"
+
+    def _update_kwargs(self, kwargs : GetConcreteParentArgumentKwargs) -> GetConcreteParentArgumentKwargs:
+        for k, v in self._kwargs.items():
+            if k not in kwargs:
+                kwargs[k] = v
+
+        bound = self._bound
+        if bound is not None:
+            existing = kwargs.get('bound', None)
+            if existing is not None and existing is not bound:
+                raise ValueError(f"GenericIntrospectionMethod requires bound={bound} but got {existing}")
+            kwargs['bound'] = bound
+
+        return kwargs
+
+    def introspect[T : type](self, cls : type[T], source : type[T] | None = None, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> type[R]:
+        if self._parent is None:
+            raise TypeError("GenericIntrospectionMethod must be used as a class or instance attribute")
+        return typing.cast(type[R], get_concrete_parent_argument(source or cls, self._parent, self._param, **self._update_kwargs(kwargs)))
