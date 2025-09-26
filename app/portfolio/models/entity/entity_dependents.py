@@ -120,17 +120,21 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
 
 
     # MARK: Dependent Properties
-    @property
-    def dependent_uids(self) -> Iterable[Uid]:
+    def get_dependent_uids(self, *, use_journal : bool = False) -> Iterable[Uid]:
         entity = self.entity
 
-        parent = entity.entity_parent_or_none
-        if parent is not None:
-            yield parent.uid
+        if entity.is_reachable(recursive=False, use_journal=use_journal):
+            parent = entity.entity_parent_or_none
+            if parent is not None:
+                yield parent.uid
 
         yield from entity.children_uids
 
         yield from self._extra_dependent_uids
+
+    @property
+    def dependent_uids(self) -> Iterable[Uid]:
+        return self.get_dependent_uids()
 
     @property
     def dependents(self) -> Iterable[Entity]:

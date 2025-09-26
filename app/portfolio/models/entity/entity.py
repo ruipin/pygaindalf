@@ -657,7 +657,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, N
         # Yield self, then return
         yield self
 
-    def is_reachable(self, *, use_journal : bool = False) -> bool:
+    def is_reachable(self, *, recursive : bool = True, use_journal : bool = False) -> bool:
         from ..root import EntityRoot
         parent = self.instance_parent
         if parent is None:
@@ -673,7 +673,10 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, N
             return False
 
         # Recurse up the tree
-        return parent.is_reachable(use_journal=use_journal)
+        if not recursive:
+            return True
+        else:
+            return parent.is_reachable(use_journal=use_journal, recursive=True)
 
 
 
