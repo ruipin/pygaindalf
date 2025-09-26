@@ -41,6 +41,7 @@ class TestAnnotationSessions:
 
             assert a1.marked_for_deletion is True
             assert a2.marked_for_deletion is False
+            assert a1.dirty is True
             assert host.dirty is True
             assert s.dirty is True
         assert a1.deleted is True

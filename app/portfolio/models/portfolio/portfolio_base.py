@@ -3,27 +3,37 @@
 
 from functools import cached_property
 
-from collections.abc import Set, Sequence
+from collections.abc import Set
 from abc import abstractmethod, ABCMeta
 from typing import override, Iterator, TYPE_CHECKING
 
+from ....util.helpers.empty_class import EmptyClass
+from ....util.helpers import generics
+
 from ..uid import Uid
-from ..ledger import Ledger, OrderedViewFrozenLedgerUidSet, UidProxyOrderedViewLedgerFrozenSet
-from ..entity import Entity
+from ..ledger import Ledger, UidProxyOrderedViewLedgerFrozenSet
+from ..entity import Entity, EntityBase
 from ..instrument import Instrument
 
+from .portfolio_fields import PortfolioFields
 
-class PortfolioBase[T_Uid_Set : OrderedViewFrozenLedgerUidSet, T_Proxy_Set : UidProxyOrderedViewLedgerFrozenSet](Set[Ledger], metaclass=ABCMeta):
-    if TYPE_CHECKING:
-        ledger_uids : T_Uid_Set
+
+class PortfolioBase[
+    T_Uid_Set : Set[Uid],
+    T_Proxy_Set : UidProxyOrderedViewLedgerFrozenSet
+](
+    EntityBase,
+    PortfolioFields[T_Uid_Set] if TYPE_CHECKING else EmptyClass,
+    Set[Ledger],
+    metaclass=ABCMeta
+):
+    # MARK: Ledgers
+    get_proxy_set_type = generics.GenericIntrospectionMethod[T_Proxy_Set]()
 
     @cached_property
-    @abstractmethod
     def ledgers(self) -> T_Proxy_Set:
-        raise NotImplementedError("Subclasses must implement ledgers property")
+        return self.get_proxy_set_type(origin=True)(owner=self, field='ledger_uids')
 
-
-    # MARK: Custom __getitem__
     def __getitem__(self, index : int | Uid | Instrument) -> Ledger:
         ledger = None
 

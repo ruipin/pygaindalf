@@ -32,7 +32,7 @@ class Session(LoggableHierarchicalModel):
         decorate_public_methods=True,
         decorate_ignore_patterns=('superseded','ended'),
         allow_same_module=True,
-        ignore_patterns=('_commit_invalidate_travel_hierarchy_condition', '_commit_apply_travel_hierarchy_condition'),
+        ignore_patterns=('_commit_notify_travel_hierarchy_condition', '_commit_apply_travel_hierarchy_condition'),
     )
 
     model_config = ConfigDict(
@@ -78,31 +78,6 @@ class Session(LoggableHierarchicalModel):
 
 
     # MARK: State
-    _ended : bool = PrivateAttr(default=False)
-    @property
-    def ended(self) -> bool:
-        try:
-            return getattr(self, '_ended', False)
-        except:
-            return False
-
-    _in_commit : bool = PrivateAttr(default=False)
-    _after_invalidate : bool = PrivateAttr(default=False)
-    @property
-    def in_commit(self) -> bool:
-        try:
-            return getattr(self, '_in_commit', False)
-        except:
-            return False
-
-    _in_abort : bool = PrivateAttr(default=False)
-    @property
-    def in_abort(self) -> bool:
-        try:
-            return getattr(self, '_in_abort', False)
-        except:
-            return False
-
     @property
     def superseded(self) -> bool:
         return self.ended
@@ -124,40 +99,6 @@ class Session(LoggableHierarchicalModel):
         self._entities_created.add(uid)
 
 
-    # MARK: Entities deleted in this session
-    _entities_deleted : MutableSet[Uid] = PrivateAttr(default_factory=set)
-    _deletions_announced : MutableSet[Uid] = PrivateAttr(default_factory=set)
-
-    def mark_entity_for_deletion(self, entity_or_uid: Entity | Uid) -> None:
-        if self._after_invalidate:
-            raise RuntimeError("Cannot mark an entity for deletion after invalidation.")
-
-        uid = Entity.narrow_to_uid(entity_or_uid)
-        self._entities_deleted.add(uid)
-
-        journal = self._entity_journals.pop(uid, None)
-        if journal is not None:
-            journal.mark_superseded()
-
-    def mark_entity_deletion_as_announced(self, entity_or_uid: Entity | Uid) -> None:
-        if self._after_invalidate:
-            raise RuntimeError("Cannot mark an entity for deletion after invalidation.")
-
-        uid = Entity.narrow_to_uid(entity_or_uid)
-        if uid not in self._entities_deleted:
-            raise ValueError("Entity is not marked for deletion in this session; cannot mark deletion as announced.")
-        self._deletions_announced.add(uid)
-
-    def is_entity_marked_for_deletion(self, entity_or_uid: Entity | Uid) -> bool:
-        uid = Entity.narrow_to_uid(entity_or_uid)
-        return uid in self._entities_deleted
-
-    def has_entity_deletion_been_announced(self, entity_or_uid: Entity | Uid) -> bool:
-        uid = Entity.narrow_to_uid(entity_or_uid)
-        return uid in self._deletions_announced
-
-
-
     # MARK: Entity Journals
     _entity_journals : MutableMapping[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
 
@@ -165,27 +106,25 @@ class Session(LoggableHierarchicalModel):
     def dirty(self) -> bool:
         return (
             any(j.dirty for j in self._entity_journals.values()) or
-            bool(self._entities_created) or
-            bool(self._entities_deleted)
+            bool(self._entities_created)
         )
 
     def _add_entity_journal(self, entity: Entity) -> EntityJournal | None:
         if self.ended:
             raise RuntimeError("Cannot add an entity journal to an ended session.")
 
-        if self._after_invalidate:
-            self.log.warning("Cannot add an entity journal after invalidation.")
-            return None
-
-        if self._in_abort:
-            self.log.warning("Cannot add an entity journal during abort.")
+        if self._after_commit_notify:
+            self.log.warning("Cannot add an entity journal after notification phase.")
             return None
 
         journal_cls = entity.get_journal_class()
         if not issubclass(journal_cls, EntityJournal):
             raise TypeError(f"{entity.__class__.__name__} journal class {journal_cls} is not a subclass of EntityJournal.")
-        journal = journal_cls(entity=entity)
+        journal = journal_cls(instance_parent=weakref.ref(self), entity=entity)
         self._entity_journals[entity.uid] = journal
+
+        self._restart_commit_notify = True
+
         return journal
 
     def get_entity_journal(self, entity: Entity, *, create : bool = True) -> EntityJournal | None:
@@ -194,10 +133,6 @@ class Session(LoggableHierarchicalModel):
 
         if entity.superseded:
             self.log.warning(f"Entity {entity.instance_name} is superseded; cannot create or retrieve journal.")
-            return None
-
-        if entity.uid in self._entities_deleted:
-            self.log.warning(f"Entity {entity.instance_name} is marked for deletion in this session; cannot create or retrieve journal.")
             return None
 
         journal = self._entity_journals.get(entity.uid, None)
@@ -224,21 +159,18 @@ class Session(LoggableHierarchicalModel):
     def _clear(self) -> None:
         self._clear_journals()
         self._entities_created.clear()
-        self._entities_deleted.clear()
-        self._deletions_announced.clear()
 
     def contains(self, uid: Uid) -> bool:
         return (
             (uid in self._entity_journals) or
-            (uid in self._entities_created) or
-            (uid in self._entities_deleted)
+            (uid in self._entities_created)
         )
 
     def __len__(self) -> int:
-        return len(self._entity_journals) + len(self._entities_created) + len(self._entities_deleted)
+        return len(self._entity_journals) + len(self._entities_created)
 
 
-    # MARK: State machine
+    # MARK: Start
     @override
     def model_post_init(self, context : Any):
         super().model_post_init(context)
@@ -249,6 +181,86 @@ class Session(LoggableHierarchicalModel):
         # TODO: Log start
         self.log.info("Starting session.")
         self._call_parent_hook('start')
+
+
+    # MARK: Abort
+    _in_abort : bool = PrivateAttr(default=False)
+    @property
+    def in_abort(self) -> bool:
+        try:
+            return getattr(self, '_in_abort', False)
+        except:
+            return False
+
+    def abort(self) -> None:
+        if self.ended:
+            raise RuntimeError("Cannot abort an ended session.")
+
+        # No need to do anything if there are no edits to commit
+        if not self.dirty:
+            return
+
+        # TODO: Log abort
+        self.log.warning("Aborting session...")
+        self._in_abort = True
+
+        try:
+            # Forcefully delete any entities created in this session
+            if self._entities_created:
+                self._clear_journals()
+                entities : set[Entity] = set()
+
+                for uid in self._entities_created:
+                    entity = Entity.by_uid_or_none(uid)
+                    if entity is None or entity.superseded:
+                        continue
+                    entities.add(entity)
+                    if not entity.marked_for_deletion:
+                        entity.delete()
+
+                for entity in entities:
+                    entity.apply_deletion()
+
+            self._clear()
+            self.log.warning("Session aborted.")
+            self._call_parent_hook('abort')
+        finally:
+            self._in_abort = False
+
+
+    # MARK: End
+    _ended : bool = PrivateAttr(default=False)
+    @property
+    def ended(self) -> bool:
+        try:
+            return getattr(self, '_ended', False)
+        except:
+            return False
+
+    def end(self) -> None:
+        if self.ended:
+            raise RuntimeError("Cannot end an already ended session.")
+
+        if self.dirty:
+            self.commit()
+
+        # TODO: Log ended
+
+        self._ended = True
+        self.log.debug("Session ended.")
+        self._call_parent_hook('end')
+
+
+
+    # MARK: Commit
+    _in_commit : bool = PrivateAttr(default=False)
+    _after_commit_notify : bool = PrivateAttr(default=False)
+    @property
+    def in_commit(self) -> bool:
+        try:
+            return getattr(self, '_in_commit', False)
+        except:
+            return False
 
     def commit(self) -> None:
         if self.ended:
@@ -268,149 +280,87 @@ class Session(LoggableHierarchicalModel):
             self._call_parent_hook('commit')
         finally:
             self._in_commit = False
-            self._after_invalidate = False
+            self._after_commit_notify = False
 
         self.log.info("Commit concluded.")
 
-    def abort(self) -> None:
-        if self.ended:
-            raise RuntimeError("Cannot abort an ended session.")
-
-        # No need to do anything if there are no edits to commit
-        if not self.dirty:
-            return
-
-        # TODO: Log abort
-        self.log.warning("Aborting session...")
-        self._in_abort = True
-
-        try:
-            # Forcefully delete any entities created in this session
-            if self._entities_created:
-                self._clear_journals()
-                entities = set()
-
-                for uid in self._entities_created:
-                    entity = Entity.by_uid_or_none(uid)
-                    if entity is None or entity.superseded:
-                        continue
-                    entities.add(entity)
-                    if not entity.marked_for_deletion:
-                        entity.delete()
-
-                for entity in entities:
-                    entity.apply_deletion()
-
-            self._clear()
-            self.log.warning("Session aborted.")
-            self._call_parent_hook('abort')
-        finally:
-            self._in_abort = False
-
-    def end(self) -> None:
-        if self.ended:
-            raise RuntimeError("Cannot end an already ended session.")
-
-        if self.dirty:
-            self.commit()
-
-        # TODO: Log ended
-
-        self._ended = True
-        self.log.debug("Session ended.")
-        self._call_parent_hook('end')
-
-
-    # MARK: Commit
     def _commit(self) -> None:
-        self._commit_invalidate()
+        self._commit_notify()
         self._commit_apply()
-        self._commit_deletions()
 
     def _commit_travel_hierarchy(self, iterable : Iterable[Uid], *, condition : Callable[[Entity], bool] | None = None, copy : bool = False) -> Iterable[Entity]:
         if copy:
             iterable = list(iterable)
         for uid in iterable:
-            yield from uid.entity.iter_hierarchy(condition=condition, use_journal=True)
+            entity = Entity.by_uid_or_none(uid)
+            if entity is None or entity.superseded:
+                continue
+            yield from entity.iter_hierarchy(condition=condition, use_journal=True)
 
-    def _commit_invalidate_travel_hierarchy_condition(self, e: Entity) -> bool:
+
+    # MARK: Commit - Notify
+    _restart_commit_notify : bool = PrivateAttr(default=False)
+
+    def on_journal_reset_notified_dependents(self, journal : EntityJournal) -> None:
+        if not self._in_commit:
+            raise RuntimeError("Can only reset notified dependents during commit.")
+        if self._after_commit_notify:
+            raise RuntimeError("Cannot reset notified dependents after notification phase.")
+
+        self._restart_commit_notify = True
+
+    def _commit_notify_travel_hierarchy_condition(self, e: Entity) -> bool:
         j = self._entity_journals.get(e.uid, None)
-        if j is not None:
-            return not j.invalidated
-        elif e.uid in self._entities_deleted:
-            return e.uid not in self._deletions_announced
-        else:
-            return False
+        return (not j.notified_dependents) if j is not None else False
 
-    def _commit_invalidate(self):
+    def _commit_notify(self):
         """
         Invalidate all computed fields in all journals.
         """
         self.log.debug("Invalidating all entities with a journal or that have been deleted...")
 
-        len_journals = len(self._entity_journals )
-        len_deleted  = len(self._entities_deleted)
-
-        def should_restart() -> bool:
-            nonlocal len_journals, len_deleted
-
-            new_len_journals = len(self._entity_journals )
-            new_len_deleted  = len(self._entities_deleted)
-            restart = (new_len_journals != len_journals) or (new_len_deleted != len_deleted)
-
-            if restart:
-                len_journals = new_len_journals
-                len_deleted  = new_len_deleted
-            return restart
-
         pass_count = 0
         while True:
             pass_count += 1
-            self.log.debug(t"Starting invalidation pass {pass_count}...")
+            self.log.debug(t"Starting notify pass {pass_count}...")
 
-            finished = False
+            self._restart_commit_notify = False
+
             for e in self._commit_travel_hierarchy(
-                itertools.chain(self._entities_deleted, self._entity_journals.keys()),
-                condition=self._commit_invalidate_travel_hierarchy_condition,
+                self._entity_journals.keys(),
+                condition=self._commit_notify_travel_hierarchy_condition,
                 copy=True
             ):
-                if e.uid in self._entities_deleted:
-                    self.log.debug(t"Announcing deletion of entity {e!s}...")
-                    assert e.uid not in self._deletions_announced
-                    e.announce_deletion()
-                    self._deletions_announced.add(e.uid)
-                else:
-                    self.log.debug(t"Invalidating entity {e!s}...")
-                    j = self._entity_journals[e.uid]
-                    j.invalidate()
+                j = self._entity_journals[e.uid]
+                j.notify_dependents()
 
-                if should_restart():
+                if self._restart_commit_notify:
                     break
-            else:
-                finished = True
-            if not finished:
+            if self._restart_commit_notify:
                 continue
 
-            self._call_parent_hook('invalidate')
-            if not should_restart():
+            self._call_parent_hook('notify')
+            if not self._restart_commit_notify:
                 break
 
-        assert self._deletions_announced >= (self._entities_deleted)
-        assert all(j.invalidated for j in self._entity_journals.values())
+        assert not self._restart_commit_notify
+        assert all(j.notified_dependents for j in self._entity_journals.values())
 
-        self._after_invalidate = True
+        # Freeze all journals to prevent further edits
+        for j in self._entity_journals.values():
+            j.freeze()
+
+        self._after_commit_notify = True
 
 
+    # MARK: Commit - Apply
     def _commit_apply_travel_hierarchy_condition(self, e: Entity) -> bool:
         j = self._entity_journals.get(e.uid, None)
-        if j is None or j.superseded:
-            return False
-        return True
+        return j is not None and not j.superseded
 
     def _commit_apply(self) -> None:
         """
-        Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions).
-        Where an entity holds references to child entities (e.g. lists/dicts), these references are refreshed.
+        Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions, or deleting them as requested).
         """
         self.log.debug("Committing journals...")
 
@@ -419,19 +369,7 @@ class Session(LoggableHierarchicalModel):
             condition=self._commit_apply_travel_hierarchy_condition,
             copy=False
         ):
-            self.log.debug(f"Committing entity {e.uid}...")
             j = self._entity_journals[e.uid]
             j.commit()
 
         self._call_parent_hook('apply')
-
-    def _commit_deletions(self) -> None:
-        """
-        Apply deletions to all entities marked for deletion.
-        """
-        self.log.debug("Applying entity deletions...")
-
-        for uid in self._entities_deleted:
-            self.log.debug(f"Applying deletion to Entity {uid}...")
-            entity = uid.entity
-            entity.apply_deletion()

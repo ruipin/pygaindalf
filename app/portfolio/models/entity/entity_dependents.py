@@ -128,7 +128,7 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
             if parent is not None:
                 yield parent.uid
 
-        yield from entity.children_uids
+        yield from entity.get_children_uids(use_journal=use_journal)
 
         yield from self._extra_dependent_uids
 

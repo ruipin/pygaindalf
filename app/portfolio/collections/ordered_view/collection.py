@@ -19,7 +19,7 @@ from ....util.helpers.instance_lru_cache import instance_lru_cache
 from ...models.uid import Uid
 from ...models.entity import Entity
 
-from .sort_key_protocol import SortKeyProtocol
+from .protocols import SortKeyProtocol
 
 
 @callguard_class()

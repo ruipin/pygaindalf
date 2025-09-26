@@ -32,11 +32,11 @@ class Annotation[T_Journal : AnnotationJournal](Entity[T_Journal]):
         self.entity_parent.on_annotation_created(self)
 
     @override
-    def _propagate_deletion(self) -> None:
+    def propagate_deletion(self) -> None:
         parent = self.entity_parent_or_none
         if parent is not None:
             self.entity_parent.on_annotation_deleted(self)
         else:
             self.log.warning("Annotation %s has no parent during deletion propagation.", self)
 
-        super()._propagate_deletion()
+        super().propagate_deletion()

@@ -6,9 +6,9 @@ from collections.abc import Sequence
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
-    from ....journal.entity_journal import EntityJournal
 
-from ...ordered_view.sort_key_protocol import SortKeyProtocol
+from ....models.uid import UidProtocol
+from ...ordered_view.protocols import SortKeyProtocol
 from ...ordered_view import OrderedViewSet, OrderedViewFrozenSet
 from .generic_set import GenericJournalledSet
 from .generic_set import JournalledSetEditType
@@ -50,12 +50,14 @@ class JournalledOrderedViewSet[T : Any, T_Mutable : OrderedViewSet, T_Immutable 
         if self.edited:
             self._get_mut_container().clear_sort_cache()
 
-    def on_item_journal_invalidated(self, entity_journal : EntityJournal) -> None:
-        original_sort_key = self.item_sort_key(entity_journal.entity)
-        new_sort_key = self.item_sort_key(entity_journal)
+    def on_item_updated(self, old_item : SortKeyProtocol, new_item : SortKeyProtocol) -> None:
+        original_sort_key = self.item_sort_key(old_item)
+        new_sort_key = self.item_sort_key(new_item)
+
         if original_sort_key != new_sort_key:
-            # We assume that T is Uid here. If it isn't then we shouldn't be here anyway, but this only affects the audit log, so it's not critical even if we are
-            self._append_journal(JournalledSetEditType.ITEM_UPDATED, typing_cast(T, entity_journal.entity.uid))
+            # We assume T is Uid here. Not a big deal if it's not, as this is only used for the audit log
+            assert isinstance(new_item, UidProtocol), "JournalledOrderedViewSet.on_item_updated: item must implement UidProtocol"
+            self._append_journal(JournalledSetEditType.ITEM_UPDATED, typing_cast(T, new_item.uid))
             self._update_frontier_sort_key(new_sort_key)
 
 

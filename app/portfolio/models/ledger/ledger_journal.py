@@ -15,16 +15,6 @@ from .ledger_base import LedgerBase
 
 
 class LedgerJournal(LedgerBase[OrderedViewTransactionUidSet, UidProxyOrderedViewTransactionSet], EntityJournal, MutableSet[Transaction], init=False):
-    if TYPE_CHECKING:
-        instrument_uid : Uid
-
-
-    # MARK: Transactions
-    @cached_property
-    def transactions(self) -> UidProxyOrderedViewTransactionSet:
-        return UidProxyOrderedViewTransactionSet(owner=self, field='transaction_uids')
-
-
     # MARK: MutableSet ABC
     @override
     def add(self, value : Transaction | Uid) -> None:

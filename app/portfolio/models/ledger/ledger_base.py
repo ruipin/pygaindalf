@@ -3,26 +3,45 @@
 
 from functools import cached_property
 
-from collections.abc import Set, Sequence
+from collections.abc import Set
 from abc import abstractmethod, ABCMeta
 from typing import override, Iterator, TYPE_CHECKING
+from pydantic import Field
 
+from ....util.helpers.empty_class import EmptyClass
+from ....util.helpers import generics
+
+from ..instrument import Instrument
 from ..transaction import Transaction
 from ..uid import Uid
 from ..transaction import OrderedViewFrozenTransactionUidSet, UidProxyOrderedViewTransactionFrozenSet
+from ..entity import EntityBase
+
+from .ledger_fields import LedgerFields
 
 
-class LedgerBase[T_Uid_Set : OrderedViewFrozenTransactionUidSet, T_Proxy_Set : UidProxyOrderedViewTransactionFrozenSet](Set[Transaction], metaclass=ABCMeta):
-    if TYPE_CHECKING:
-        transaction_uids : T_Uid_Set
+class LedgerBase[
+    T_Uid_Set : Set[Uid],
+    T_Proxy_Set : UidProxyOrderedViewTransactionFrozenSet
+](
+    EntityBase,
+    LedgerFields[T_Uid_Set] if TYPE_CHECKING else EmptyClass,
+    Set[Transaction],
+    metaclass=ABCMeta
+):
+    # MARK: Instrument
+    @property
+    def instrument(self) -> Instrument:
+        return Instrument.by_uid(self.instrument_uid)
+
+
+    # MARK: Transactions
+    get_proxy_set_type = generics.GenericIntrospectionMethod[T_Proxy_Set]()
 
     @cached_property
-    @abstractmethod
     def transactions(self) -> T_Proxy_Set:
-        raise NotImplementedError("Subclasses must implement transactions property")
+        return self.get_proxy_set_type(origin=True)(owner=self, field='transaction_uids')
 
-
-    # MARK: Custom __getitem__
     def __getitem__(self, index : int | Uid) -> Transaction:
         if isinstance(index, int):
             return self.transactions[index]

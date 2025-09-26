@@ -6,10 +6,8 @@ from iso4217 import Currency
 
 from ...journal.entity_journal import EntityJournal
 
+from .instrument_base import InstrumentBase
 
-class InstrumentJournal(EntityJournal, init=False):
-    # Help the type checker understand the structure of the proxied object
-    if TYPE_CHECKING:
-        isin     : str | None
-        ticker   : str | None
-        currency : Currency
+
+class InstrumentJournal(InstrumentBase, EntityJournal, init=False):
+    pass

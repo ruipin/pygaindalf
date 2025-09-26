@@ -8,8 +8,7 @@ from functools import cached_property
 from pydantic import Field, computed_field, field_validator
 from collections.abc import Set, MutableSet, Sequence
 
-if TYPE_CHECKING:
-    from _typeshed import SupportsRichComparison
+from ....util.helpers.empty_class import EmptyClass
 
 from ...collections.uid_proxy import UidProxyOrderedViewSet, UidProxySequence
 from ...collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
@@ -21,15 +20,22 @@ from ..transaction import Transaction, OrderedViewFrozenTransactionUidSet, UidPr
 
 from ..uid import Uid
 
+from .ledger_fields import LedgerFields
 from .ledger_base import LedgerBase
 from .ledger_journal import LedgerJournal
 
+if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
 
 
-class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
+
+class Ledger(
+    LedgerBase,
+    LedgerFields if not TYPE_CHECKING else EmptyClass,
+    NamedInstanceStoreEntityMixin,
+    Entity[LedgerJournal]
+):
     # MARK: Instrument
-    instrument_uid: Uid = Field(description="The financial instrument associated with this ledger, such as a stock, bond, or currency.")
-
     @field_validator('instrument_uid', mode='before')
     @classmethod
     def _validate_instrument_uid(cls, value : Any):
@@ -39,9 +45,19 @@ class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
             raise ValueError(f"Invalid instrument UID namespace: expected '{instrument_ns}', got '{value.namespace}'.")
         return value
 
-    @property
-    def instrument(self) -> Instrument:
-        return Instrument.by_uid(self.instrument_uid)
+    @classmethod
+    def by_instrument(cls, instrument: Instrument) -> Ledger | None:
+        """
+        Returns the ledger instance associated with the given instrument.
+        If no ledger exists for the instrument, returns None.
+        """
+        if not isinstance(instrument, Instrument):
+            raise TypeError(f"Expected 'instrument' to be an Instrument instance, got {type(instrument).__name__}.")
+
+        result = cls.instance(instance_name=cls.calculate_instance_name_from_dict({'instrument_uid': instrument.uid}))
+        if not isinstance(result, cls):
+            raise TypeError(f"Expected 'result' to be an instance of {cls.__name__}, got {type(result).__name__}.")
+        return result
 
 
 
@@ -72,32 +88,6 @@ class Ledger(LedgerBase, NamedInstanceStoreEntityMixin, Entity[LedgerJournal]):
                 raise ValueError(f"Instrument with UID '{instrument_uid}' does not have a valid instance name.")
 
         return f"{cls.__name__}@{instrument_name}"
-
-    @classmethod
-    def by_instrument(cls, instrument: Instrument) -> Ledger | None:
-        """
-        Returns the ledger instance associated with the given instrument.
-        If no ledger exists for the instrument, returns None.
-        """
-        if not isinstance(instrument, Instrument):
-            raise TypeError(f"Expected 'instrument' to be an Instrument instance, got {type(instrument).__name__}.")
-
-        result = cls.instance(instance_name=cls.calculate_instance_name_from_dict({'instrument_uid': instrument.uid}))
-        if not isinstance(result, cls):
-            raise TypeError(f"Expected 'result' to be an instance of {cls.__name__}, got {type(result).__name__}.")
-        return result
-
-
-
-    # MARK: Transactions
-    if TYPE_CHECKING:
-        transaction_uids : Set[Uid] = Field(default_factory=frozenset)
-    else:
-        transaction_uids : OrderedViewFrozenTransactionUidSet = Field(default_factory=OrderedViewFrozenTransactionUidSet, description="A set of transaction Uids associated with this ledger.")
-
-    @cached_property
-    def transactions(self) -> UidProxyOrderedViewTransactionFrozenSet:
-        return UidProxyOrderedViewTransactionFrozenSet(owner=self, field='transaction_uids')
 
 
     # MARK: Utilities

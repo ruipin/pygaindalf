@@ -3,24 +3,21 @@
 
 from pydantic import model_validator, Field
 from pydantic_core import PydanticUseDefault
-from typing import override, Any, Generic
-from iso4217 import Currency
+from typing import override, Any, TYPE_CHECKING
+
+from ....util.helpers.empty_class import EmptyClass
 
 from ..entity.instance_store import InstanceStoreEntityMixin
 from ..entity import Entity
 from ..store import StringUidMapping
 
+from .instrument_fields import InstrumentFields
+from .instrument_base import InstrumentBase
 from .instrument_journal import InstrumentJournal
 
 
 
-class Instrument(InstanceStoreEntityMixin, Entity[InstrumentJournal]):
-    # MARK: Fields
-    isin     : str | None = Field(default=None, min_length=1, description="International Securities Identification Number (ISIN) of the instrument.")
-    ticker   : str | None = Field(default=None, min_length=1, description="Ticker symbol of the instrument, used for trading and identification.")
-    currency : Currency   = Field(description="The currency in which the instrument is denominated.")
-
-
+class Instrument(InstrumentBase, InstrumentFields if not TYPE_CHECKING else EmptyClass, InstanceStoreEntityMixin, Entity[InstrumentJournal]):
     # MARK: Instance Store Behaviour
     @classmethod
     def _get_isin_store(cls) -> StringUidMapping:

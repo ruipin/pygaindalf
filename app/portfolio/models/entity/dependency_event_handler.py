@@ -17,12 +17,12 @@ if TYPE_CHECKING:
 
 # MARK: Enums
 class EntityDependencyEventType(StrEnum):
-    INVALIDATED = 'invalidated'
-    DELETED     = 'deleted'
+    UPDATED = 'updated'
+    DELETED = 'deleted'
 
     @property
-    def invalidated(self) -> bool:
-        return self is EntityDependencyEventType.INVALIDATED
+    def updated(self) -> bool:
+        return self is EntityDependencyEventType.UPDATED
 
     @property
     def deleted(self) -> bool:
@@ -54,7 +54,7 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
     )
 
     handler            : InstanceOf[EntityDependencyEventHandler]
-    on_invalidated     : bool
+    on_updated         : bool
     on_deleted         : bool
     entity_matchers    : tuple[InstanceOf[EntityDependencyEventEntityMatcher   ]      , ...] | InstanceOf[EntityDependencyEventEntityMatcher   ]       | None = None
     attribute_matchers : tuple[InstanceOf[EntityDependencyEventAttributeMatcher] | str, ...] | InstanceOf[EntityDependencyEventAttributeMatcher] | str | None = None
@@ -65,7 +65,7 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
 
     # MARK: Matching
     def match_event(self, event : EntityDependencyEventType) -> bool:
-        if event.invalidated and self.on_invalidated:
+        if event.updated and self.on_updated:
             return True
         if event.deleted and self.on_deleted:
             return True
@@ -121,17 +121,12 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
         return frozenset(matched_attributes) if matched_attributes else None
 
     def call(self, owner : Entity, event : EntityDependencyEventType, entity : Entity, *, matched_attributes : frozenset[str] | None = None) -> None:
-        import logging
-        logging.debug(f"Calling {event.value} handler on {entity} with matched attributes {matched_attributes}")
+        self.log.debug(f"Calling {event.value} handler on {entity} with matched attributes {matched_attributes}")
         return self.handler(owner, event, entity, matched_attributes=matched_attributes)
 
 
     # MARK: Call
-    @overload
-    def __call__(self, owner : Entity, event : Literal[EntityDependencyEventType.INVALIDATED], entity : Entity, journal : EntityJournal) -> bool: ...
-    @overload
-    def __call__(self, owner : Entity, event : Literal[EntityDependencyEventType.DELETED], entity : Entity, journal : None = None) -> bool: ...
-    def __call__(self, owner : Entity, event : EntityDependencyEventType, entity : Entity, journal : EntityJournal | None = None) -> bool:
+    def __call__(self, owner : Entity, event : EntityDependencyEventType, entity : Entity, journal : EntityJournal) -> bool:
         if owner is entity:
             raise ValueError("An entity cannot handle its own dependency events.")
 
@@ -142,7 +137,7 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
             return False
 
         matched_attributes : frozenset[str] | None = None
-        if event.invalidated and self.attribute_matchers:
+        if event.updated and self.attribute_matchers:
             assert journal is not None
             matched_attributes = self.match_attributes(owner, journal)
             if matched_attributes is None:

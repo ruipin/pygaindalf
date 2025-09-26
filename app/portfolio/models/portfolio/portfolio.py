@@ -1,27 +1,25 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import override, TYPE_CHECKING, Iterator, Iterable
+from typing import TYPE_CHECKING
 from pydantic import Field
 from functools import cached_property
-from collections.abc import MutableSet, Set
+from collections.abc import Set
 
-from ..entity import Entity, IncrementingUidEntity
-from ..instrument.instrument import Instrument
+from ....util.helpers.empty_class import EmptyClass
+
+from ..entity import IncrementingUidEntity
 from ..uid import Uid
 from ..ledger import UidProxyOrderedViewLedgerFrozenSet, OrderedViewFrozenLedgerUidSet
 
+from .portfolio_fields import PortfolioFields
 from .portfolio_base import PortfolioBase
 from .portfolio_journal import PortfolioJournal
 
 
-class Portfolio(PortfolioBase, IncrementingUidEntity[PortfolioJournal]):
-    # MARK: Ledgers
-    if TYPE_CHECKING:
-        ledger_uids : Set[Uid] = Field(default_factory=frozenset)
-    else:
-        ledger_uids : OrderedViewFrozenLedgerUidSet = Field(default_factory=OrderedViewFrozenLedgerUidSet, description="A set of ledger Uids associated with this portfolio.")
-
-    @cached_property
-    def ledgers(self) -> UidProxyOrderedViewLedgerFrozenSet:
-        return UidProxyOrderedViewLedgerFrozenSet(owner=self, field='ledger_uids')
+class Portfolio(
+    PortfolioBase,
+    PortfolioFields if not TYPE_CHECKING else EmptyClass,
+    IncrementingUidEntity[PortfolioJournal]
+):
+    pass

@@ -2,6 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
+from .protocols  import *
 from .collection import JournalledCollection
 from .sequence   import JournalledSequence
 from .mapping    import JournalledMapping

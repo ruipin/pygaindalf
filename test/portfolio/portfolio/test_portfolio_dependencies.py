@@ -135,7 +135,7 @@ class TestPortfolioDependencies:
         ledg_appl_v3 = ledg_appl_v2.superseding
         assert inst_msft.uid not in ledg_appl_v3.extra_dependency_uids
 
-    def test_dependency_event_handlers_invalidated_and_deleted(self, portfolio_root: PortfolioRoot):
+    def test_dependency_event_handlers_updated_and_deleted(self, portfolio_root: PortfolioRoot):
         # Arrange: seed portfolio
         portfolio, inst_appl, ledg_appl, tx_buy, tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
 
@@ -167,37 +167,35 @@ class TestPortfolioDependencies:
             calls.append(DepEventCall(event=event, self_uid=self.uid, entity_uid=entity.uid, matched_attributes=matched_attributes))
 
         # Register on Ledger so only Ledgers receive these callbacks
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler,
-                on_invalidated=True,
-                on_deleted=True,
-                entity_matchers=entity_matcher,
-                attribute_matchers=attr_matcher,
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler,
+            on_updated=True,
+            on_deleted=True,
+            entity_matchers=entity_matcher,
+            attribute_matchers=attr_matcher,
+        ).register(Ledger)
 
 
-        # Act: trigger INVALIDATED by editing inst_nvda.currency inside a session (and committing)
-        with portfolio_root.session_manager(actor="tester", reason="invalidate inst_b"):
+        # Act: trigger UPDATED by editing inst_nvda.currency inside a session (and committing)
+        with portfolio_root.session_manager(actor="tester", reason="update inst_b"):
             jb = inst_nvda.journal
 
             # Edit mutable field that doesn't affect instance naming
             jb.currency = Currency("EUR")
 
-        # Assert: received two INVALIDATED callbacks (parent ledger + extra dependency ledger) with matched {currency}
+        # Assert: received two UPDATED callbacks (parent ledger + extra dependency ledger) with matched {currency}
         assert inst_nvda.superseded
         inst_nvda = inst_nvda.superseding
-        # Expect two INVALIDATED callbacks: one for the parent ledger of inst_nvda, and one for ledg_appl (extra dependency)
-        invalidation_calls = [c for c in calls if c.event == EntityDependencyEventType.INVALIDATED]
-        assert len(invalidation_calls) == 2
+        # Expect two UPDATED callbacks: one for the parent ledger of inst_nvda, and one for ledg_appl (extra dependency)
+        update_calls = [c for c in calls if c.event == EntityDependencyEventType.UPDATED]
+        assert len(update_calls) == 2
         # The self ledgers should be the current ledger for inst_nvda and ledg_appl
         ledg_nvda_current = portfolio_root.portfolio[inst_nvda]
         ledg_appl_current = Ledger.by_uid(ledg_appl.uid)
-        assert {c.self_uid for c in invalidation_calls} == {ledg_nvda_current.uid, ledg_appl_current.uid}
+        assert {c.self_uid for c in update_calls} == {ledg_nvda_current.uid, ledg_appl_current.uid}
         # Entity uid should match inst_nvda and matched attributes should be {currency}
-        assert all(c.entity_uid == inst_nvda.uid for c in invalidation_calls)
-        assert all(c.matched_attributes == frozenset({"currency"}) for c in invalidation_calls)
+        assert all(c.entity_uid == inst_nvda.uid for c in update_calls)
+        assert all(c.matched_attributes == frozenset({"currency"}) for c in update_calls)
 
 
         # Prep: clear for next phase
@@ -268,27 +266,25 @@ class TestPortfolioDependencies:
         def handler(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
             calls.append((event, str(entity.uid), matched_attributes))
 
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler,
-                on_invalidated=True,
-                on_deleted=True,
-                entity_matchers=(entity_matcher_noop, entity_matcher_target),
-                attribute_matchers=(attr_match_currency, attr_match_ticker),
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler,
+            on_updated=True,
+            on_deleted=True,
+            entity_matchers=(entity_matcher_noop, entity_matcher_target),
+            attribute_matchers=(attr_match_currency, attr_match_ticker),
+        ).register(Ledger)
 
-        # Act: invalidate by changing both currency and ticker in one session
-        with portfolio_root.session_manager(actor="tester", reason="invalidate with multiple attrs"):
+        # Act: update by changing both currency and ticker in one session
+        with portfolio_root.session_manager(actor="tester", reason="update with multiple attrs"):
             jb = inst_isin_0001.journal
             jb.currency = Currency("EUR")
             jb.ticker = "FOO"
         assert inst_isin_0001.superseded
         inst_isin_0001 = inst_isin_0001.superseding
 
-        # Assert: a single INVALIDATED call capturing both attributes
+        # Assert: a single UPDATED call capturing both attributes
         assert any(
-            evt == EntityDependencyEventType.INVALIDATED
+            evt == EntityDependencyEventType.UPDATED
             and uid == str(inst_isin_0001.uid)
             and matched is not None
             and matched.issuperset({"currency", "ticker"})
@@ -342,25 +338,23 @@ class TestPortfolioDependencies:
             calls.append((event, str(entity.uid), matched_attributes))
 
         # No entity or attribute filters: should fire for any dependent entity and any attribute
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler,
-                on_invalidated=True,
-                on_deleted=True,
-                entity_matchers=None,
-                attribute_matchers=None,
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler,
+            on_updated=True,
+            on_deleted=True,
+            entity_matchers=None,
+            attribute_matchers=None,
+        ).register(Ledger)
 
-        # Act: invalidate by changing currency (no attribute filters => matched None)
-        with portfolio_root.session_manager(actor="tester", reason="invalidate inst_b"):
+        # Act: update by changing currency (no attribute filters => matched None)
+        with portfolio_root.session_manager(actor="tester", reason="update inst_b"):
             inst_goog.journal.currency = Currency("GBP")
         assert inst_goog.superseded
         inst_goog = inst_goog.superseding
 
-        # Assert: INVALIDATED fired with matched None
+        # Assert: UPDATED fired with matched None
         assert any(
-            evt == EntityDependencyEventType.INVALIDATED and uid == str(inst_goog.uid) and matched is None
+            evt == EntityDependencyEventType.UPDATED and uid == str(inst_goog.uid) and matched is None
             for (evt, uid, matched) in calls
         )
 
@@ -391,7 +385,7 @@ class TestPortfolioDependencies:
             for (evt, uid, matched) in calls
         )
 
-    def test_records_only_on_invalidated_or_only_on_deleted(self, portfolio_root: PortfolioRoot):
+    def test_records_only_on_updated_or_only_on_deleted(self, portfolio_root: PortfolioRoot):
         # Arrange: seed portfolio
         portfolio, inst_appl, ledg_appl, tx_buy, tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
@@ -405,55 +399,51 @@ class TestPortfolioDependencies:
         ledg_appl = ledg_appl.superseding
 
         # Prep: capture full details as NamedTuple using Uid types
-        inv_calls: list[DepEventCall] = []
+        update_calls: list[DepEventCall] = []
         del_calls: list[DepEventCall] = []
 
-        def inv_handler(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
-            inv_calls.append(DepEventCall(event=event, self_uid=self.uid, entity_uid=entity.uid, matched_attributes=matched_attributes))
+        def update_handler(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
+            update_calls.append(DepEventCall(event=event, self_uid=self.uid, entity_uid=entity.uid, matched_attributes=matched_attributes))
 
         def del_handler(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
             del_calls.append(DepEventCall(event=event, self_uid=self.uid, entity_uid=entity.uid, matched_attributes=matched_attributes))
 
         original_handler_count = len(Ledger.__entity_dependency_event_handler_records__)
 
-        # Register: record that only fires on invalidated
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=inv_handler,
-                on_invalidated=True,
-                on_deleted=False,
-                entity_matchers=lambda self, entity: entity.uid == inst_amzn.uid,
-                attribute_matchers=lambda self, attribute, value: True,
-            )
-        )
+        # Register: record that only fires on updated
+        EntityDependencyEventHandlerRecord(
+            handler=update_handler,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=lambda self, entity: entity.uid == inst_amzn.uid,
+            attribute_matchers=lambda self, attribute, value: True,
+        ).register(Ledger)
 
         # Register: record that only fires on deleted
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=del_handler,
-                on_invalidated=False,
-                on_deleted=True,
-                entity_matchers=lambda self, entity: entity.uid == inst_amzn.uid,
-                attribute_matchers=None,
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=del_handler,
+            on_updated=False,
+            on_deleted=True,
+            entity_matchers=lambda self, entity: entity.uid == inst_amzn.uid,
+            attribute_matchers=None,
+        ).register(Ledger)
 
         assert len(Ledger.__entity_dependency_event_handler_records__) == original_handler_count + 2
         assert len(list(Ledger.iter_dependency_event_handlers())) == len(Ledger.__entity_dependency_event_handler_records__)
 
-        # Act: invalidate should only trigger inv_handler; expect two calls (parent ledger + extra dependency ledger)
-        with portfolio_root.session_manager(actor="tester", reason="invalidate inst_b"):
+        # Act: update should only trigger update_handler; expect two calls (parent ledger + extra dependency ledger)
+        with portfolio_root.session_manager(actor="tester", reason="update inst_b"):
             inst_amzn.journal.currency = Currency("JPY")
         assert inst_amzn.superseded
         inst_amzn = inst_amzn.superseding
         # Assert: collect current ledgers that depend on inst_amzn and validate calls
         ledg_amzn_current = portfolio_root.portfolio[inst_amzn]
         ledg_appl_current = Ledger.by_uid(ledg_appl.uid)
-        assert len(inv_calls) == 2
-        assert {c.event for c in inv_calls} == {EntityDependencyEventType.INVALIDATED}
-        assert {c.self_uid for c in inv_calls} == {ledg_amzn_current.uid, ledg_appl_current.uid}
-        assert all(c.entity_uid == inst_amzn.uid for c in inv_calls)
-        assert all(c.matched_attributes == frozenset({"currency"}) for c in inv_calls)
+        assert len(update_calls) == 2
+        assert {c.event for c in update_calls} == {EntityDependencyEventType.UPDATED}
+        assert {c.self_uid for c in update_calls} == {ledg_amzn_current.uid, ledg_appl_current.uid}
+        assert all(c.entity_uid == inst_amzn.uid for c in update_calls)
+        assert all(c.matched_attributes == frozenset({"currency"}) for c in update_calls)
         assert del_calls == []
 
 
@@ -498,36 +488,32 @@ class TestPortfolioDependencies:
         calls_ticker: list[frozenset[str] | None] = []
 
         def handler_currency(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
-            if event == EntityDependencyEventType.INVALIDATED:
+            if event == EntityDependencyEventType.UPDATED:
                 calls_currency.append(matched_attributes)
 
         def handler_ticker(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
-            if event == EntityDependencyEventType.INVALIDATED:
+            if event == EntityDependencyEventType.UPDATED:
                 calls_ticker.append(matched_attributes)
 
         # Register: two separate records on the same class with distinct attribute filters
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler_currency,
-                on_invalidated=True,
-                on_deleted=False,
-                entity_matchers=lambda self, entity: entity.uid == inst_isin_1111.uid,
-                attribute_matchers=lambda self, attribute, value: attribute == "currency",
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler_currency,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=lambda self, entity: entity.uid == inst_isin_1111.uid,
+            attribute_matchers=lambda self, attribute, value: attribute == "currency",
+        ).register(Ledger)
 
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler_ticker,
-                on_invalidated=True,
-                on_deleted=False,
-                entity_matchers=lambda self, entity: entity.uid == inst_isin_1111.uid,
-                attribute_matchers=lambda self, attribute, value: attribute == "ticker",
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler_ticker,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=lambda self, entity: entity.uid == inst_isin_1111.uid,
+            attribute_matchers=lambda self, attribute, value: attribute == "ticker",
+        ).register(Ledger)
 
         # Act: change both attributes in a single session
-        with portfolio_root.session_manager(actor="tester", reason="invalidate both attrs"):
+        with portfolio_root.session_manager(actor="tester", reason="update both attrs"):
             jb = inst_isin_1111.journal
             jb.currency = Currency("CHF")
             jb.ticker = "BAR"
@@ -557,22 +543,20 @@ class TestPortfolioDependencies:
             if entity.uid == inst_isin_2222.uid:
                 calls.append((event, matched_attributes))
 
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler_str,
-                on_invalidated=True,
-                on_deleted=False,
-                entity_matchers=lambda self, entity: entity.uid == inst_isin_2222.uid,
-                attribute_matchers="currency",
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler_str,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=lambda self, entity: entity.uid == inst_isin_2222.uid,
+            attribute_matchers="currency",
+        ).register(Ledger)
 
         # Case 1 — Act: change currency
         with portfolio_root.session_manager(actor="tester", reason="change currency"):
             inst_isin_2222.journal.currency = Currency("EUR")
         inst_isin_2222 = inst_isin_2222.superseding
         # Case 1 — Assert: matched_attributes == {"currency"}
-        assert any(evt == EntityDependencyEventType.INVALIDATED and matched == frozenset({"currency"}) for evt, matched in calls)
+        assert any(evt == EntityDependencyEventType.UPDATED and matched == frozenset({"currency"}) for evt, matched in calls)
 
         # Case 1 — Negative: changing ticker should NOT trigger (filter is "currency")
         calls.clear()
@@ -586,18 +570,16 @@ class TestPortfolioDependencies:
         calls_seq: list[frozenset[str] | None] = []
 
         def handler_seq(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
-            if event == EntityDependencyEventType.INVALIDATED and entity.uid == inst_isin_2222.uid:
+            if event == EntityDependencyEventType.UPDATED and entity.uid == inst_isin_2222.uid:
                 calls_seq.append(matched_attributes)
 
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler_seq,
-                on_invalidated=True,
-                on_deleted=False,
-                entity_matchers=lambda self, entity: entity.uid == inst_isin_2222.uid,
-                attribute_matchers=["currency", "ticker"], # pyright: ignore[reportArgumentType]
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler_seq,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=lambda self, entity: entity.uid == inst_isin_2222.uid,
+            attribute_matchers=["currency", "ticker"], # pyright: ignore[reportArgumentType]
+        ).register(Ledger)
 
         # Case 2 — Act: change both in a single session
         with portfolio_root.session_manager(actor="tester", reason="change both"):
@@ -625,22 +607,20 @@ class TestPortfolioDependencies:
         calls: list[frozenset[str] | None] = []
 
         def handler(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
-            if event == EntityDependencyEventType.INVALIDATED and entity.uid == inst_isin_3333.uid:
+            if event == EntityDependencyEventType.UPDATED and entity.uid == inst_isin_3333.uid:
                 calls.append(matched_attributes)
 
         # Register: record with mixed attribute matchers — "currency" (string) and callable for ticker
-        Ledger.register_dependency_event_handler(
-            EntityDependencyEventHandlerRecord(
-                handler=handler,
-                on_invalidated=True,
-                on_deleted=False,
-                entity_matchers=lambda self, entity: entity.uid == inst_isin_3333.uid,
-                attribute_matchers=(
-                    "currency",
-                    (lambda self, attribute, value: attribute == "ticker"),
-                ),
-            )
-        )
+        EntityDependencyEventHandlerRecord(
+            handler=handler,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=lambda self, entity: entity.uid == inst_isin_3333.uid,
+            attribute_matchers=(
+                "currency",
+                (lambda self, attribute, value: attribute == "ticker"),
+            ),
+        ).register(Ledger)
 
         # Act: change currency only -> matches {"currency"}
         with portfolio_root.session_manager(actor="tester", reason="currency only"):

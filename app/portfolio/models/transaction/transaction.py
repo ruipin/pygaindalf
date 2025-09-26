@@ -12,25 +12,20 @@ from decimal import Decimal
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
-from ..uid import Uid
+from ....util.helpers.empty_class import EmptyClass
 
+from ..uid import Uid
 from ..entity import IncrementingUidEntity
 from ..instrument.instrument import Instrument
 
 from .transaction_journal import TransactionJournal
 from .transaction_type import TransactionType
+from .transaction_fields import TransactionFields
+from .transaction_base import TransactionBase
 
 
 
-class Transaction(IncrementingUidEntity[TransactionJournal]):
-    # MARK: Fields
-    type           : TransactionType = Field(description="The type of transaction.")
-    date           : datetime.date   = Field(description="The date of the transaction.")
-    quantity       : Decimal         = Field(description="The quantity involved in the transaction.")
-    consideration  : Decimal         = Field(description="The consideration amount for the transaction.")
-    fees           : Decimal         = Field(default=Decimal(0), description="The fees associated with the transaction.")
-
-
+class Transaction(TransactionBase, TransactionFields if not TYPE_CHECKING else EmptyClass, IncrementingUidEntity[TransactionJournal]):
     # MARK: Instrument
     @property
     def instrument(self) -> Instrument:

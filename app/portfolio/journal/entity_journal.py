@@ -32,7 +32,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     __callguard_class_options__ = CallguardClassOptions['EntityJournal'](
         decorator=superseded_check,
         decorate_public_methods=True,
-        decorate_ignore_patterns=('superseded','dirty','entity_uid','mark_superseded','freeze','commit_yield_hierarchy','get_diff','instance_name','instance_hierarchy')
+        decorate_ignore_patterns=('superseded','dirty','deleted','marked_for_deletion','entity_uid','mark_superseded','freeze','commit_yield_hierarchy','get_diff','instance_name','instance_hierarchy')
     )
 
     model_config = ConfigDict(
@@ -55,16 +55,13 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     entity : InstanceOf[Entity] = Field(description="The entity associated with this journal entry.")
 
     @property
-    def entity_uid(self) -> Uid:
+    @override
+    def uid(self) -> Uid: # pyright: ignore[reportIncompatibleVariableOverride]
         return self.entity.uid
 
     @property
     def version(self) -> int:
         return self.entity.version
-
-    @property
-    def session(self) -> Session:
-        return self.entity.session
 
     @override
     def __hash__(self) -> int:
@@ -89,6 +86,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         return f"<{self.__class__.__name__}:{self.entity!r}>"
 
     @property
+    @override
     def instance_name(self) -> str:
         return f"{self.__class__.__name__}({self.entity.uid})"
 
@@ -106,14 +104,18 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     @property
     def superseded(self) -> bool:
         try:
-            marked_superseded = self._marked_superseded
+            if getattr(self, '_marked_superseded', False):
+                return True
         except:
-            marked_superseded = False
-        return marked_superseded or self.entity.superseded or self.entity.marked_for_deletion
+            pass
+
+        return self.deleted or self.entity.superseded
 
     @property
     def dirty(self) -> bool:
         if self._dirty_children:
+            return True
+        if self._marked_for_deletion:
             return True
         for attr, value in self._updates.items():
             if isinstance(value, JournalledCollection):
@@ -122,6 +124,23 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
             else:
                 return True
         return False
+
+    def _on_dirtied(self) -> None:
+        self._reset_children_uids_cache()
+        self._propagate_dirty()
+        self._reset_notified_dependents()
+
+
+    # MARK: Session
+    @property
+    def session(self) -> Session:
+        parent = self.instance_parent
+        if parent is None:
+            raise RuntimeError(f"EntityJournal {self} has no parent Session.")
+        from .session import Session
+        if not isinstance(parent, Session):
+            raise TypeError(f"EntityJournal {self} parent is not a Session.")
+        return parent
 
 
     # MARK: Frozen
@@ -168,23 +187,6 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
         return not extra.get('readOnly', False)
 
-    def is_protected_field_type(self, field : str) -> bool:
-        FORBIDDEN_TYPES = (JournalledCollection, OrderedViewSet, OrderedViewFrozenSet)
-
-        annotations = annotationlib.get_annotations(self.entity.__class__, format=annotationlib.Format.VALUE)
-        annotation = annotations.get(field, None)
-        if annotation is None:
-            raise RuntimeError(f"Field '{field}' not found in entity type {self.entity.__class__.__name__} annotations.")
-
-        if isinstance(annotation, Union):
-            for arg in get_args(annotation):
-                if issubclass(arg, FORBIDDEN_TYPES):
-                    return True
-            return False
-        else:
-            origin = get_origin(annotation) or annotation
-            return issubclass(origin, FORBIDDEN_TYPES)
-
     def is_field_edited(self, field : str) -> bool:
         value = self._updates.get(field, None)
         if value is None:
@@ -216,18 +218,13 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
         if self._frozen:
             raise RuntimeError(f"Cannot wrap field '{field}' of frozen journal {self}.")
-        self._invalidated = False
 
         self._updates[field] = new
-        self.propagate()
+        self._on_dirtied()
 
         return new
 
     def set_field[T](self, field : str, value : T) -> T:
-        if self._frozen:
-            raise RuntimeError(f"Cannot modify field '{field}' of frozen journal {self}.")
-        self._invalidated = False
-
         field = self.entity.resolve_field_alias(field)
 
         has_update = field in self._updates
@@ -237,17 +234,24 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         if not self.can_modify(field):
             raise AttributeError(f"Field '{field}' of entity type {self.entity.__class__.__name__} is read-only.")
 
+        current = self.get_field(field, wrap=False)
+        if value is current:
+            return value
+
+        if self._frozen:
+            raise RuntimeError(f"Cannot modify field '{field}' of frozen journal {self}.")
+
         original = self.get_original_field(field)
+
         if value is original:
             if has_update:
                 del self._updates[field]
         else:
-            if self.is_protected_field_type(field):
+            if self.entity.is_protected_field_type(field):
                 raise AttributeError(f"Field '{field}' of entity type {self.entity.__class__.__name__} is protected and cannot be modified. Use the collection's methods to modify it instead.")
             self._updates[field] = value
 
-        self._reset_children_uids_cache()
-        self.propagate()
+        self._on_dirtied()
 
         return value
 
@@ -299,8 +303,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         if self._frozen:
             raise RuntimeError(f"Cannot modify field '{collection.instance_name}' of frozen journal {self}.")
 
-        self._reset_children_uids_cache()
-        self._invalidated = False
+        self._on_dirtied()
 
     def get_diff(self) -> frozendict[str, Any]:
         if (cached := getattr(self, '_diff', None)) is not None:
@@ -322,29 +325,29 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
 
 
-    # MARK: Propagation
+    # MARK: Dirty Propagation
     _dirty_children : MutableSet[Uid] = PrivateAttr(default_factory=set)
-    _propagated_has_updates : bool = PrivateAttr(default=False)
+    _propagated_dirty : bool = PrivateAttr(default=False)
 
     def _update_child_dirty_state(self, child : EntityJournal, dirty : bool | None = None):
         if dirty is None:
             dirty = child.dirty
 
         if dirty:
-            self._dirty_children.add(child.entity_uid)
+            self._dirty_children.add(child.uid)
         else:
-            self._dirty_children.discard(child.entity_uid)
+            self._dirty_children.discard(child.uid)
 
-        self.propagate()
+        self._propagate_dirty()
 
-    def propagate(self) -> None:
+    def _propagate_dirty(self) -> None:
         """
         Propagate whether we are dirty to the parent entity's journal
         """
 
         # Check if the dirty state has changed since the last time we propagated to our parent journal
-        has_updates = bool(self._updates)
-        if has_updates == self._propagated_has_updates:
+        dirty = self.dirty
+        if dirty == self._propagated_dirty:
             return
 
         # Propagate to parent journal
@@ -357,68 +360,111 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
             raise TypeError("EntityJournal can only propagate when the parent is an Entity or the SessionManager parent.")
 
         parent_journal = parent.journal
-        parent_journal._update_child_dirty_state(self, has_updates)
+        parent_journal._update_child_dirty_state(self, dirty)
 
         # Cache the last propagated dirty state
-        self._propagated_has_updates = has_updates
+        self._propagated_dirty = dirty
 
 
 
-    # MARK: Invalidation
-    def on_dependency_invalidated(self, source: EntityJournal) -> None:
-        # Loop through entity fields, and search for OrderedViewSets that referenced the source entity
-        for nm, info in self.entity.__class__.model_fields.items():
-            original = self.get_original_field(nm)
-            uid = source.entity_uid
+    # MARK: Deletion
+    _marked_for_deletion : bool = PrivateAttr(default=False)
+    @property
+    def marked_for_deletion(self) -> bool:
+        return self._marked_for_deletion
 
-            if isinstance(original, OrderedViewFrozenSet):
-                value = self.get_field(nm, wrap=False)
+    _deleted : bool = PrivateAttr(default=False)
+    @property
+    def deleted(self) -> bool:
+        try:
+            return getattr(self, '_deleted', False)
+        except:
+            return False
 
-                # Only propagate if the invalidated child is present in both the wrapped set *and* the original set
-                # (this avoids propagating invalidations for items that have been added or removed from the set in the same session as the invalidation)
-                if uid not in original or (value is not original and uid not in value):
-                    continue
+    def delete(self) -> None:
+        if self._marked_for_deletion:
+            return
 
-                if nm not in self._updates:
-                    value = self._wrap_field(nm, value)
-                assert isinstance(value, JournalledOrderedViewSet)
+        self._marked_for_deletion = True
 
-                self.log.debug("Invalidating OrderedViewSet field '%s' of journal %s due to invalidation of dependency %s", nm, self, source.entity)
-                value.on_item_journal_invalidated(source)
+        # Once marked for deletion, this journal will no longer be used to make updates to the entity
+        self._updates.clear()
+        self.freeze()
+
+        # Delete all children recursively
+        self._propagate_dirty()
+        self.entity.propagate_deletion()
 
 
 
-    # MARK: Commit
-    _invalidated : bool = PrivateAttr(default=False)
+    # MARK: Dependent Notifications
+    _notified_dependents : bool = PrivateAttr(default=False)
 
     @property
-    def invalidated(self) -> bool:
-        return self._invalidated
+    def notified_dependents(self) -> bool:
+        return self._notified_dependents
 
-    def invalidate(self) -> None:
-        if self._invalidated:
-            raise RuntimeError(f"Journal {self} is already invalidated.")
+    def notify_dependents(self) -> None:
+        if self._notified_dependents:
+            raise RuntimeError(f"Journal {self} has already notified its dependents of changes.")
 
-        self._invalidated = True
+        self._notified_dependents = True
 
         if not self.dirty:
             return
+
+        deletion = self._marked_for_deletion
+        self.log.debug(f"Notifying dependents of pending {'deletion' if deletion else 'update'}...")
 
         for dep in self.entity.dependent_uids:
             entity = Entity.by_uid(dep)
 
             if not entity.marked_for_deletion:
-                entity.on_dependency_invalidated(self)
+                if deletion:
+                    entity.on_dependency_deleted(self)
+                else:
+                    entity.on_dependency_updated(self)
 
-    def commit(self) -> Entity:
-        assert self._invalidated
+    def _reset_notified_dependents(self) -> None:
+        if not self._notified_dependents:
+            return
+
+        self._notified_dependents = False
+        self.session.on_journal_reset_notified_dependents(self)
+
+
+
+    # MARK: Commit
+    _committed : bool = PrivateAttr(default=False)
+    @property
+    def committed(self) -> bool:
+        return self._committed
+
+    def commit(self) -> Entity | None:
+        assert self._notified_dependents
+        assert not self._committed
         self.freeze()
 
         if not self.dirty:
             self.mark_superseded()
             return self.entity
 
-        self.log.debug("Committing journal for entity %s", self.entity)
+        deletion = self._marked_for_deletion
+        self.log.debug(t"Committing entity {'deletion' if deletion else 'update'}...")
+
+        if self._marked_for_deletion:
+            self._commit_delete()
+            result = None
+        else:
+            result = self._commit_update()
+
+        self._committed = True
+        self.mark_superseded()
+        return result
+
+
+    def _commit_update(self) -> Entity:
+        self.log.debug("Committing update")
 
         # Collect all updates
         updates = {}
@@ -433,7 +479,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         if not updates:
             return self.entity
 
-        self.log.debug("Updates to apply to entity %s: %s", self.entity, repr(updates))
+        self.log.debug("Updates to apply: %s", updates)
 
         # Update the entity
         new_entity = self._new_entity = self.entity.update(
@@ -444,6 +490,15 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
         # Done
         return new_entity
+
+    def _commit_delete(self) -> None:
+        assert self._marked_for_deletion
+        assert not self._deleted
+
+        self.log.debug("Committing deletion")
+
+        self.entity.apply_deletion()
+        self._deleted = True
 
 
 

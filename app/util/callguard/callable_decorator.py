@@ -47,7 +47,6 @@ def default_callguard_checker[T : object, **P, R](info : CallguardHandlerInfo[T,
                     (not isinstance(info.callee_self, type) or not isinstance(info.caller_self, info.callee_self)) and
                     (not isinstance(info.caller_self, type) or not isinstance(info.callee_self, info.caller_self))
                 ):
-                    LOG.info(f"{info.allow_same_class=}, {info.caller_self=}, {info.callee_self=}")
                     LOG.error(t"Self mismatch: caller {info.caller_self}, callee {info.callee_self}")
                     result = False
 

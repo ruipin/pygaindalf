@@ -119,10 +119,7 @@ class EntityRoot(LoggableHierarchicalRootModel):
     def on_session_end(self, session : Session) -> None:
         pass
 
-    def on_session_apply(self, session : Session) -> None:
-        pass
-
-    def on_session_invalidate(self, session : Session) -> None:
+    def on_session_notify(self, session : Session) -> None:
         superseding = self.root.superseding_or_none
         if superseding is None:
             raise ValueError("Cannot refresh entities: entity root has no superseding root.")
@@ -131,6 +128,9 @@ class EntityRoot(LoggableHierarchicalRootModel):
             self.root = superseding
 
         self.garbage_collect(use_journal=True)
+
+    def on_session_apply(self, session : Session) -> None:
+        pass
 
     def on_session_commit(self, session : Session) -> None:
         pass
