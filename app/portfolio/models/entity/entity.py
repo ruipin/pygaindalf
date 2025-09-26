@@ -633,7 +633,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, N
         for uid in self.children_uids:
             yield Entity.by_uid(uid)
 
-    def iter_hierarchy(self, *, condition : Callable[[Entity], bool] | None = None, check_condition_on_return : bool = True) -> Iterable[Entity]:
+    def iter_hierarchy(self, *, condition : Callable[[Entity], bool] | None = None, use_journal : bool = False, check_condition_on_return : bool = True) -> Iterable[Entity]:
         """
         Return a flat ordered set of all entities in this hierarchy
         """
@@ -641,7 +641,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, N
             return
 
         # Iterate dirty children journals
-        for uid in self.children_uids:
+        for uid in (self.journal_children_uids if use_journal else self.children_uids):
             child = Entity.by_uid_or_none(uid)
             if child is None:
                 continue
@@ -649,7 +649,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, N
             if condition is not None and not condition(child):
                 continue
 
-            yield from child.iter_hierarchy(condition=condition)
+            yield from child.iter_hierarchy(condition=condition, use_journal=use_journal, check_condition_on_return=check_condition_on_return)
 
         if check_condition_on_return and condition is not None and not condition(self):
             raise RuntimeError(f"Entity {self} failed condition check on return of yield_hierarchy.")

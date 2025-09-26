@@ -331,7 +331,7 @@ class Session(LoggableHierarchicalModel):
         if copy:
             iterable = list(iterable)
         for uid in iterable:
-            yield from uid.entity.iter_hierarchy(condition=condition)
+            yield from uid.entity.iter_hierarchy(condition=condition, use_journal=True)
 
     def _commit_invalidate_travel_hierarchy_condition(self, e: Entity) -> bool:
         j = self._entity_journals.get(e.uid, None)
