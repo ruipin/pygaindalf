@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from ..uid import Uid
 
-from .superseded import superseded_check
+from .superseded import superseded_check, SupersededError
 from .entity_audit_log import EntityAuditLog, EntityAuditType
 from .entity_dependents import EntityDependents
 from .dependency_event_handler import *
@@ -391,7 +391,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, N
         if parent is None or not isinstance(parent, Entity):
             return None
         if parent.superseded:
-            return None
+            return None # TODO: Should this be 'parent.superseding_or_none' ?
         return parent
 
     @property

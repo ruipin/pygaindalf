@@ -6,6 +6,7 @@ import functools
 import pydantic
 from typing import override, Self, Callable, Any, cast as typing_cast
 from app.util.callguard import (
+    CALLGUARD_ENABLED,
     CallguardClassOptions,
     callguard_callable,
     callguard_property,
@@ -17,6 +18,11 @@ from app.util.callguard import (
     CallguardError,
     callguarded_model_mixin,
 )
+
+
+if not CALLGUARD_ENABLED:
+    pytest.skip("callguard not enabled", allow_module_level=True)
+
 
 # ---------------------------------------------------------------------------
 # MARK: Method sample

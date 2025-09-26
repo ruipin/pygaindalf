@@ -4,7 +4,7 @@
 import pytest
 
 from app.portfolio.models.entity.superseded import superseded_check
-from app.util.callguard import callguard_class
+from app.util.callguard import callguard_class, CALLGUARD_ENABLED
 
 
 @pytest.mark.helpers
@@ -62,6 +62,8 @@ class TestSupersededCheckStandalone:
 @pytest.mark.helpers
 @pytest.mark.wrappers
 @pytest.mark.superseded_check
+@pytest.mark.callguard
+@pytest.mark.skipif(not CALLGUARD_ENABLED, reason="callguard not enabled")
 class TestSupersededCheckWithCallguard:
     def test_superseded_check_decorates_public_methods_via_callguard(self):
         @callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_ignore_patterns='superseded')

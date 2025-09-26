@@ -15,7 +15,7 @@ from ...journal.session import Session
 
 from ..uid import Uid
 from ..store.entity_store import EntityStore
-from ..entity import Entity
+from ..entity import Entity, SupersededError
 
 
 
@@ -90,7 +90,7 @@ class EntityRoot(LoggableHierarchicalRootModel):
 
         root = Entity.by_uid(root_uid)
         if root.superseded:
-            raise ValueError(f"Entity '{root_uid}' is superseded.")
+            raise SupersededError(f"Entity '{root_uid}' is superseded.")
 
         cls._do_validate_root_uid(root_uid)
 

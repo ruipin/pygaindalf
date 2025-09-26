@@ -183,7 +183,7 @@ class TestSessionEntityJournal:
             j = entity.journal
             j.mark_superseded()
             with pytest.raises(SupersededError):
-                j.get("value")
+                j.get_field("value")
 
 
     # --- Additional behavior -----------------------------------------------------------------

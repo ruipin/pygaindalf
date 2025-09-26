@@ -33,6 +33,7 @@ class HierarchicalMixinMinimal(metaclass=ABCMeta):
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
         mro.ensure_mro_order(cls, HierarchicalMixinMinimal, before=(NamedMixinMinimal, NamedMixin, NamedProtocol))
+        assert hasattr(cls, 'instance_parent'), f"{cls.__name__} must have an 'instance_parent' property to use HierarchicalMixinMinimal"
 
     @property
     def instance_hierarchy(self) -> str:

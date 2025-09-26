@@ -2,8 +2,12 @@
 # Copyright © 2025 pygaindalf
 
 import pytest
-from app.util.callguard import callguard_class, CallguardError
+from app.util.callguard import callguard_class, CallguardError, CALLGUARD_ENABLED
 from app.util.helpers.wrappers import wrapper, before, before_attribute_check
+
+
+if not CALLGUARD_ENABLED:
+    pytest.skip("callguard not enabled", allow_module_level=True)
 
 
 @pytest.mark.helpers

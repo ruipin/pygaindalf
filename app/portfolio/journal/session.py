@@ -15,7 +15,7 @@ from ...util.callguard import CallguardClassOptions
 from ..models.uid import Uid, IncrementingUidFactory, UID_SEPARATOR
 from ..models.entity.entity import Entity
 from ..models.entity.entity_audit_log import EntityAuditType
-from ..models.entity.superseded import superseded_check
+from ..models.entity.superseded import superseded_check, SupersededError
 
 from .entity_journal import EntityJournal
 from .protocols import SessionManagerHookLiteral
@@ -190,7 +190,7 @@ class Session(LoggableHierarchicalModel):
 
     def get_entity_journal(self, entity: Entity, *, create : bool = True) -> EntityJournal | None:
         if self.ended:
-            raise RuntimeError("Cannot get an entity journal from an ended session.")
+            raise SupersededError("Cannot get an entity journal from an ended session.")
 
         if entity.superseded:
             self.log.warning(f"Entity {entity.instance_name} is superseded; cannot create or retrieve journal.")
@@ -252,7 +252,7 @@ class Session(LoggableHierarchicalModel):
 
     def commit(self) -> None:
         if self.ended:
-            raise RuntimeError("Cannot commit an ended session.")
+            raise SupersededError("Cannot commit an ended session.")
 
         # No need to do anything if there are no edits to commit
         if not self.dirty:

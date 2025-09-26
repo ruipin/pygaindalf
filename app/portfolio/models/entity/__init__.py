@@ -4,3 +4,4 @@
 from .entity import *
 from .incrementing_uid_entity import *
 from .entity_audit_log import *
+from .superseded import SupersededError

@@ -4,7 +4,7 @@
 import weakref
 from typing import override, Any, Self, cast as typing_cast
 
-from ..entity import Entity
+from ..entity import Entity, SupersededError
 from ..uid import Uid
 
 from .annotation_journal import AnnotationJournal
@@ -19,7 +19,7 @@ class Annotation[T_Journal : AnnotationJournal](Entity[T_Journal]):
 
         entity = Entity.narrow_to_entity(entity_or_uid)
         if entity.superseded:
-            raise ValueError(f"Cannot create annotation for superseded entity {entity}.")
+            raise SupersededError(f"Cannot create annotation for superseded entity {entity}.")
 
         return cls(instance_parent=weakref.ref(entity), **kwargs)
 
@@ -33,6 +33,10 @@ class Annotation[T_Journal : AnnotationJournal](Entity[T_Journal]):
 
     @override
     def _propagate_deletion(self) -> None:
-        self.entity_parent.on_annotation_deleted(self)
+        parent = self.entity_parent_or_none
+        if parent is not None:
+            self.entity_parent.on_annotation_deleted(self)
+        else:
+            self.log.warning("Annotation %s has no parent during deletion propagation.", self)
 
         super()._propagate_deletion()

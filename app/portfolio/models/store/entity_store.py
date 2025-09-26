@@ -12,7 +12,7 @@ from ....util.mixins import LoggableHierarchicalMixin
 from ....util.helpers import script_info
 from ....util.callguard import callguard_class
 
-from ..entity import Entity
+from ..entity import Entity, SupersededError
 from ..entity.entity_audit_log import EntityAuditLog
 from ..entity.entity_dependents import EntityDependents
 from ..uid import IncrementingUidFactory, Uid
@@ -149,7 +149,7 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
         if entity.uid is not uid:
             raise ValueError(f"Entity UID {entity.uid} does not match the key UID {uid}.")
         if entity.superseded:
-            raise ValueError(f"Cannot add entity with UID {uid} because it has been superseded.")
+            raise SupersededError(f"Cannot add entity with UID {uid} because it has been superseded.")
 
         self._entity_store           [uid] = entity
         self._audit_log_store        [uid] = entity.entity_log

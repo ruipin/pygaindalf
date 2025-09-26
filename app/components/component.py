@@ -121,6 +121,12 @@ class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMi
         if not isinstance(cls.config_class, TypeVar):
             cls.config_class.component_class = cls # pyright: ignore[reportAttributeAccessIssue] as we are overriding the component_class class property on purpose
 
+        # If callguard is disabled, manually decorate all public methods with the callguard decorator
+        if not CALLGUARD_ENABLED and callable(dec := getattr(cls, '__callguard_decorator__', None)):
+            for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+                if not name.startswith('_'):
+                    setattr(cls, name, dec(method, method_name=name))
+
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -137,7 +143,6 @@ class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMi
             raise TypeError(f"{self.__class__.__name__} is a generic class and must not be instantiated without providing an explicit configuration class type argument to override the TypeVar {self.config_class.__name__}.")
 
         self.config = config
-
 
 
 # MARK: Component entrypoint decorator
@@ -160,16 +165,11 @@ class ComponentBase[C : BaseComponentConfig](ComponentSubclassMeta[C], metaclass
 
         self.decimal = DecimalFactory(self.config.decimal)
 
+
     @classmethod
     def component_entrypoint_decorator[**P, R](cls, entrypoint: Entrypoint[Self,P,R]) -> Entrypoint[Self,P,R]:
-        if CALLGUARD_ENABLED:
-            entrypoint.__dict__['__component_entrypoint__'] = True
-            return entrypoint
-        else:
-            @functools.wraps(entrypoint)
-            def _entrypoint(self : Self, *args : P.args, **kwargs : P.kwargs) -> R:
-                return cls._handle_entrypoint(entrypoint, self, *args, **kwargs)
-            return _entrypoint
+        entrypoint.__dict__['__component_entrypoint__'] = True
+        return entrypoint
 
     @classmethod
     def _handle_entrypoint[**P, R](cls, entrypoint : Entrypoint[Self,P,R], self : Self, /, *args : P.args, **kwargs : P.kwargs) -> R:

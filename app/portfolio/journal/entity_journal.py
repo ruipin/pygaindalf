@@ -15,7 +15,7 @@ from ...util.callguard import CallguardClassOptions
 from ..models.uid import Uid
 
 from ..models.entity import Entity, EntityBase
-from ..models.entity.superseded import superseded_check
+from ..models.entity.superseded import superseded_check, SupersededError
 
 from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet, JournalledOrderedViewSet
 from ..collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
@@ -76,7 +76,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
             raise TypeError(f"Expected Entity, got {type(entity).__name__}")
 
         if entity.superseded:
-            raise ValueError(f"EntityJournal.entity '{entity}' is superseded.")
+            raise SupersededError(f"EntityJournal.entity '{entity}' is superseded.")
 
         return entity
 
@@ -252,6 +252,9 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         return value
 
     def get_field(self, field : str, *, wrap : bool = True) -> Any:
+        if self.superseded:
+            raise SupersededError(f"Cannot get field from a superseded journal.")
+
         field = self.entity.resolve_field_alias(field)
 
         if field in self._updates:
