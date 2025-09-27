@@ -9,7 +9,7 @@ from frozendict import frozendict
 from pydantic import ConfigDict, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr, BaseModel
 from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable, cast as typing_cast, TypeVar, Callable, Union, get_args, get_origin
 from abc import abstractmethod, ABCMeta
-from collections.abc import Set, MutableSet
+from collections.abc import Set, MutableSet, MutableMapping
 from functools import cached_property
 
 from ....util.helpers.generics import GenericIntrospectionMixin
@@ -568,28 +568,55 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
             assert wrap
             return journal.get_field(field, wrap=True)
 
+    _PROTECTED_FIELD_TYPES : ClassVar[tuple[type,...]]
     @classmethod
-    # TODO: This probably should be cached
-    def is_protected_field_type(cls, field : str) -> bool:
-        from ...collections import JournalledCollection, OrderedViewSet, OrderedViewFrozenSet
-        FORBIDDEN_TYPES = (JournalledCollection, OrderedViewSet, OrderedViewFrozenSet, EntityAuditLog, EntityDependents)
+    def _get_protected_field_types(cls) -> tuple[type,...]:
+        s = getattr(Entity, '_PROTECTED_FIELD_TYPES', None)
+        if s is not None:
+            return s
 
+        from ...collections import JournalledCollection, OrderedViewSet, OrderedViewFrozenSet
+        default = (JournalledCollection, OrderedViewSet, OrderedViewFrozenSet, EntityAuditLog, EntityDependents)
+        setattr(Entity, '_PROTECTED_FIELD_TYPES', default)
+        return default
+
+    @classmethod
+    def _get_field_annotation(cls, field : str) -> Any | None:
         for mro in cls.__mro__:
             annotations = annotationlib.get_annotations(mro, format=annotationlib.Format.VALUE)
             annotation = annotations.get(field, None)
             if annotation is not None:
-                break
-        else:
+                return annotation
+        return None
+
+    _PROTECTED_FIELD_LOOKUP : ClassVar[MutableMapping[str,bool]]
+    @classmethod
+    # TODO: This probably should be cached
+    def is_protected_field_type(cls, field : str) -> bool:
+        protected_field_lookup = getattr(cls, '_PROTECTED_FIELD_LOOKUP', None)
+        if protected_field_lookup is None:
+            protected_field_lookup = cls._PROTECTED_FIELD_LOOKUP = dict()
+        elif (result := protected_field_lookup.get(field, None)) is not None:
+            return result
+
+        annotation = cls._get_field_annotation(field)
+        if annotation is None:
             raise RuntimeError(f"Field '{field}' not found in entity type {cls.__name__} annotations.")
 
+        forbidden_types = cls._get_protected_field_types()
+        result = False
         if isinstance(annotation, Union):
             for arg in get_args(annotation):
-                if issubclass(arg, FORBIDDEN_TYPES):
-                    return True
-            return False
+                origin = generics.get_origin(arg, passthrough=True)
+                if issubclass(origin, forbidden_types):
+                    result = True
+                    break
         else:
-            origin = get_origin(annotation) or annotation
-            return issubclass(origin, FORBIDDEN_TYPES)
+            origin = generics.get_origin(annotation, passthrough=True)
+            result = issubclass(origin, forbidden_types)
+
+        protected_field_lookup[field] = result
+        return result
 
 
 
