@@ -31,4 +31,5 @@ dev = [
     "myst-parser>=4.0.1",
     "linkify-it-py>=2.0.3",
     "pytest-cov>=6.2.1",
+    "sybil[pytest]>=9.2.0",
 ]

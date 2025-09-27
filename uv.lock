@@ -390,6 +390,7 @@ dev = [
     { name = "sphinx-autodoc-typehints" },
     { name = "sphinx-pyproject" },
     { name = "sphinx-rtd-theme" },
+    { name = "sybil", extra = ["pytest"] },
 ]
 
 [package.metadata]
@@ -415,6 +416,7 @@ dev = [
     { name = "sphinx-autodoc-typehints", specifier = ">=3.2.0" },
     { name = "sphinx-pyproject", specifier = ">=0.3.0" },
     { name = "sphinx-rtd-theme", specifier = ">=3.0.2" },
+    { name = "sybil", extras = ["pytest"], specifier = ">=9.2.0" },
 ]
 
 [[package]]
@@ -690,6 +692,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3b/44/6716b257b0aa6bfd51a1b31665d1c205fb12cb5ad56de752dfa15657de2f/sphinxcontrib_serializinghtml-2.0.0.tar.gz", hash = "sha256:e9d912827f872c029017a53f0ef2180b327c3f7fd23c87229f7a8e8b70031d4d", size = 16080, upload-time = "2024-07-29T01:10:09.332Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/a7/d2782e4e3f77c8450f727ba74a8f12756d5ba823d81b941f1b04da9d033a/sphinxcontrib_serializinghtml-2.0.0-py3-none-any.whl", hash = "sha256:6e2cb0eef194e10c27ec0023bfeb25badbbb5868244cf5bc5bdc04e4464bf331", size = 92072, upload-time = "2024-07-29T01:10:08.203Z" },
+]
+
+[[package]]
+name = "sybil"
+version = "9.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/01/cd109cc45ad8be87a3338ebb2d0e9f4a46a635952a7cf25f1f30fd13a794/sybil-9.2.0.tar.gz", hash = "sha256:a7cbccf4b06af7e946a218e23fd59fde36738e91eb698b15619a4d5f97b176bb", size = 43757, upload-time = "2025-08-08T09:00:27.632Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/e1/14e7b92ebebd8264a36555967e450035249f5a065f57a71d16a5ed7c36a9/sybil-9.2.0-py3-none-any.whl", hash = "sha256:c0c82823a86c2a9e202fb628526aa973700cc20dbfd5c91481c265521e40b742", size = 38521, upload-time = "2025-08-08T09:00:26.824Z" },
+]
+
+[package.optional-dependencies]
+pytest = [
+    { name = "pytest" },
 ]
 
 [[package]]
