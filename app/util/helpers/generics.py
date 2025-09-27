@@ -3,8 +3,12 @@
 
 import typing, types, annotationlib, functools
 from frozendict import frozendict
+from functools import lru_cache
 
 from . import mro
+from .instance_lru_cache import instance_lru_cache
+
+LRU_CACHE_MAXSIZE = 128
 
 
 # MARK: Definitions
@@ -102,33 +106,6 @@ def is_pydantic_model(cls : type | GenericAlias) -> bool:
     return pydantic is not None and issubclass(origin, pydantic.BaseModel)
 
 
-# MARK: Introspection Mixin
-class GenericIntrospectionMixin:
-    __generic_parameters__ : typing.ClassVar[typing.Mapping[str, ParameterInfo]]
-    __generic_arguments__  : typing.ClassVar[typing.Mapping[str, ArgumentInfo ]]
-
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
-
-        #if issubclass(cls, typing.Generic):
-        mro.ensure_mro_order(cls, GenericIntrospectionMixin, before=typing.Generic) # pyright: ignore[reportArgumentType] as pyright thinks typing.Generic is not a 'type'
-        cls.__generic_parameters__ = get_parameter_infos(cls, use_cache=False, fail=False)
-
-        d = {k: v.value for k, v in cls.__generic_parameters__.items()}
-        #print(f"Created {cls.__name__} with params: {d}, id={id(cls.__generic_parameters__)}")
-
-    def __class_getitem__(cls, *args):
-        result = super().__class_getitem__(*args) # pyright: ignore[reportAttributeAccessIssue]
-        if issubclass(cls, typing.Generic):
-            if result is cls or result.__dict__ is cls.__dict__:
-                raise TypeError(f"Cannot subscript {cls.__name__} with itself")
-            result.__generic_arguments__ = get_argument_infos(result, args=args, fail=False)
-
-            d = {k: v.value for k, v in result.__generic_arguments__.items()}
-            #print(f"Specialized {result.__name__} with {args}, got {d}")
-        return result
-
-
 # MARK: get_bases
 def get_original_bases(cls : type | GenericAlias) -> tuple[typing.Any, ...]:
     if not isinstance(cls, type):
@@ -178,23 +155,13 @@ def get_generic_base(cls : type | GenericAlias) -> type:
 
 
 # MARK: iter/get_parameter_infos
-def _get_introspection_mixin_parameters(cls : type | GenericAlias) -> dict[str, ParameterInfo] | None:
-    origin = get_origin(cls, passthrough=True)
-    if origin is None or not issubclass(origin, GenericIntrospectionMixin):
-        return None
-    return getattr(cls, '__generic_parameters__', None)
-
 def _get_parameters(cls : type) -> typing.Sequence[typing.TypeVar]:
     if is_pydantic_model(cls):
         return cls.__pydantic_generic_metadata__['parameters']
     else:
         return typing.get_args(cls)
 
-def iter_parameter_infos(cls : type | GenericAlias, *, use_cache : bool = True, fail : bool = True) -> typing.Generator[ParameterInfo]:
-    if use_cache and (params := _get_introspection_mixin_parameters(cls)) is not None:
-        yield from params.values()
-        return
-
+def iter_parameter_infos(cls : type | GenericAlias, *, fail : bool = True) -> typing.Generator[ParameterInfo]:
     generic = get_generic_base_or_none(cls)
     if generic is None:
         if fail:
@@ -212,22 +179,15 @@ def iter_parameter_infos(cls : type | GenericAlias, *, use_cache : bool = True, 
             origin   = cls  ,
         )
 
-def get_parameter_infos(cls : type | GenericAlias, *, use_cache : bool = True, fail : bool = True) -> typing.Mapping[str, ParameterInfo]:
-    if use_cache and (params := _get_introspection_mixin_parameters(cls)) is not None:
-        return params
-
-    result = {info.name: info for info in iter_parameter_infos(cls, use_cache=use_cache, fail=fail)}
+@lru_cache(maxsize=LRU_CACHE_MAXSIZE)
+def get_parameter_infos(cls : type | GenericAlias, *, fail : bool = True) -> typing.Mapping[str, ParameterInfo]:
+    result = {info.name: info for info in iter_parameter_infos(cls, fail=fail)}
     return frozendict(result)
 
 
 # MARK: get_parameter_info
 def get_parameter_info_or_none(cls : type | GenericAlias, name_or_typevar : str | typing.TypeVar) -> ParameterInfo | None:
     name = name_or_typevar if isinstance(name_or_typevar, str) else name_or_typevar.__name__
-
-    if (params := _get_introspection_mixin_parameters(cls)) is not None:
-        param = params.get(name, None)
-        if param is not None:
-            return param
 
     for param in iter_parameter_infos(cls):
         if param.name == name:
@@ -268,12 +228,6 @@ def _sanity_check_arg_bound(*, param : ParameterInfo, arg : ArgType) -> None:
         )
         raise TypeError(f"{param.origin.__name__}.{param.name} type argument <{arg.__name__}> is not a subclass of its bound <{bound_str}>")
 
-def _get_introspection_mixin_arguments(cls : type | GenericAlias) -> dict[str, ArgumentInfo] | None:
-    origin = get_origin(cls, passthrough=True)
-    if origin is None or not issubclass(origin, GenericIntrospectionMixin):
-        return None
-    return getattr(cls, '__arg_specializations__', None)
-
 def _get_arguments(cls : type | GenericAlias) -> typing.Sequence[ArgType]:
     if is_pydantic_model(cls):
         return cls.__pydantic_generic_metadata__['args']
@@ -282,11 +236,6 @@ def _get_arguments(cls : type | GenericAlias) -> typing.Sequence[ArgType]:
 
 def get_argument_info_or_none(cls : GenericAlias, param : ParamType, *, check_bounds : bool = True, args : typing.Sequence[ArgType] | None = None) -> ArgumentInfo | None:
     param = ParameterInfo.narrow(cls, param)
-
-    if args is None and (cached_args := _get_introspection_mixin_arguments(cls)) is not None:
-        arg = cached_args.get(param.name, None)
-        if arg is not None:
-            return arg
 
     # Get the actual type argument at that index
     if args is None:
@@ -321,16 +270,11 @@ def get_argument_info(cls : GenericAlias, param : ParamType, *, check_bounds : b
 
 # MARK: iter/get_argument_infos
 def iter_argument_infos(cls : GenericAlias, *, fail : bool = True, args : typing.Sequence[ArgType] | None = None) -> typing.Generator[ArgumentInfo]:
-    if args is None and (cached_args := _get_introspection_mixin_arguments(cls)) is not None:
-        yield from cached_args.values()
-
     for info in iter_parameter_infos(cls, fail=fail):
         yield get_argument_info(cls, info, args=args)
 
+@lru_cache(maxsize=LRU_CACHE_MAXSIZE)
 def get_argument_infos(cls : GenericAlias, *, fail : bool = True, args : typing.Sequence[ArgType] | None = None) -> typing.Mapping[str, ArgumentInfo]:
-    if args is None and (cached_args := _get_introspection_mixin_arguments(cls)) is not None:
-        return cached_args
-
     result = {arg.parameter.name: arg for arg in iter_argument_infos(cls, fail=fail, args=args)}
     return frozendict(result)
 
@@ -415,17 +359,25 @@ def iter_parent_argument_infos(cls : type | GenericAlias, parent : type, param :
         if current.is_concrete:
             return
 
+@lru_cache(maxsize=LRU_CACHE_MAXSIZE)
 def get_parent_argument_infos(cls : type | GenericAlias, parent : type, param : ParamType) -> typing.Sequence[ArgumentInfo]:
     return tuple(iter_parent_argument_infos(cls, parent, param))
 
 
 # MARK: get_parent_argument_info
 def get_parent_argument_info_or_none(cls : type | GenericAlias, parent : type, param : ParamType, *, check_bounds : bool = True) -> ArgumentInfo | None:
-    args = get_parent_argument_infos(cls, parent, param)
-    result =args[-1] if args else None
+    if check_bounds:
+        args = get_parent_argument_infos(cls, parent, param)
+        result =args[-1] if args else None
+    else:
+        args = None
+        result = None
+        for result in iter_parent_argument_infos(cls, parent, param):
+            pass
 
     # Sanity check the concrete specialisation against any bounds
     if check_bounds and result is not None and result.is_concrete:
+        assert args is not None
         for arg in args:
             _sanity_check_arg_bound(param=arg.parameter, arg=result.value)
 
@@ -521,6 +473,7 @@ class GenericIntrospectionMethod[R : object](classmethod[typing.Any, ..., type[R
 
         return kwargs
 
+    @instance_lru_cache
     def introspect[T : type](self, cls : type[T], source : type[T] | None = None, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> type[R]:
         if self._parent is None:
             raise TypeError("GenericIntrospectionMethod must be used as a class or instance attribute")
