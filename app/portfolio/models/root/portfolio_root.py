@@ -4,7 +4,7 @@
 from pydantic import field_validator
 from typing import Any, override
 
-from ..uid import Uid
+from ...util.uid import Uid
 from ..portfolio import Portfolio
 
 from .entity_root import EntityRoot

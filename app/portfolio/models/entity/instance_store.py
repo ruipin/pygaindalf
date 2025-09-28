@@ -46,7 +46,7 @@ class InstanceStoreEntityMixin(Entity if TYPE_CHECKING else object, metaclass=AB
     def __init__(self, **kwargs):
         if not self.__initialized:
             super().__init__(**kwargs)
-            self.__class__._instance_store_add(self)
+            type(self)._instance_store_add(self)
         else:
             self._validate_reinitialization(kwargs)
 
@@ -54,16 +54,16 @@ class InstanceStoreEntityMixin(Entity if TYPE_CHECKING else object, metaclass=AB
     def _validate_reinitialization(self, data : dict[str, Any]) -> None:
         keys = set()
 
-        for key, info in self.__class__.model_fields.items():
+        for key, info in type(self).model_fields.items():
             if info.init == False or info.exclude == True:
                 if key in data:
-                    raise ValueError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__}.")
+                    raise ValueError(f"Field '{key}' cannot be set during reinitialization of {type(self).__name__}.")
                 continue
 
             # Check if the field is optional
             if key not in data:
                 if info.is_required():
-                    raise ValueError(f"Field '{key}' is required for reinitialization of {self.__class__.__name__}.")
+                    raise ValueError(f"Field '{key}' is required for reinitialization of {type(self).__name__}.")
                 continue
 
             # Try to coerce
@@ -72,29 +72,29 @@ class InstanceStoreEntityMixin(Entity if TYPE_CHECKING else object, metaclass=AB
 
             if self_value is None:
                 if data_value is not None:
-                    raise ValueError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__}.")
+                    raise ValueError(f"Field '{key}' cannot be set during reinitialization of {type(self).__name__}.")
                 continue
 
             self_type = type(self_value)
             if not isinstance(data_value, self_type):
                 coerced = self_type(data_value)
                 if not isinstance(coerced, self_type):
-                    raise TypeError(f"Cannot coerce field '{key}' from {type(data_value).__name__} to {self_type.__name__} for reinitialization of {self.__class__.__name__}.")
+                    raise TypeError(f"Cannot coerce field '{key}' from {type(data_value).__name__} to {self_type.__name__} for reinitialization of {type(self).__name__}.")
                 data_value = coerced
 
             if isinstance(self_value, Entity) or (eq := getattr(self_value, '__eq__', None)) is None or (eq_res := eq(data_value)) is NotImplemented:
                 if self_value is not data_value:
-                    raise TypeError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__} because it is not the existing value.")
+                    raise TypeError(f"Field '{key}' cannot be set during reinitialization of {type(self).__name__} because it is not the existing value.")
             else:
                 if (not eq_res):
-                    raise TypeError(f"Field '{key}' cannot be set during reinitialization of {self.__class__.__name__} because it is not equal to the existing value.")
+                    raise TypeError(f"Field '{key}' cannot be set during reinitialization of {type(self).__name__} because it is not equal to the existing value.")
 
             keys.add(key)
 
         data_keys = set(data.keys())
         keys_diff = keys ^ data_keys
         if keys_diff:
-            raise ValueError(f"Fields {keys_diff} cannot be set during reinitialization of {self.__class__.__name__}")
+            raise ValueError(f"Fields {keys_diff} cannot be set during reinitialization of {type(self).__name__}")
 
 
 

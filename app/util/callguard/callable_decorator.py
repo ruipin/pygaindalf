@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import sys
 import logging
 import functools
 
@@ -109,7 +110,7 @@ class CallguardCallableDecorator[T : object, **P, R]:
             wrapped = method
             @functools.wraps(wrapped)
             def _callguard_wrapper(self : T, *args : P.args, **kwargs : P.kwargs) -> R:
-                if CallguardCallableDecorator._disabled:
+                if CallguardCallableDecorator._disabled or sys.is_finalizing():
                     return wrapped(self, *args, **kwargs)
 
                 _method_name = typing_cast(str, method_name(self, *args, **kwargs)) if callable(method_name) else method_name

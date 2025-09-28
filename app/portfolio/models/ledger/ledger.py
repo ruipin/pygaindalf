@@ -1,24 +1,16 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import datetime
-
-from typing import override, Any, overload, TYPE_CHECKING, Iterator, Iterable
-from functools import cached_property
-from pydantic import Field, computed_field, field_validator
-from collections.abc import Set, MutableSet, Sequence
+from typing import override, Any, TYPE_CHECKING
+from pydantic import field_validator
 
 from ....util.helpers.empty_class import EmptyClass
-
-from ...collections.uid_proxy import UidProxyOrderedViewSet, UidProxySequence
-from ...collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
 
 from ..instrument.instrument import Instrument
 from ..entity.instance_store import NamedInstanceStoreEntityMixin
 from ..entity import Entity
-from ..transaction import Transaction, OrderedViewFrozenTransactionUidSet, UidProxyOrderedViewTransactionFrozenSet
 
-from ..uid import Uid
+from ...util.uid import Uid
 
 from .ledger_fields import LedgerFields
 from .ledger_base import LedgerBase
@@ -26,6 +18,7 @@ from .ledger_journal import LedgerJournal
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
+    from .ledger_proxy import LedgerProxy
 
 
 
@@ -33,7 +26,7 @@ class Ledger(
     LedgerBase,
     LedgerFields if not TYPE_CHECKING else EmptyClass,
     NamedInstanceStoreEntityMixin,
-    Entity[LedgerJournal]
+    Entity[LedgerJournal, 'LedgerProxy']
 ):
     # MARK: Instrument
     @field_validator('instrument_uid', mode='before')

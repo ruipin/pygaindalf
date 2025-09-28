@@ -7,15 +7,15 @@ from collections.abc import Sequence
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
-from ....models.uid import UidProtocol
+from ....util.uid import UidProtocol
 from ...ordered_view.protocols import SortKeyProtocol
-from ...ordered_view import OrderedViewSet, OrderedViewFrozenSet
+from ...ordered_view import OrderedViewSet, OrderedViewMutableSet
 from .generic_set import GenericJournalledSet
 from .generic_set import JournalledSetEditType
 
 
 
-class JournalledOrderedViewSet[T : Any, T_Mutable : OrderedViewSet, T_Immutable : OrderedViewFrozenSet](GenericJournalledSet[T, T_Immutable, T_Mutable, T_Immutable]):
+class JournalledOrderedViewSet[T : Any, T_Mutable : OrderedViewMutableSet, T_Immutable : OrderedViewSet](GenericJournalledSet[T, T_Immutable, T_Mutable, T_Immutable]):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._frontier_sort_key : SupportsRichComparison | None = None

@@ -6,6 +6,7 @@ import pytest
 from app.util.helpers.wrappers import (
     wrapper,
     before,
+    after,
     before_attribute_check,
 )
 
@@ -117,3 +118,52 @@ class TestBeforeAttributeCheckDecorator:
             c.go_custom()
         assert str(ei2.value).startswith("State not ready")
 
+
+# MARK: Tests for after decorator
+@pytest.mark.helpers
+@pytest.mark.wrappers
+class TestAfterDecorator:
+    def test_after_runs_and_can_transform_result(self):
+        events: list[tuple[str, int, tuple[object, ...], dict[str, object]]] = []
+
+        def after_fn(original, result, self, *args, **kwargs):  # noqa: ANN001
+            events.append(("after", result, args, kwargs))
+            self.after_called = True
+            return result + 5
+
+        class C:
+            def __init__(self) -> None:
+                self.after_called = False
+
+            @after(after_fn)
+            def compute(self, x: int) -> int:
+                return x * 3
+
+        c = C()
+        output = c.compute(4)
+
+        assert output == 17  # (4*3)=12, +5 from after_fn
+        assert c.after_called is True
+        assert events == [("after", 12, (4,), {})]
+
+    def test_after_receives_kwargs(self):
+        captured: dict[str, object] = {}
+
+        def after_fn(original, result, self, *args, **kwargs):  # noqa: ANN001
+            captured["result"] = result
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return result * 2
+
+        class C:
+            @after(after_fn)
+            def combine(self, a: int, *, scale: int = 1) -> int:
+                return a * scale
+
+        c = C()
+        output = c.combine(5, scale=3)
+
+        assert output == 30  # 5*3=15, doubled by after_fn
+        assert captured["result"] == 15
+        assert captured["args"] == (5,)
+        assert captured["kwargs"] == {"scale": 3}

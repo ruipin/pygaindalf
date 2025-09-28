@@ -1,38 +1,29 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import TYPE_CHECKING, override, overload, Iterator, Self
-from collections.abc import Sequence
-from functools import cached_property
-
-from .....util.helpers import generics
-
-from ....models.uid import Uid
+from ....util.uid import Uid
 from ....models.entity import Entity
-from ...ordered_view import OrderedViewSet, OrderedViewFrozenSet
-from .generic_set import GenericUidProxySet, GenericUidProxyFrozenSet
+from ...ordered_view import OrderedViewSet, OrderedViewMutableSet
+from ...proxy import ProxyOrderedViewSet, ProxyOrderedViewMutableSet
 from ..sequence import UidProxySequence
+from .generic_set import GenericUidProxySet, GenericUidProxyMutableSet
 
 
 
-class UidProxyOrderedViewFrozenSet[T : Entity, T_Proxy_Seq : UidProxySequence](GenericUidProxyFrozenSet[T, OrderedViewFrozenSet[Uid]]):
-    get_concrete_proxy_sequence_type = generics.GenericIntrospectionMethod[T_Proxy_Seq]()
-
-    # MARK: OrderedViewSet
-    @cached_property
-    def sorted(self) -> Sequence[T]:
-        return self.get_concrete_proxy_sequence_type()(owner=self._get_field(), field='sorted')
-
-    def clear_sort_cache(self) -> None:
-        self._get_field().clear_sort_cache()
-
-    @overload
-    def __getitem__(self, index: int) -> T: ...
-    @overload
-    def __getitem__(self, index: slice) -> Sequence[T]: ...
-    def __getitem__(self, index: int | slice) -> T | Sequence[T]:
-        return self.sorted[index]
-
-
-class UidProxyOrderedViewSet[T : Entity, T_Proxy_Seq : UidProxySequence](UidProxyOrderedViewFrozenSet[T, T_Proxy_Seq], GenericUidProxySet[T, OrderedViewFrozenSet[Uid], OrderedViewSet[Uid]]):
+class UidProxyOrderedViewSet[
+    T : Entity
+](
+    GenericUidProxySet[T, OrderedViewSet[Uid]],
+    ProxyOrderedViewSet[Uid, T, UidProxySequence[T]],
+):
     pass
+
+
+class UidProxyOrderedViewMutableSet[
+    T : Entity
+](
+    GenericUidProxyMutableSet[T, OrderedViewSet[Uid], OrderedViewMutableSet[Uid]],
+    ProxyOrderedViewMutableSet[Uid, T, UidProxySequence[T]],
+):
+    pass
+UidProxyOrderedViewSet.register(UidProxyOrderedViewSet)

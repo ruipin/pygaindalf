@@ -1,20 +1,25 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from functools import cached_property
-
-from typing import TYPE_CHECKING, override, Iterator, Generic
+from typing import override
 from collections.abc import MutableSet
 
 from ...journal.entity_journal import EntityJournal
+from ...collections import OrderedViewUidMutableSet, UidProxyOrderedViewMutableSet
 
-from ..uid import Uid
-from ..transaction import Transaction, OrderedViewTransactionUidSet, UidProxyOrderedViewTransactionSet
+from ...util.uid import Uid
+from ..transaction import Transaction
 
 from .ledger_base import LedgerBase
 
 
-class LedgerJournal(LedgerBase[OrderedViewTransactionUidSet, UidProxyOrderedViewTransactionSet], EntityJournal, MutableSet[Transaction], init=False):
+class LedgerJournal(
+    LedgerBase[OrderedViewUidMutableSet[Transaction], UidProxyOrderedViewMutableSet[Transaction]],
+    EntityJournal,
+    MutableSet[Transaction],
+    init=False
+):
+
     # MARK: MutableSet ABC
     @override
     def add(self, value : Transaction | Uid) -> None:

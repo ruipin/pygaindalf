@@ -62,8 +62,8 @@ class AttributeSet:
     @override
     def __repr__(self) -> str:
         if self.attrs is None:
-            return f'{self.__class__.__name__}()'
-        return f'{self.__class__.__name__}({", ".join(self.attrs)})'
+            return f'{type(self).__name__}()'
+        return f'{type(self).__name__}({", ".join(self.attrs)})'
 
 
 class Inherit(AttributeSet):

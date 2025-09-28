@@ -17,7 +17,7 @@ from app.portfolio.models.entity.dependency_event_handler import (
     EntityDependencyEventType,
 )
 from app.portfolio.models.entity import Entity
-from app.portfolio.models.uid import Uid
+from app.portfolio.util.uid import Uid
 
 
 class DepEventCall(NamedTuple):

@@ -7,19 +7,19 @@ from functools import cached_property
 from decimal import Decimal
 import datetime as dt
 
-from app.portfolio.collections.uid_proxy import UidProxySequence
-from app.portfolio.collections.uid_proxy.sequence import UidProxyFrozenSequence
+from app.portfolio.collections.uid_proxy import UidProxyMutableSequence
+from app.portfolio.collections.uid_proxy.sequence import UidProxySequence
 from app.portfolio.models.entity import IncrementingUidEntity
 from app.portfolio.models.transaction.transaction import Transaction, TransactionType
 from app.portfolio.models.instrument.instrument import Instrument
-from app.portfolio.models.uid import Uid
+from app.portfolio.util.uid import Uid
 from iso4217 import Currency
 
 
 # Proxy specialization ------------------------------------------------------
-class _UidProxyTransactionSequence(UidProxySequence[Transaction]):
+class _UidProxyTransactionSequence(UidProxyMutableSequence[Transaction]):
     pass
-class _UidProxyFrozenTransactionSequence(UidProxyFrozenSequence[Transaction]):
+class _UidProxyFrozenTransactionSequence(UidProxySequence[Transaction]):
     pass
 
 
@@ -28,16 +28,16 @@ class Holder(IncrementingUidEntity):
 
     @cached_property
     def transactions(self):
-        return _UidProxyTransactionSequence(owner=self, field='transaction_uids') # type: ignore[reportAbstractUsage]
+        return _UidProxyTransactionSequence(instance=self, field='transaction_uids')
 
     @cached_property
     def transactions_frozen(self):
-        return _UidProxyFrozenTransactionSequence(owner=self, field='transaction_uids')  # type: ignore[reportAbstractUsage]
+        return _UidProxyFrozenTransactionSequence(instance=self, field='transaction_uids')
 
 
 @pytest.mark.portfolio_collections
 @pytest.mark.uid_proxy_collections
-class TestUidProxySequence:
+class TestUidProxyMutableSequence:
     def _make_tx(self, instr, qty=1, cons=1, ttype=TransactionType.BUY):
         return Transaction(
             type=ttype,
@@ -113,7 +113,7 @@ class TestUidProxySequence:
         h = Holder()
         t1 = self._make_tx(instr, qty=1)
         h.transactions.insert(0, t1)
-        with pytest.raises(TypeError, match="Only single item assignment of type Transaction is allowed"):
+        with pytest.raises(TypeError, match="Expected Transaction, got int"):
             h.transactions[0] = 123  # type: ignore[arg-type]
 
     def test_repr_and_str(self):

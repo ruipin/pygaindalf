@@ -52,7 +52,7 @@ def callguarded_model_mixin(**options : Unpack[CallguardClassOptions]):
                     if name == '__class__':
                         return super().__getattribute__(name)
 
-                    private_attributes = getattr(self.__class__, '__private_attributes__', None)
+                    private_attributes = getattr(type(self), '__private_attributes__', None)
                     if private_attributes is None or name not in private_attributes:
                         return super().__getattribute__(name)
                     return self.__super_getattribute(name)
@@ -65,7 +65,7 @@ def callguarded_model_mixin(**options : Unpack[CallguardClassOptions]):
             if not TYPE_CHECKING:
                 @override
                 def __setattr__(self, name: str, value: Any) -> None:
-                    private_attributes = getattr(self.__class__, '__private_attributes__', None)
+                    private_attributes = getattr(type(self), '__private_attributes__', None)
                     if private_attributes is None or name not in private_attributes:
                         return super().__setattr__(name, value)
                     return self.__super_setattr(name, value)

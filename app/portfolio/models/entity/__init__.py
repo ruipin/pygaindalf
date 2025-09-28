@@ -6,4 +6,4 @@ from .entity_base import EntityBase
 from .entity import *
 from .incrementing_uid_entity import *
 from .entity_audit_log import *
-from .superseded import SupersededError
+from .entity_proxy import *

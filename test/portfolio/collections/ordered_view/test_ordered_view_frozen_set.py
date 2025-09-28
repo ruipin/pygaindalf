@@ -3,16 +3,16 @@
 
 import pytest
 
-from app.portfolio.collections.ordered_view import OrderedViewFrozenSet, OrderedViewSet
+from app.portfolio.collections.ordered_view import OrderedViewSet, OrderedViewMutableSet
 
 
-class _FrozenInts(OrderedViewFrozenSet[int]):
+class _FrozenInts(OrderedViewSet[int]):
     pass
 
 
 @pytest.mark.portfolio_collections
 @pytest.mark.ordered_view_collections
-class TestOrderedViewFrozenSet:
+class TestOrderedViewSet:
     def test_basic_construction_and_iteration_sorted(self):
         s = _FrozenInts({3, 1, 2})
         # Underlying container is a frozenset (unordered) but iteration uses sorted view
@@ -69,5 +69,5 @@ class TestOrderedViewFrozenSet:
             _FrozenInts.validate_and_coerce(123)  # not iterable
 
     def test_get_mutable_type_round_trip(self):
-        assert _FrozenInts.get_mutable_type() == OrderedViewSet[int]
+        assert _FrozenInts.get_mutable_type() == OrderedViewMutableSet[int]
 

@@ -29,7 +29,7 @@ class DecimalRounding(Enum):
 
     @override
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}.{self.name}"
+        return f"{type(self).__name__}.{self.name}"
 
 
 class DecimalSignals(Enum):
@@ -49,7 +49,7 @@ class DecimalSignals(Enum):
 
     @override
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}.{self.name}"
+        return f"{type(self).__name__}.{self.name}"
 
 
 # MARK: Configuration

@@ -84,7 +84,7 @@ class BeforeAttributeCheckDecorator[T : object, **P, R](BeforeDecorator[Concaten
                     target_str = str(target)
                 except:
                     target_str = '<str() raised exception>'
-                raise exception(f"{message or f"Attribute '{attr}' must be {desired}"} when calling {target.__class__.__name__}.{wrapped.__name__} on {target_str}")
+                raise exception(f"{message or f"Attribute '{attr}' must be {desired}"} when calling {type(target).__name__}.{wrapped.__name__} on {target_str}")
         else:
             for a, d in zip(attr, desired):
                 try:
@@ -92,7 +92,7 @@ class BeforeAttributeCheckDecorator[T : object, **P, R](BeforeDecorator[Concaten
                 except:
                     target_str = '<str() raised exception>'
                 if getattr(target, a, None) != d:
-                    raise exception(f"{message or f"Attribute '{a}' must be {d}"} when calling {target.__class__.__name__}.{wrapped.__name__} on {target_str}")
+                    raise exception(f"{message or f"Attribute '{a}' must be {d}"} when calling {type(target).__name__}.{wrapped.__name__} on {target_str}")
 
 
 @overload
@@ -102,3 +102,27 @@ def before_attribute_check(*, attribute : Sequence[str], desired : Sequence[Any]
 
 def before_attribute_check[T : object, **P, R](**options : Unpack[BeforeAttributeCheckOptions[T,P,R]]) -> BeforeAttributeCheckDecorator[T,P,R]:
     return BeforeAttributeCheckDecorator[T,P,R](**options)
+
+
+# MARK: After Wrapper Decorator
+# TODO: If WrapperDecorator starts relying on functools.partial, we should inherit from WrapperDecorator instead
+type AfterMethod[**P, R] = Callable[Concatenate[Wrapped[P,R],R,P], R]
+
+class AfterDecorator[**P, R]:
+    def __init__(self, after : AfterMethod[P,R]):
+        self.after = after
+    #   super().__init__(wrapper=functools.partial(self.before_wrapper, before))
+
+    def __call__(self, method : Wrapped[P,R]) -> Wrapped[P,R]:
+        return self.decorate(wrapped=method, after=self.after)
+
+    @staticmethod
+    def decorate(wrapped : Wrapped[P,R], after : AfterMethod[P,R]) -> Wrapped[P,R]:
+        @functools.wraps(wrapped)
+        def _wrapped(*args : P.args, **kwargs : P.kwargs) -> R:
+            result = wrapped(*args, **kwargs)
+            return after(wrapped, result, *args, **kwargs)
+        return _wrapped
+
+def after[**P, R](after : AfterMethod[P,R]) -> AfterDecorator[P,R]:
+    return AfterDecorator(after)

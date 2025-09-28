@@ -45,7 +45,7 @@ class LoggingManager:
             config = LoggingConfig.model_validate(config)
 
         if self.initialized:
-            raise RuntimeError(f"Must not initialise {self.__class__.__name__} twice")
+            raise RuntimeError(f"Must not initialise {type(self).__name__} twice")
         self.initialized = True
 
         self.config = config

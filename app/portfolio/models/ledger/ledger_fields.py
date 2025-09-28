@@ -6,9 +6,10 @@ from abc import ABCMeta
 from typing import TYPE_CHECKING
 from pydantic import Field
 
-from ..uid import Uid
-from ..transaction import OrderedViewFrozenTransactionUidSet
+from ...collections import OrderedViewUidSet
+from ...util.uid import Uid
 from ..entity import EntityFieldsBase
+from ..transaction import Transaction
 
 
 class LedgerFields[T_Uid_Set : Set[Uid]](EntityFieldsBase, metaclass=ABCMeta):
@@ -23,7 +24,7 @@ class LedgerFields[T_Uid_Set : Set[Uid]](EntityFieldsBase, metaclass=ABCMeta):
     if TYPE_CHECKING:
         transaction_uids : T_Uid_Set = Field(default=...)
     else:
-        transaction_uids : OrderedViewFrozenTransactionUidSet = Field(
-            default_factory=OrderedViewFrozenTransactionUidSet,
+        transaction_uids : OrderedViewUidSet[Transaction] = Field(
+            default_factory=OrderedViewUidSet[Transaction],
             description="A set of transaction Uids associated with this ledger."
         )

@@ -258,13 +258,13 @@ class CallguardClassDecorator[T : object]:
             setattr(klass, '__get_callguard_class_options__', __get_callguard_class_options__)
 
             @classmethod
-            def init_subclass_wrapper(subcls):
+            def init_subclass_wrapper(subcls, *args, **kwargs):
                 LOG.debug(t"__init_subclass__: {cls.__name__} -> {klass.__name__} -> {subcls.__name__}")
 
                 if original_init_subclass is not None:
-                    original_init_subclass.__func__(subcls)
+                    original_init_subclass.__func__(subcls, *args, **kwargs)
                 else:
-                    super(klass, subcls).__init_subclass__()
+                    super(klass, subcls).__init_subclass__(*args, **kwargs)
 
                 options = subcls.__get_callguard_class_options__()
                 CallguardClassDecorator.guard(subcls, **options)

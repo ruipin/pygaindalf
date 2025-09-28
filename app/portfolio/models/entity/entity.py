@@ -4,32 +4,36 @@
 import sys
 import inspect
 import annotationlib
+import weakref
 
 from frozendict import frozendict
-from pydantic import ConfigDict, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr, BaseModel
-from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable, cast as typing_cast, TypeVar, Callable, Union, get_args, get_origin
+from pydantic import ConfigDict, ValidationInfo, model_validator, Field, field_validator, computed_field, model_validator, PositiveInt, PositiveInt, PrivateAttr
+from typing import override, Any, ClassVar, TYPE_CHECKING, Self, Iterable, cast as typing_cast, Callable, get_type_hints
 from abc import abstractmethod, ABCMeta
-from collections.abc import Set, MutableSet, MutableMapping
+from collections.abc import MutableSet, MutableMapping
 from functools import cached_property
 
-from ....util.helpers.generics import GenericIntrospectionMixin
 from ....util.mixins import NamedProtocol, NamedMixinMinimal
 from ....util.models import LoggableHierarchicalModel
 from ....util.helpers import script_info, generics
+from ....util.helpers.weakref import WeakRef
+from ....util.helpers import cached_classproperty
 from ....util.callguard import CallguardClassOptions
+from ....util.helpers import type_hints
 
 if TYPE_CHECKING:
-    from ...collections.uid_proxy import UidProxyFrozenSet
+    from ...collections.uid_proxy import UidProxySet
     from ...journal.entity_journal import EntityJournal
     from ...journal.session_manager import SessionManager
     from ...journal.session import Session
     from ..store.entity_store import EntityStore
     from ..annotation import Annotation
+    from .entity_proxy import EntityProxy
     from _typeshed import SupportsRichComparison
 
-from ..uid import Uid
+from ...util.uid import Uid
 
-from .superseded import superseded_check, SupersededError
+from ...util.superseded import superseded_check, SupersededError
 from .entity_audit_log import EntityAuditLog, EntityAuditType
 from .entity_dependents import EntityDependents
 from .dependency_event_handler import *
@@ -37,10 +41,11 @@ from .entity_fields import EntityFields
 from .entity_base import EntityBase
 
 
-ENTITY_SUBCLASSES = set()
+ENTITY_SUBCLASSES : MutableSet[type[Entity]] = set()
+PROXY_TYPES : MutableMapping[type[Entity], type[EntityProxy]] = dict()
 
 
-class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, EntityFields, NamedMixinMinimal, metaclass=ABCMeta):
+class Entity[T_Journal : EntityJournal, T_Proxy : EntityProxy](LoggableHierarchicalModel, EntityBase, EntityFields, NamedMixinMinimal, metaclass=ABCMeta):
     __callguard_class_options__ = CallguardClassOptions['Entity'](
         decorator=superseded_check, decorate_public_methods=True,
         ignore_patterns=('superseding', 'superseded', 'deleted', 'marked_for_deletion', 'uid', 'version')
@@ -72,6 +77,10 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
         # Initialise dependencies
         cls.__init_dependencies__()
+
+    @cached_classproperty
+    def __cached_type_hints__(cls) -> dict[str, Any]:
+        return get_type_hints(cls)
 
     @classmethod
     def is_update_allowed(cls, *, in_commit_only : bool = True, allow_in_abort : bool = False, force_session : bool = False) -> bool:
@@ -144,7 +153,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
             return
 
         if not self.is_update_allowed(in_commit_only=False):
-            raise RuntimeError(f"Not allowed to delete {self.__class__.__name__} instances outside of a session.")
+            raise RuntimeError(f"Not allowed to delete {type(self).__name__} instances outside of a session.")
 
         self.log.debug(t"Entity delete called for {self}.")
 
@@ -167,7 +176,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
     def apply_deletion(self, *, who : str | None = None, why : str | None = None) -> None:
         if not self.is_update_allowed(allow_in_abort=True):
-            raise RuntimeError(f"Not allowed to apply deletion to {self.__class__.__name__} instances outside of a session commit.")
+            raise RuntimeError(f"Not allowed to apply deletion to {type(self).__name__} instances outside of a session commit.")
 
         self._apply_deletion(who=who, why=why)
 
@@ -175,7 +184,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
         self.entity_log.on_delete(self, who=who, why=why)
         self.entity_dependents.on_delete(self)
 
-        entity_store = self.__class__._get_entity_store()
+        entity_store = type(self)._get_entity_store()
         del entity_store[self.uid]
 
         self.log.info(t"Entity {self} has been deleted.")
@@ -209,9 +218,9 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
     @model_validator(mode='after')
     def _validate_instance_name(self) -> Self:
-        if self.__class__.STRICT_INSTANCE_NAME_VALIDATION:
-            dict_name = self.__class__.calculate_instance_name_from_dict(self.__dict__)
-            instance_name = self.__class__.calculate_instance_name_from_instance(self)
+        if type(self).STRICT_INSTANCE_NAME_VALIDATION:
+            dict_name = type(self).calculate_instance_name_from_dict(self.__dict__)
+            instance_name = type(self).calculate_instance_name_from_instance(self)
             if instance_name != dict_name:
                 raise ValueError(f"Instance name '{instance_name}' does not match the calculated name from the dictionary '{dict_name}'.")
 
@@ -280,7 +289,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
     @model_validator(mode='after')
     def _validate_uid_after(self, info: ValidationInfo) -> Self:
         # Get a reference to the UID storage
-        entity_store = self.__class__._get_entity_store()
+        entity_store = type(self)._get_entity_store()
 
         # If the entity already exists, we fail unless we are cloning the entity and incrementing the version
         existing = entity_store.get(self.uid, None)
@@ -372,7 +381,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
     @property
     def entity_parent(self) -> Entity:
         if (parent := self.entity_parent_or_none) is None:
-            raise ValueError(f"{self.__class__.__name__} instance {self.uid} has no valid entity parent.")
+            raise ValueError(f"{type(self).__name__} instance {self.uid} has no valid entity parent.")
         return parent
 
 
@@ -418,7 +427,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
     def superseding_or_none[T : Entity](self : T) -> T | None:
         if not self.superseded:
             return self
-        return self.__class__.by_uid_or_none(self.uid)
+        return type(self).by_uid_or_none(self.uid)
 
     @property
     def superseding[T : Entity](self : T) -> T:
@@ -433,7 +442,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
         """
         # Check if we are in the middle of a commit
         if not self.is_update_allowed():
-            raise RuntimeError(f"Not allowed to update {self.__class__.__name__} instances outside of a session commit.")
+            raise RuntimeError(f"Not allowed to update {type(self).__name__} instances outside of a session commit.")
 
         # Validate data
         if not kwargs:
@@ -447,7 +456,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
             raise ValueError("Cannot update the 'entity_links' of an entity. The links are managed by the entity itself and should not be changed directly.")
 
         args = {}
-        for field_name in self.__class__.model_fields.keys():
+        for field_name in type(self).model_fields.keys():
             target_name = self.reverse_field_alias(field_name)
             if field_name in kwargs:
                 args[target_name] = kwargs[field_name]
@@ -463,11 +472,11 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
             raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_name}'.")
 
         # Update entity
-        new_entity = self.__class__(**args)
+        new_entity = type(self)(**args)
 
         # Sanity check - name didn't change
-        if not isinstance(new_entity, self.__class__):
-            raise TypeError(f"Expected new entity to be an instance of {self.__class__.__name__}, got {type(new_entity).__name__}.")
+        if not isinstance(new_entity, type(self)):
+            raise TypeError(f"Expected new entity to be an instance of {type(self).__name__}, got {type(new_entity).__name__}.")
         if new_entity.instance_name != self.instance_name:
             raise ValueError(f"Updating the entity cannot change its instance name. Original: '{self.instance_name}', New: '{new_entity.instance_name}'.")
 
@@ -575,8 +584,8 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
         if s is not None:
             return s
 
-        from ...collections import JournalledCollection, OrderedViewSet, OrderedViewFrozenSet
-        default = (JournalledCollection, OrderedViewSet, OrderedViewFrozenSet, EntityAuditLog, EntityDependents)
+        from ...collections import JournalledCollection, OrderedViewMutableSet, OrderedViewMutableSet
+        default = (JournalledCollection, OrderedViewMutableSet, OrderedViewMutableSet, EntityAuditLog, EntityDependents)
         setattr(Entity, '_PROTECTED_FIELD_TYPES', default)
         return default
 
@@ -591,7 +600,6 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
     _PROTECTED_FIELD_LOOKUP : ClassVar[MutableMapping[str,bool]]
     @classmethod
-    # TODO: This probably should be cached
     def is_protected_field_type(cls, field : str) -> bool:
         protected_field_lookup = getattr(cls, '_PROTECTED_FIELD_LOOKUP', None)
         if protected_field_lookup is None:
@@ -605,18 +613,57 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
         forbidden_types = cls._get_protected_field_types()
         result = False
-        if isinstance(annotation, Union):
-            for arg in get_args(annotation):
-                origin = generics.get_origin(arg, passthrough=True)
-                if issubclass(origin, forbidden_types):
-                    result = True
-                    break
-        else:
-            origin = generics.get_origin(annotation, passthrough=True)
-            result = issubclass(origin, forbidden_types)
+        for hint in type_hints.iterate_type_hints(annotation):
+            origin = generics.get_origin(hint, passthrough=True)
+            if issubclass(origin, forbidden_types):
+                result = True
+                break
 
         protected_field_lookup[field] = result
         return result
+
+
+
+    # MARK: Proxy
+    @classmethod
+    def get_proxy_class(cls) -> type[T_Proxy]:
+        if (proxy_cls := PROXY_TYPES.get(cls, None)) is None:
+            if not issubclass(cls, Entity):
+                raise RuntimeError("Cannot get proxy class for abstract base Entity class. Please use a concrete subclass.")
+            return super().get_proxy_class() # pyright: ignore[reportAttributeAccessIssue]
+
+        from .entity_proxy import EntityProxy
+        assert issubclass(proxy_cls, EntityProxy)
+        return typing_cast(type[T_Proxy], proxy_cls)
+
+    @classmethod
+    def register_proxy_class(cls, proxy_cls : type[T_Proxy]) -> None:
+        from .entity_proxy import EntityProxy
+        if not issubclass(proxy_cls, EntityProxy):
+            raise TypeError(f"Proxy class must be a subclass of EntityProxy, got {proxy_cls.__name__}.")
+
+        if cls in PROXY_TYPES:
+            raise RuntimeError(f"Proxy class for entity type {cls.__name__} is already registered as {PROXY_TYPES[cls].__name__}.")
+
+        PROXY_TYPES[cls] = proxy_cls
+
+        # Register with ABCMeta
+        Entity.register(proxy_cls)
+
+    _proxy : WeakRef[T_Proxy] | None = PrivateAttr(default=None)
+
+    @property
+    def proxy(self) -> T_Proxy:
+        proxy = self._proxy
+        if proxy is not None:
+            proxy = proxy()
+        if proxy is not None:
+            return proxy
+
+        proxy_cls = self.get_proxy_class()
+        proxy = proxy_cls(self, create=True)
+        self._proxy = weakref.ref(proxy)
+        return proxy
 
 
 
@@ -628,7 +675,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
     def iter_children_uids(self, *, use_journal : bool = False) -> Iterable[Uid]:
         # Inspect all fields of the entity for UIDs or Entities
-        for attr in self.__class__.model_fields.keys():
+        for attr in type(self).model_fields.keys():
             if self._get_children_field_ignore(attr):
                 continue
 
@@ -717,13 +764,13 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
     # MARK: Annotations
     @property
-    def annotations(self) -> UidProxyFrozenSet[Entity]:
-        from ...collections.uid_proxy import UidProxyFrozenSet
-        return UidProxyFrozenSet[Entity](owner=self, field='annotation_uids')
+    def annotations(self) -> UidProxySet[Entity]:
+        from ...collections.uid_proxy import UidProxySet
+        return UidProxySet[Entity](instance=self, field='annotation_uids')
 
     def on_annotation_created(self, annotation_or_uid : Annotation | Uid) -> None:
         if not self.is_update_allowed(in_commit_only=False, force_session=True):
-            raise RuntimeError(f"Not allowed to modify annotations of {self.__class__.__name__} instances outside of a session.")
+            raise RuntimeError(f"Not allowed to modify annotations of {type(self).__name__} instances outside of a session.")
 
         from ..annotation import Annotation
         uid = Annotation.narrow_to_uid(annotation_or_uid)
@@ -736,7 +783,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
         self.log.debug(t"Entity {self} received deletion notice for annotation {annotation_or_uid}.")
 
         if not self.is_update_allowed(in_commit_only=False, force_session=True):
-            raise RuntimeError(f"Not allowed to modify annotations of {self.__class__.__name__} instances outside of a session.")
+            raise RuntimeError(f"Not allowed to modify annotations of {type(self).__name__} instances outside of a session.")
 
         from ..annotation import Annotation
         uid = Annotation.narrow_to_uid(annotation_or_uid)
@@ -760,9 +807,9 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
     # MARK: Dependencies
     @property
-    def extra_dependencies(self) -> UidProxyFrozenSet[Entity]:
-        from ...collections.uid_proxy import UidProxyFrozenSet
-        return UidProxyFrozenSet[Entity](owner=self, field='extra_dependency_uids')
+    def extra_dependencies(self) -> UidProxySet[Entity]:
+        from ...collections.uid_proxy import UidProxySet
+        return UidProxySet[Entity](instance=self, field='extra_dependency_uids')
 
 
     # MARK: Dependency Events
@@ -801,7 +848,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
     def _call_dependency_event_handlers(self, event : EntityDependencyEventType, entity : Entity, journal : EntityJournal) -> bool:
         matched = False
-        for record in self.__class__.iter_dependency_event_handlers():
+        for record in type(self).iter_dependency_event_handlers():
             if event is EntityDependencyEventType.DELETED:
                 matched_current = record(owner=self, event=event, entity=entity, journal=journal)
             elif event is EntityDependencyEventType.UPDATED:
@@ -833,8 +880,8 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
         uid = source.uid
         entity = source.entity
 
-        # Loop through entity fields, and search for OrderedViewSets that referenced the source entity
-        for nm in self.__class__.model_fields.keys():
+        # Loop through entity fields, and search for OrderedViewMutableSets that referenced the source entity
+        for nm in type(self).model_fields.keys():
             original = getattr(self, nm, None)
             if original is None:
                 continue
@@ -862,8 +909,7 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
 
                 if not edited:
                     value = self.journal.get_field(nm, wrap=True)
-                print(type(original), type(value))
-                assert isinstance(value, OnItemUpdatedCollectionProtocol)
+                assert isinstance(value, OnItemUpdatedCollectionProtocol), f"Expected OnItemUpdatedCollectionProtocol, got {type(value)}"
                 assert uid in value
 
                 self.log.debug("Propagating dependency %s update to collection '%s'", source.entity, nm)
@@ -913,6 +959,17 @@ class Entity[T_Journal : EntityJournal](LoggableHierarchicalModel, EntityBase, E
     @override
     def __hash__(self):
         return hash((self.uid, self.version))
+
+    @override
+    def __eq__(self, other) -> bool:
+        if isinstance(other, Entity):
+            return self.uid == other.uid and self.version == other.version
+        else:
+            return False
+
+    @override
+    def __ne__(self, other) -> bool:
+        return not self.__eq__(other)
 
     @override
     def __str__(self) -> str:

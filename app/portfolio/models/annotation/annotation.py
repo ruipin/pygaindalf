@@ -2,15 +2,18 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import weakref
-from typing import override, Any, Self, cast as typing_cast
+from typing import override, Any, Self, cast as typing_cast, TYPE_CHECKING
 
 from ..entity import Entity, SupersededError
-from ..uid import Uid
+from ...util.uid import Uid
 
 from .annotation_journal import AnnotationJournal
 
+if TYPE_CHECKING:
+    from .annotation_proxy import AnnotationProxy
 
-class Annotation[T_Journal : AnnotationJournal](Entity[T_Journal]):
+
+class Annotation[T_Journal : AnnotationJournal, T_Proxy : AnnotationProxy](Entity[T_Journal, T_Proxy]):
     # MARK: Construction / Initialization
     @classmethod
     def create[T : Annotation](cls : type[T], entity_or_uid : Entity | Uid, /, **kwargs) -> T:

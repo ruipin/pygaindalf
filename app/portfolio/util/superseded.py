@@ -3,7 +3,7 @@
 
 from typing import Protocol
 
-from ....util.helpers.wrappers import before_attribute_check
+from ...util.helpers.wrappers import before_attribute_check
 
 class SupersededError(ValueError):
     pass

@@ -1,49 +1,43 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import weakref
 from abc import ABCMeta
-from typing import override, cast as typing_cast, Self
-
-from ....util.helpers import generics
-from ....util.callguard import callguard_class
+from collections.abc import Collection
+from typing import override
 
 from ...models.entity import Entity
+from ...util.uid import Uid
+
+from ..proxy import ProxyCollection, ProxyMutableCollection
 
 
-@callguard_class()
-class UidProxyFrozenCollection[T_Proxy : Entity, T_Collection : object](metaclass=ABCMeta):
-    def __init__(self, *, owner : object, field : str):
-        self._owner = weakref.ref(owner)
-        self._field = field
-
-    def _get_owner(self) -> object:
-        owner = self._owner()
-        if owner is None:
-            raise ValueError("Owner has been garbage collected")
-        return owner
-
-    def _get_field(self) -> T_Collection:
-        return typing_cast(T_Collection, getattr(self._get_owner(), self._field))
-
-    get_concrete_proxy_type      = generics.GenericIntrospectionMethod[T_Proxy     ]()
-    get_concrete_collection_type = generics.GenericIntrospectionMethod[T_Collection]()
+class UidProxyCollection[
+    T_Proxy : Entity,
+    T_Collection : Collection,
+](
+    ProxyCollection[Uid, T_Proxy, T_Collection],
+    metaclass=ABCMeta
+):
+    @override
+    def _do_convert_item_to_proxy(self, item : Uid, item_type : type[Uid], proxy_type : type[T_Proxy]) -> T_Proxy:
+        proxy = proxy_type.by_uid_or_none(item)
+        if proxy is None:
+            raise KeyError(f"No {proxy_type.__name__} with UID {item} found")
+        return proxy
 
     @override
-    def __str__(self) -> str:
-        return str(self._get_field())
-
-    @override
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}: {self._get_field()!r}>"
+    def _do_convert_proxy_to_item(self, proxy : T_Proxy, proxy_type : type[T_Proxy], item_type : type[Uid]) -> Uid:
+        return proxy.uid
 
 
 
-class UidProxyCollection[T_Proxy : Entity, T_Collection : object, T_Mut_Collection : object](UidProxyFrozenCollection[T_Proxy, T_Collection], metaclass=ABCMeta):
-    def _get_mut_field(self) -> T_Mut_Collection:
-        field = self._get_field()
-        if not isinstance(field, (mut_type := self.get_concrete_mutable_collection_type(origin=True))):
-            raise TypeError(f"Field '{self._get_owner()}.{self._field}' is not a {mut_type.__name__}.")
-        return typing_cast(T_Mut_Collection, field)
-
-    get_concrete_mutable_collection_type = generics.GenericIntrospectionMethod[T_Mut_Collection]()
+class UidProxyMutableCollection[
+    T_Proxy : Entity,
+    T_Collection : Collection,
+    T_Mut_Collection : Collection,
+](
+    UidProxyCollection[T_Proxy, T_Collection],
+    ProxyMutableCollection[Uid, T_Proxy, T_Collection, T_Mut_Collection],
+    metaclass=ABCMeta
+):
+    pass

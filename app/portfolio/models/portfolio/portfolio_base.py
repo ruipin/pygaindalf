@@ -4,14 +4,15 @@
 from functools import cached_property
 
 from collections.abc import Set
-from abc import abstractmethod, ABCMeta
+from abc import ABCMeta
 from typing import override, Iterator, TYPE_CHECKING
 
 from ....util.helpers.empty_class import EmptyClass
 from ....util.helpers import generics
 
-from ..uid import Uid
-from ..ledger import Ledger, UidProxyOrderedViewLedgerFrozenSet
+from ...util.uid import Uid
+from ...collections import UidProxyOrderedViewMutableSet
+from ..ledger import Ledger
 from ..entity import Entity, EntityBase
 from ..instrument import Instrument
 
@@ -20,7 +21,7 @@ from .portfolio_fields import PortfolioFields
 
 class PortfolioBase[
     T_Uid_Set : Set[Uid],
-    T_Proxy_Set : UidProxyOrderedViewLedgerFrozenSet
+    T_Proxy_Set : UidProxyOrderedViewMutableSet[Ledger]
 ](
     EntityBase,
     PortfolioFields[T_Uid_Set] if TYPE_CHECKING else EmptyClass,
@@ -32,7 +33,7 @@ class PortfolioBase[
 
     @cached_property
     def ledgers(self) -> T_Proxy_Set:
-        return self.get_proxy_set_type(origin=True)(owner=self, field='ledger_uids')
+        return self.get_proxy_set_type(origin=True)(instance=self, field='ledger_uids')
 
     def __getitem__(self, index : int | Uid | Instrument) -> Ledger:
         ledger = None

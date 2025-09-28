@@ -5,18 +5,18 @@ import pytest
 from pydantic import Field
 from functools import cached_property
 
-from app.portfolio.collections.uid_proxy import UidProxyMapping
-from app.portfolio.collections.uid_proxy.mapping import UidProxyFrozenMapping
+from app.portfolio.collections.uid_proxy import UidProxyMutableMapping
+from app.portfolio.collections.uid_proxy.mapping import UidProxyMapping
 from app.portfolio.models.entity import IncrementingUidEntity
-from app.portfolio.models.uid import Uid
+from app.portfolio.util.uid import Uid
 
 
 class Item(IncrementingUidEntity):
     pass
 
-class _UidProxyItemMapping(UidProxyMapping[str, Item]):
+class _UidProxyItemMapping(UidProxyMutableMapping[str, Item]):
     pass
-class _UidProxyFrozenItemMapping(UidProxyFrozenMapping[str, Item]):
+class _UidProxyFrozenItemMapping(UidProxyMapping[str, Item]):
     pass
 
 class Owner(IncrementingUidEntity):
@@ -24,16 +24,16 @@ class Owner(IncrementingUidEntity):
 
     @cached_property
     def items(self):
-        return _UidProxyItemMapping(owner=self, field='item_uids')
+        return _UidProxyItemMapping(instance=self, field='item_uids')
 
     @cached_property
     def items_frozen(self):
-        return _UidProxyFrozenItemMapping(owner=self, field='item_uids')
+        return _UidProxyFrozenItemMapping(instance=self, field='item_uids')
 
 
 @pytest.mark.portfolio_collections
 @pytest.mark.uid_proxy_collections
-class TestUidProxyMapping:
+class TestUidProxyMutableMapping:
     def test_set_and_get(self):
         o = Owner()
         i = Item()

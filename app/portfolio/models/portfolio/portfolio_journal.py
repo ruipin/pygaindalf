@@ -8,22 +8,19 @@ from collections.abc import MutableSet
 
 from ...journal.entity_journal import EntityJournal
 
-from ..uid import Uid
-from ..ledger import Ledger, OrderedViewLedgerUidSet, UidProxyOrderedViewLedgerSet
-
+from ...util.uid import Uid
+from ...collections import OrderedViewUidMutableSet, UidProxyOrderedViewMutableSet
+from ..ledger import Ledger
 from .portfolio_base import PortfolioBase
 
 
-class PortfolioJournal(PortfolioBase[OrderedViewLedgerUidSet, UidProxyOrderedViewLedgerSet], EntityJournal, MutableSet[Ledger], init=False):
-    if TYPE_CHECKING:
-        pass
-
-
-    # MARK: Ledgers
-    @cached_property
-    def ledgers(self) -> UidProxyOrderedViewLedgerSet:
-        return UidProxyOrderedViewLedgerSet(owner=self, field='ledger_uids')
-
+class PortfolioJournal(
+    PortfolioBase[OrderedViewUidMutableSet[Ledger],
+    UidProxyOrderedViewMutableSet[Ledger]],
+    EntityJournal,
+    MutableSet[Ledger],
+    init=False
+):
 
     # MARK: MutableSet ABC
     @override

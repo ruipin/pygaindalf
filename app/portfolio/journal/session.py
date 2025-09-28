@@ -12,10 +12,10 @@ from collections.abc import MutableSet, MutableMapping
 from ...util.models import LoggableHierarchicalModel
 from ...util.callguard import CallguardClassOptions
 
-from ..models.uid import Uid, IncrementingUidFactory, UID_SEPARATOR
+from ..util.uid import Uid, IncrementingUidFactory, UID_SEPARATOR
 from ..models.entity.entity import Entity
 from ..models.entity.entity_audit_log import EntityAuditType
-from ..models.entity.superseded import superseded_check, SupersededError
+from ..util.superseded import superseded_check, SupersededError
 
 from .entity_journal import EntityJournal
 from .protocols import SessionManagerHookLiteral
@@ -68,7 +68,7 @@ class Session(LoggableHierarchicalModel):
         try:
             return str(self.uid)
         except:
-            return f"{self.__class__.__name__}{UID_SEPARATOR}<invalid-uid>"
+            return f"{type(self).__name__}{UID_SEPARATOR}<invalid-uid>"
 
 
     # MARK: Metadata
@@ -119,7 +119,7 @@ class Session(LoggableHierarchicalModel):
 
         journal_cls = entity.get_journal_class()
         if not issubclass(journal_cls, EntityJournal):
-            raise TypeError(f"{entity.__class__.__name__} journal class {journal_cls} is not a subclass of EntityJournal.")
+            raise TypeError(f"{type(entity).__name__} journal class {journal_cls} is not a subclass of EntityJournal.")
         journal = journal_cls(instance_parent=weakref.ref(self), entity=entity)
         self._entity_journals[entity.uid] = journal
 

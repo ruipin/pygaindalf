@@ -70,7 +70,7 @@ class LoggableMixin:
         """
         name = getattr(self, '__name__', None)
         if name is None:
-            name = getattr(self.__class__, '__name__', None)
+            name = getattr(type(self), '__name__', None)
         if name is None:
             raise ValueError("Could not determine default name")
         if isinstance(self, type):
@@ -115,7 +115,7 @@ class LoggableMixin:
             str: The representation name.
         """
         nm = self.__log_hierarchy__
-        cnm = self.__class__.__name__
+        cnm = type(self).__name__
 
         if cnm in nm:
             return nm
@@ -143,4 +143,4 @@ class LoggableMixin:
         if isinstance(self, NamedProtocol):
             return super().__str__()
         else:
-            return f"{self.__class__.__name__}"
+            return f"{type(self).__name__}"

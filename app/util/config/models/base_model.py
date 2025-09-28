@@ -29,7 +29,7 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
 
     @override
     def __rich_repr__(self) -> rich.repr.Result:
-        for attr, info in self.__class__.model_fields.items():
+        for attr, info in type(self).model_fields.items():
             if info.repr is False:
                 continue
 

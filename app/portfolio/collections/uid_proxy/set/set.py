@@ -1,17 +1,29 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import TYPE_CHECKING, override, Iterator
 from collections.abc import Set, MutableSet
 
-from ....models.uid import Uid
-from .generic_set import GenericUidProxySet, GenericUidProxyFrozenSet
-
+from ....util.uid import Uid
 from ....models.entity import Entity
 
+from ...proxy import ProxySet, ProxyMutableSet
 
-class UidProxyFrozenSet[T : Entity](GenericUidProxyFrozenSet[T, Set[Uid]]):
-    pass
+from .generic_set import GenericUidProxySet, GenericUidProxyMutableSet
 
-class UidProxySet[T : Entity](UidProxyFrozenSet[T], GenericUidProxySet[T, Set[Uid], MutableSet[Uid]]):
+
+class UidProxySet[
+    T : Entity
+](
+    GenericUidProxySet[T, Set[Uid]]
+):
     pass
+ProxySet.register(UidProxySet)
+
+
+class UidProxyMutableSet[
+    T : Entity
+](
+    GenericUidProxyMutableSet[T, Set[Uid], MutableSet[Uid]]
+):
+    pass
+ProxyMutableSet.register(UidProxyMutableSet)

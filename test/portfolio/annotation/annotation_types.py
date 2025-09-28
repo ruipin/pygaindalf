@@ -15,20 +15,20 @@ from app.portfolio.models.annotation import (
 )
 
 
-class HostEntity(IncrementingUidEntity[EntityJournal]):
+class HostEntity(IncrementingUidEntity):
     """Minimal concrete entity to attach annotations to in tests."""
 
     # A tiny payload to ensure basic fields work; not used in assertions much
     name: str = Field(default="host")
 
 
-class SampleIncrementingAnnotation(IncrementingUidAnnotation[AnnotationJournal]):
+class SampleIncrementingAnnotation(IncrementingUidAnnotation):
     """Test annotation that uses incrementing UIDs (multiple per parent)."""
 
     payload: int = Field(default=0)
 
 
-class SampleUniqueAnnotation(UniqueAnnotation[AnnotationJournal]):
+class SampleUniqueAnnotation(UniqueAnnotation):
     """Test annotation with a UID derived from the parent UID (unique per parent)."""
 
     payload: int = Field(default=0)

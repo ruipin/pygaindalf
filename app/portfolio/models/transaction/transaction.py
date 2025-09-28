@@ -11,10 +11,11 @@ from decimal import Decimal
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
+    from .transaction_proxy import TransactionProxy
 
 from ....util.helpers.empty_class import EmptyClass
 
-from ..uid import Uid
+from ...util.uid import Uid
 from ..entity import IncrementingUidEntity
 from ..instrument.instrument import Instrument
 
@@ -25,7 +26,11 @@ from .transaction_base import TransactionBase
 
 
 
-class Transaction(TransactionBase, TransactionFields if not TYPE_CHECKING else EmptyClass, IncrementingUidEntity[TransactionJournal]):
+class Transaction(
+    TransactionBase,
+    TransactionFields if not TYPE_CHECKING else EmptyClass,
+    IncrementingUidEntity[TransactionJournal, 'TransactionProxy']
+):
     # MARK: Instrument
     @property
     def instrument(self) -> Instrument:

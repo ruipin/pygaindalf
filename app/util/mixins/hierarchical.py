@@ -49,7 +49,7 @@ class HierarchicalMixinMinimal(metaclass=ABCMeta):
         elif isinstance(self, NamedProtocol):
             hier = self.instance_name
         if hier is None:
-            hier = self.__class__.__name__
+            hier = type(self).__name__
 
         parent = self.instance_parent # pyright: ignore[reportAttributeAccessIssue] as this mixin must only be used when instance_parent is accessible
         if parent is None:
@@ -65,7 +65,7 @@ class HierarchicalMixinMinimal(metaclass=ABCMeta):
             hier = f"{name}.{hier}"
 
         else:
-            hier = f"{parent.__class__.__name__}.{hier}"
+            hier = f"{type(parent).__name__}.{hier}"
 
         return hier
 
@@ -78,7 +78,7 @@ class HierarchicalMixinMinimal(metaclass=ABCMeta):
             str: The representation name.
         """
         nm = self.instance_hierarchy
-        cnm = self.__class__.__name__
+        cnm = type(self).__name__
 
         if cnm in nm:
             return nm
@@ -106,7 +106,7 @@ class HierarchicalMixinMinimal(metaclass=ABCMeta):
         if isinstance(self, NamedProtocol):
             return super().__str__()
         else:
-            return f"<{self.__class__.__name__}>"
+            return f"<{type(self).__name__}>"
 
 
 # MARK: Mixin for Hierarchical Classes
@@ -146,7 +146,7 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
         Returns:
             HierarchicalProtocol | NamedProtocol | None: The parent object.
         """
-        parent = getattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, None)
+        parent = getattr(self, type(self).HIERARCHICAL_MIXIN_ATTRIBUTE, None)
         if parent is None:
             return None
         return parent() if isinstance(parent, weakref.ref) else parent
@@ -162,12 +162,12 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
         if new_parent is not None and not isinstance(new_parent, (HierarchicalProtocol, NamedProtocol)):
             raise TypeError(f"Expected HierarchicalProtocol, NamedProtocol, or None, got {type(new_parent).__name__}")
 
-        if not self.__class__.ALLOW_CHANGING_INSTANCE_PARENT and self.instance_parent is not None:
+        if not type(self).ALLOW_CHANGING_INSTANCE_PARENT and self.instance_parent is not None:
             raise RuntimeError("Changing instance_parent is not allowed for this class.")
 
         _new_parent = weakref.ref(new_parent) if new_parent is not None else None
 
-        setattr(self, self.__class__.HIERARCHICAL_MIXIN_ATTRIBUTE, _new_parent)
+        setattr(self, type(self).HIERARCHICAL_MIXIN_ATTRIBUTE, _new_parent)
 
         from .loggable import LoggableMixin
         if isinstance(self, LoggableMixin):

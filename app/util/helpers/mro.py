@@ -17,7 +17,7 @@ def _ensure_mro_order(final : type, target : type, others : type | Iterable[type
             cur_index = mro.index(cur)
             if (cur_index < index) if before else (cur_index > index):
                 if fail:
-                    raise TypeError(f"'{target.__name__}' must come *{'before' if before else 'after'}* '{cur.__name__}' in the '{final.__class__.__name__}' MRO")
+                    raise TypeError(f"'{target.__name__}' must come *{'before' if before else 'after'}* '{cur.__name__}' in the '{type(final).__name__}' MRO")
                 else:
                     return False
         except ValueError:
@@ -28,7 +28,7 @@ def _ensure_mro_order(final : type, target : type, others : type | Iterable[type
 
 def ensure_mro_order(final : type | object, target : type, *, before : type | Iterable[type] | None = None, after : type | Iterable[type] | None = None, fail : bool = True) -> bool:
     if not isinstance(final, type):
-        final = final.__class__
+        final = type(final)
 
     if before is not None:
         if not _ensure_mro_order(final, target, before, before=True, fail=fail):

@@ -144,6 +144,6 @@ class TestLedgerJournalPropagationSessions:
             tj = t1.journal
             tj.date = datetime.date(2025, 3, 5)
 
-            # Still no diff because child isn't in the parent's OrderedViewSet
+            # Still no diff because child isn't in the parent's OrderedViewMutableSet
             assert lj.get_diff() == {'transaction_uids': (JournalledSetEdit(type=JournalledSetEditType.DISCARD, value=t1.uid),)}
             s.abort()

@@ -7,8 +7,8 @@ from typing import Iterable, TYPE_CHECKING
 
 from ....util.callguard import callguard_class
 from ....util.helpers.empty_class import EmptyClass
-from ..uid import Uid
-from .superseded import superseded_check
+from ...util.uid import Uid
+from ...util.superseded import superseded_check
 from .entity_fields import EntityFields
 
 

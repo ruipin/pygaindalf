@@ -2,7 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from typing import Protocol, runtime_checkable
-from ..uid import UidProtocol
+from .uid import UidProtocol
 
 @runtime_checkable
 class VersionedUid(UidProtocol, Protocol):

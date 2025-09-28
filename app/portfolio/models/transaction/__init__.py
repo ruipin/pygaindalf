@@ -2,5 +2,4 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from .transaction import Transaction
-from .transaction_proxy import *
-from .transaction_uid_set import *
+from .transaction_proxy import TransactionProxy

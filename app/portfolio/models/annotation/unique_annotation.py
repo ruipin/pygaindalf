@@ -2,16 +2,19 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import weakref
-from typing import override, Any, Self
+from typing import override, Any, TYPE_CHECKING
 
 from ..entity import Entity
-from ..uid import Uid, UID_SEPARATOR
+from ...util.uid import Uid, UID_SEPARATOR
 
 from .annotation_journal import AnnotationJournal
 from .annotation import Annotation
 
+if TYPE_CHECKING:
+    from .annotation_proxy import AnnotationProxy
 
-class UniqueAnnotation[T_Journal : AnnotationJournal](Annotation[T_Journal]):
+
+class UniqueAnnotation[T_Journal : AnnotationJournal, T_Proxy : AnnotationProxy](Annotation[T_Journal, T_Proxy]):
     @classmethod
     def _calculate_parent_uid_from_dict(cls, data : dict[str, Any]) -> Uid:
         parent = data.get('instance_parent', data.get('instance_parent_weakref', None))

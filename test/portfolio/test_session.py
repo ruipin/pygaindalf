@@ -12,7 +12,7 @@ from app.portfolio.journal.entity_journal import EntityJournal
 from app.portfolio.collections.journalled.sequence import JournalledSequence
 from app.portfolio.collections.journalled.mapping import JournalledMapping
 from app.portfolio.models.entity.incrementing_uid_entity import IncrementingUidEntity
-from app.portfolio.models.entity.superseded import SupersededError
+from app.portfolio.util.superseded import SupersededError
 
 
 # --- Sample Entity -----------------------------------------------------------------

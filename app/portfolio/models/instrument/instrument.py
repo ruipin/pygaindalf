@@ -15,9 +15,17 @@ from .instrument_fields import InstrumentFields
 from .instrument_base import InstrumentBase
 from .instrument_journal import InstrumentJournal
 
+if TYPE_CHECKING:
+    from .instrument_proxy import InstrumentProxy
 
 
-class Instrument(InstrumentBase, InstrumentFields if not TYPE_CHECKING else EmptyClass, InstanceStoreEntityMixin, Entity[InstrumentJournal]):
+
+class Instrument(
+    InstrumentBase,
+    InstrumentFields if not TYPE_CHECKING else EmptyClass,
+    InstanceStoreEntityMixin,
+    Entity[InstrumentJournal, 'InstrumentProxy']
+):
     # MARK: Instance Store Behaviour
     @classmethod
     def _get_isin_store(cls) -> StringUidMapping:
@@ -129,4 +137,4 @@ class Instrument(InstrumentBase, InstrumentFields if not TYPE_CHECKING else Empt
     @property
     @override
     def instance_name(self) -> str:
-        return self.__class__.calculate_instance_name_from_dict(self.__dict__)
+        return type(self).calculate_instance_name_from_dict(self.__dict__)

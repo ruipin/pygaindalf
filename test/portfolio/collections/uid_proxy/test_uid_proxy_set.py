@@ -5,10 +5,9 @@ import pytest
 from pydantic import Field
 from functools import cached_property
 
-from app.portfolio.collections.uid_proxy import UidProxySet
-from app.portfolio.collections.uid_proxy.set.set import UidProxyFrozenSet
+from app.portfolio.collections.uid_proxy import UidProxySet, UidProxyMutableSet
 from app.portfolio.models.entity import IncrementingUidEntity
-from app.portfolio.models.uid import Uid
+from app.portfolio.util.uid import Uid
 
 
 # Test entities -------------------------------------------------------------
@@ -17,24 +16,27 @@ class Child(IncrementingUidEntity):
 
 class _UidProxyChildSet(UidProxySet[Child]):
     pass
-class _UidProxyFrozenChildSet(UidProxyFrozenSet[Child]):
+class _UidProxyMutableChildSet(UidProxyMutableSet[Child]):
     pass
 
-class Parent(IncrementingUidEntity):
-    child_uids: set[Uid] = Field(default_factory=set)
+class Parent:
+    child_uids: set[Uid]
+
+    def __init__(self):
+        self.child_uids = set()
 
     @cached_property
     def children(self):  # Returns a proxy set of Child entities
-        return _UidProxyChildSet(owner=self, field='child_uids')
+        return _UidProxyMutableChildSet(instance=self, field='child_uids')
 
     @cached_property
     def children_frozen(self):
-        return _UidProxyFrozenChildSet(owner=self, field='child_uids')
+        return _UidProxyChildSet(instance=self, field='child_uids')
 
 
 @pytest.mark.portfolio_collections
 @pytest.mark.uid_proxy_collections
-class TestUidProxySet:
+class TestUidProxyMutableSet:
     def test_add_and_contains_and_len(self):
         p = Parent()
         c1, c2 = Child(), Child()
@@ -71,9 +73,9 @@ class TestUidProxySet:
         assert c1 in f and c2 in f
         assert {x.uid for x in f} == {c1.uid, c2.uid}
         with pytest.raises(AttributeError):
-            f.add(c1)  # type: ignore[attr-defined]
+            f.add(c1) # pyright: ignore[reportAttributeAccessIssue]
         with pytest.raises(AttributeError):
-            f.discard(c1)  # type: ignore[attr-defined]
+            f.discard(c1) # pyright: ignore[reportAttributeAccessIssue]
 
     def test_iter_yields_entities(self):
         p = Parent()
@@ -93,9 +95,9 @@ class TestUidProxySet:
         p.children.add(c)
 
         assert any(c.uid == s.uid for s in p.children)
-        assert type(p.children) == _UidProxyChildSet
+        assert type(p.children) == _UidProxyMutableChildSet
         assert any(c.uid == s.uid for s in p.children_frozen)
-        assert type(p.children_frozen) == _UidProxyFrozenChildSet
+        assert type(p.children_frozen) == _UidProxyChildSet
 
     def test_missing_entity_uid_raises_key_error(self):
         p = Parent()

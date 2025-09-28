@@ -4,16 +4,16 @@
 import pytest
 from typing import override
 
-from app.portfolio.collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
+from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
 
 
-class _MutableInts(OrderedViewSet[int]):
+class _MutableInts(OrderedViewMutableSet[int]):
     pass
 
 
 @pytest.mark.portfolio_collections
 @pytest.mark.ordered_view_collections
-class TestOrderedViewSet:
+class TestOrderedViewMutableSet:
     def test_add_and_discard_updates_sorted_cache(self):
         s = _MutableInts([3, 1])
         info0 = s.sort.cache_info()  # type: ignore[attr-defined]
@@ -67,11 +67,11 @@ class TestOrderedViewSet:
             m.clear()
 
     def test_get_immutable_type_round_trip(self):
-        assert _MutableInts.get_immutable_type() == OrderedViewFrozenSet[int]
+        assert _MutableInts.get_immutable_type() == OrderedViewSet[int]
 
     def test_subclasshook_matches(self):
         # _MutableInts obviously subclass; ensure issubclass path remains True
-        assert issubclass(_MutableInts, OrderedViewSet)
+        assert issubclass(_MutableInts, OrderedViewMutableSet)
 
     def test_iteration_and_getitem_after_mutations(self):
         s = _MutableInts()

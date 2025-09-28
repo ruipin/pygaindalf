@@ -3,7 +3,7 @@
 
 import pytest
 
-from app.portfolio.models.entity.superseded import superseded_check
+from app.portfolio.util.superseded import superseded_check
 from app.util.callguard import callguard_class, CALLGUARD_ENABLED
 
 

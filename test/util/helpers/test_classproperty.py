@@ -8,7 +8,7 @@ Tests class-level and instance-level access, and dynamic changes.
 
 from abc import ABCMeta, abstractmethod
 import pytest
-from app.util.helpers.classproperty import classproperty
+from app.util.helpers.classproperty import classproperty, cached_classproperty
 
 class MyClass:
     _value = 42
@@ -64,3 +64,21 @@ class TestClassProperty:
         assert MyConcreteClass.abstract_property == "Implemented abstract property"
         concrete_instance = MyConcreteClass()
         assert concrete_instance.abstract_property == "Implemented abstract property"
+
+    def test_cached_classproperty_caches_result(self):
+        class CachedExample:
+            call_count = 0
+
+            @cached_classproperty
+            def expensive(cls):
+                cls.call_count += 1
+                return {"call_count": cls.call_count}
+
+        first = CachedExample.expensive
+        second = CachedExample.expensive
+        instance = CachedExample()
+        third = instance.expensive
+
+        assert CachedExample.call_count == 1
+        assert first is second
+        assert first is third

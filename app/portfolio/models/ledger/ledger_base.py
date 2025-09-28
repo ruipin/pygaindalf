@@ -4,17 +4,17 @@
 from functools import cached_property
 
 from collections.abc import Set
-from abc import abstractmethod, ABCMeta
+from abc import ABCMeta
 from typing import override, Iterator, TYPE_CHECKING
-from pydantic import Field
 
 from ....util.helpers.empty_class import EmptyClass
 from ....util.helpers import generics
 
+from ...util.uid import Uid
+from ...collections import UidProxyOrderedViewMutableSet
+
 from ..instrument import Instrument
 from ..transaction import Transaction
-from ..uid import Uid
-from ..transaction import OrderedViewFrozenTransactionUidSet, UidProxyOrderedViewTransactionFrozenSet
 from ..entity import EntityBase
 
 from .ledger_fields import LedgerFields
@@ -22,7 +22,7 @@ from .ledger_fields import LedgerFields
 
 class LedgerBase[
     T_Uid_Set : Set[Uid],
-    T_Proxy_Set : UidProxyOrderedViewTransactionFrozenSet
+    T_Proxy_Set : UidProxyOrderedViewMutableSet[Transaction]
 ](
     EntityBase,
     LedgerFields[T_Uid_Set] if TYPE_CHECKING else EmptyClass,
@@ -40,7 +40,7 @@ class LedgerBase[
 
     @cached_property
     def transactions(self) -> T_Proxy_Set:
-        return self.get_proxy_set_type(origin=True)(owner=self, field='transaction_uids')
+        return self.get_proxy_set_type(origin=True)(instance=self, field='transaction_uids')
 
     def __getitem__(self, index : int | Uid) -> Transaction:
         if isinstance(index, int):

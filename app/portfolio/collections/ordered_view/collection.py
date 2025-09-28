@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from functools import lru_cache
+import functools
+
 from typing import override, Iterable, Iterator, Hashable, Any, overload, Self, TYPE_CHECKING, cast as typing_cast, Callable, Protocol, runtime_checkable
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import core_schema, CoreSchema
@@ -16,7 +17,7 @@ from ....util.helpers import generics
 from ....util.callguard import callguard_class
 from ....util.helpers.instance_lru_cache import instance_lru_cache
 
-from ...models.uid import Uid
+from ...util.uid import Uid
 from ...models.entity import Entity
 
 from .protocols import SortKeyProtocol
@@ -24,7 +25,7 @@ from .protocols import SortKeyProtocol
 
 @callguard_class()
 class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
-    get_concrete_content_type = generics.GenericIntrospectionMethod[T]()
+    get_content_type = generics.GenericIntrospectionMethod[T]()
 
     def __init__(self, data : Iterable[T] | None = None, /):
         self._initialize_container(data)
@@ -95,7 +96,7 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
 
     @override
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}: {self.sorted!r}>"
+        return f"<{type(self).__name__}: {self.sorted!r}>"
 
 
 
@@ -109,23 +110,23 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
         schema = cls.get_core_schema(source, handler)
         return core_schema.no_info_plain_validator_function(
-            function= cls.validate_and_coerce,
+            function= functools.partial(cls.validate_and_coerce, source=source),
             json_schema_input_schema= schema,
         )
 
     @classmethod
-    def validate_and_coerce(cls, value: Any) -> Self:
+    def validate_and_coerce(cls, value: Any, *, source : type[Self] | None = None) -> Self:
         if not isinstance(value, Iterable):
-            raise TypeError(f"Expected an iterable of {cls.get_concrete_content_type().__name__}, got {type(value).__name__}.")
+            raise TypeError(f"Expected an iterable of {cls.get_content_type().__name__}, got {type(value).__name__}.")
 
-        concrete_item_type = cls.get_concrete_content_type()
+        concrete_item_type = cls.get_content_type()
         for item in value:
-            cls._validate_item(concrete_item_type, item)
+            cls._validate_item(concrete_item_type, item, source=source)
 
         return cls(value)
 
     @classmethod
-    def _validate_item(cls, concrete_item_type : type[T], item: Any) -> None:
+    def _validate_item(cls, concrete_item_type : type[T], item: Any, *, source : type[Self] | None = None) -> None:
         if not isinstance(item, concrete_item_type):
             raise TypeError(f"Expected item of type {concrete_item_type.__name__}, got {type(item).__name__}.")
 
@@ -136,3 +137,17 @@ class OrderedViewCollection[T : Hashable](Collection[T], metaclass=ABCMeta):
     def get_journalled_type(cls) -> type[JournalledOrderedViewSet]:
         from ..journalled.set.ordered_view_set import JournalledOrderedViewSet
         return JournalledOrderedViewSet
+
+
+
+class OrderedViewUidCollection[T : Entity](OrderedViewCollection[Uid], metaclass=ABCMeta):
+    get_entity_type = generics.GenericIntrospectionMethod[T]()
+
+    @classmethod
+    @override
+    def _validate_item(cls, concrete_item_type : type[Uid], item: Any, *, source : type[Self] | None = None) -> None: # pyright: ignore[reportIncompatibleMethodOverride]
+        super()._validate_item(concrete_item_type, item, source=source)
+
+        entity_type = cls.get_entity_type(source=source)
+        if item.namespace != (ns := entity_type.uid_namespace()):
+            raise ValueError(f"Invalid entity UID namespace: expected '{ns}', got '{item.namespace}'.")

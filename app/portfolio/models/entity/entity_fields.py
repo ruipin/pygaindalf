@@ -7,7 +7,7 @@ from abc import ABCMeta
 from pydantic import Field
 from typing import dataclass_transform, TYPE_CHECKING
 
-from ..uid import Uid
+from ...util.uid import Uid
 
 
 @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))

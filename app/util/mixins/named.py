@@ -73,7 +73,7 @@ class NamedMixinMinimal(metaclass=ABCMeta):
             str: The name for __repr__.
         """
         nm  = self.final_instance_name
-        cnm = self.__class__.__name__
+        cnm = type(self).__name__
 
         if cnm in nm:
             return nm
@@ -99,12 +99,12 @@ class NamedMixinMinimal(metaclass=ABCMeta):
             str: The string name.
         """
         nm = self.final_instance_name
-        cnm = self.__class__.__name__
+        cnm = type(self).__name__
 
         if cnm in nm:
             return nm
         else:
-            return f"{shorten_name(self.__class__.__name__)} {nm}"
+            return f"{shorten_name(type(self).__name__)} {nm}"
 
     @override
     def __str__(self) -> str:
@@ -153,7 +153,7 @@ class NamedMixin(NamedMixinMinimal):
         Returns:
             str: The instance name.
         """
-        return getattr(self, self.__class__.NAMED_MIXIN_ATTRIBUTE, None)
+        return getattr(self, type(self).NAMED_MIXIN_ATTRIBUTE, None)
 
     @instance_name.setter
     def instance_name(self, new_name : str | None) -> None:
@@ -163,7 +163,7 @@ class NamedMixin(NamedMixinMinimal):
         Args:
             new_name (str): The new name to set.
         """
-        setattr(self, self.__class__.NAMED_MIXIN_ATTRIBUTE, new_name)
+        setattr(self, type(self).NAMED_MIXIN_ATTRIBUTE, new_name)
 
         from .loggable import LoggableMixin
         if isinstance(self, LoggableMixin):
@@ -182,7 +182,7 @@ class NamedMixin(NamedMixinMinimal):
                 elif hasattr(owner, '__name__'):
                     owner_name = owner.__name__
                 else:
-                    owner_name = owner.__class__.__name__
+                    owner_name = type(owner).__name__
                 self.instance_name = f"{owner_name}.{name}"
             else:
                 self.instance_name = name

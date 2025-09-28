@@ -34,14 +34,14 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
     #       We do sanity check that the current values are not already set to avoid overwriting them.
     def _seed_parent_to_object(self, *, obj : Any) -> None:
         if isinstance(obj, HierarchicalMutableProtocol) and obj.instance_parent is not self:
-            if not getattr(obj.__class__, 'PROPAGATE_INSTANCE_PARENT_FROM_PARENT', True):
+            if not getattr(type(obj), 'PROPAGATE_INSTANCE_PARENT_FROM_PARENT', True):
                 return
             if (parent := obj.instance_parent) is not None:
                 if parent is obj:
                     return
 
                 # Entity special case
-                from ...portfolio.models.entity.versioned_uid import VersionedUid
+                from ...portfolio.util.versioned_uid import VersionedUid
                 if isinstance(self, VersionedUid) and isinstance(parent, VersionedUid) and self.is_newer_version_than(parent):
                     pass
                 else:
@@ -59,7 +59,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
 
     def _seed_name_to_object(self, *, obj : Any, name : str) -> None:
         if isinstance(obj, NamedMutableProtocol) and obj.instance_name != name:
-            if not getattr(obj.__class__, 'PROPAGATE_INSTANCE_NAME_FROM_PARENT', True):
+            if not getattr(type(obj), 'PROPAGATE_INSTANCE_NAME_FROM_PARENT', True):
                 return
             if (current := obj.instance_name) is not None:
                 if current == name:
@@ -68,10 +68,10 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             object.__setattr__(obj, 'instance_name', name)
 
     def _seed_parent_and_name_to_object(self, *, obj : Any, name : str, propagate_name : bool, propagate_parent : bool) -> None:
-        if not getattr(obj.__class__, 'PROPAGATE_FROM_PARENT', True):
+        if not getattr(type(obj), 'PROPAGATE_FROM_PARENT', True):
             return
 
-        from ...portfolio.models.uid import Uid
+        from ...portfolio.util.uid import Uid
         if isinstance(obj, Uid):
             from ...portfolio.models.entity import Entity
             obj = Entity.by_uid_or_none(obj)
@@ -88,7 +88,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             return
 
         if fldinfo is None:
-            fldinfo = self.__class__.model_fields[fldnm]
+            fldinfo = type(self).model_fields[fldnm]
 
         extra = fldinfo.json_schema_extra if isinstance(fldinfo.json_schema_extra, dict) else None
 
@@ -97,7 +97,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
         if extra:
             propagate = extra.get('propagate', None)
         if propagate is None:
-            propagate = getattr(self.__class__, 'PROPAGATE_TO_CHILDREN', True)
+            propagate = getattr(type(self), 'PROPAGATE_TO_CHILDREN', True)
         propagate = bool(propagate)
         if not propagate:
             return
@@ -107,7 +107,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
         if extra:
             propagate_name = extra.get('propagate_name', None)
         if propagate_name is None:
-            propagate_name = getattr(self.__class__, 'PROPAGATE_INSTANCE_NAME_TO_CHILDREN', True)
+            propagate_name = getattr(type(self), 'PROPAGATE_INSTANCE_NAME_TO_CHILDREN', True)
         propagate_name = bool(propagate_name)
 
         # Instance parent propagation - class config
@@ -115,7 +115,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
         if extra:
             propagate_parent = extra.get('propagate_parent', None)
         if propagate_parent is None:
-            propagate_parent = getattr(self.__class__, 'PROPAGATE_INSTANCE_PARENT_TO_CHILDREN', True)
+            propagate_parent = getattr(type(self), 'PROPAGATE_INSTANCE_PARENT_TO_CHILDREN', True)
         propagate_parent = bool(propagate_parent)
 
         if not propagate_name and not propagate_parent:
@@ -127,7 +127,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             return
 
         # Do propagation
-        from ...portfolio.models.uid import Uid
+        from ...portfolio.util.uid import Uid
         if isinstance(fld, (HierarchicalMutableProtocol, NamedMutableProtocol, Uid)):
             self._seed_parent_and_name_to_object(obj=fld, name=fldnm, propagate_name=propagate_name, propagate_parent=propagate_parent)
         elif isinstance(fld, (Sequence, Set)) and not isinstance(fld, (str, bytes, bytearray)):
@@ -140,7 +140,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
 
     @model_validator(mode='after')
     def _validator_seed_parent_and_name(self) -> Any:
-        for fldnm, fldinfo in self.__class__.model_fields.items():
+        for fldnm, fldinfo in type(self).model_fields.items():
             self._seed_parent_and_name_to_field(fldnm, fldinfo)
         return self
 
@@ -149,5 +149,5 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
         def __setattr__(self, name : str, value : Any) -> None:
             super().__setattr__(name, value)
 
-            if name in self.__class__.model_fields:
+            if name in type(self).model_fields:
                 self._seed_parent_and_name_to_field(name)

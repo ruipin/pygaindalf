@@ -3,15 +3,15 @@
 
 import pytest
 
-from app.portfolio.collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
+from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
 from app.portfolio.collections.journalled.set import JournalledOrderedViewSet
 
 
-class _MutableInts(OrderedViewSet[int]):
+class _MutableInts(OrderedViewMutableSet[int]):
     pass
 
 
-class _FrozenInts(OrderedViewFrozenSet[int]):
+class _FrozenInts(OrderedViewSet[int]):
     pass
 
 

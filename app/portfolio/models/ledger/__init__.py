@@ -2,5 +2,4 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from .ledger import Ledger
-from .ledger_proxy import *
-from .ledger_uid_set import *
+from .ledger_proxy import LedgerProxy

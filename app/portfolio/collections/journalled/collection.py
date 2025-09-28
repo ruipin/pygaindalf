@@ -47,7 +47,7 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
 
     def _get_mut_container(self) -> T_Mutable:
         if self._frozen:
-            raise RuntimeError(f"Cannot modify frozen {self.instance_hierarchy} of type {self.__class__.__name__}.")
+            raise RuntimeError(f"Cannot modify frozen {self.instance_hierarchy} of type {type(self).__name__}.")
 
         self._copy_on_write()
         return typing_cast(T_Mutable, self._container)
@@ -77,7 +77,7 @@ class JournalledCollection[T_Value : Any, T_Original : Collection, T_Mutable : C
 
     @override
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}: {str(self)})>"
+        return f"<{type(self).__name__}: {str(self)})>"
 
 
     # MARK: Pydantic

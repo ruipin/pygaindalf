@@ -12,7 +12,7 @@ from ....util.helpers import script_info
 from ....util.callguard import callguard_class
 
 from ..entity import Entity
-from ..uid import Uid
+from ...util.uid import Uid
 
 if TYPE_CHECKING:
     from .entity_store import EntityStore

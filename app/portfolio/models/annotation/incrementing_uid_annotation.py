@@ -3,12 +3,16 @@
 
 
 from abc import ABCMeta
+from typing import TYPE_CHECKING
 
 from ..entity import IncrementingUidEntityMixin
 
 from .annotation_journal import AnnotationJournal
 from .annotation import Annotation
 
+if TYPE_CHECKING:
+    from .annotation_proxy import AnnotationProxy
 
-class IncrementingUidAnnotation[T_Journal : AnnotationJournal](IncrementingUidEntityMixin, Annotation[T_Journal], metaclass=ABCMeta):
+
+class IncrementingUidAnnotation[T_Journal : AnnotationJournal, T_Proxy : AnnotationProxy](IncrementingUidEntityMixin, Annotation[T_Journal, T_Proxy], metaclass=ABCMeta):
     pass

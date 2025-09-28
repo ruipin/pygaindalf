@@ -33,7 +33,7 @@ class LoggingLevel:
 
     def __init__(self, value: int):
         if not isinstance(value, int):
-            value = self.__class__.coerce(value)
+            value = type(self).coerce(value)
         self.value = value
 
     @classmethod

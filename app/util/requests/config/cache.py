@@ -24,7 +24,7 @@ class RequestsCacheBackend(StrEnum):
 
     @override
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}.{self.name}"
+        return f"{type(self).__name__}.{self.name}"
 
 class RequestsCacheFileType(Enum):
     """
@@ -36,7 +36,7 @@ class RequestsCacheFileType(Enum):
 
     @override
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}.{self.name}"
+        return f"{type(self).__name__}.{self.name}"
 
 class RequestsCacheRootDir(Enum):
     """
@@ -48,7 +48,7 @@ class RequestsCacheRootDir(Enum):
 
     @override
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}.{self.name}"
+        return f"{type(self).__name__}.{self.name}"
 
 
 # MARK: Request Cache Configuration

@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import annotationlib
-
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, InstanceOf
-from typing import Any, TYPE_CHECKING, ClassVar, override, get_origin, get_args, Iterable, Literal, Final, Union, Iterator, Callable, cast as typing_cast
+from typing import Any, TYPE_CHECKING, ClassVar, override, Iterable, cast as typing_cast
 from frozendict import frozendict
 from functools import cached_property
 from collections.abc import Sequence, Mapping, Set, MutableSet
@@ -12,18 +10,18 @@ from collections.abc import Sequence, Mapping, Set, MutableSet
 from ...util.models import LoggableHierarchicalModel
 from ...util.callguard import CallguardClassOptions
 
-from ..models.uid import Uid
+from ..util.uid import Uid
 
 from ..models.entity import Entity, EntityBase
-from ..models.entity.superseded import superseded_check, SupersededError
+from ..util.superseded import superseded_check, SupersededError
 
-from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet, JournalledOrderedViewSet
-from ..collections.ordered_view import OrderedViewSet, OrderedViewFrozenSet
+from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet
+from ..collections.ordered_view import OrderedViewSet
 
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
-    from ..collections.uid_proxy import UidProxySet
+    from ..collections.uid_proxy import UidProxyMutableSet
     from .session import Session
     from ..models.annotation import Annotation
 
@@ -65,7 +63,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
     @override
     def __hash__(self) -> int:
-        return hash((self.__class__.__name__, hash(self.entity)))
+        return hash((type(self).__name__, hash(self.entity)))
 
     @field_validator('entity', mode='before')
     def _validate_entity(entity : Any) -> Entity:
@@ -79,16 +77,16 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
     @override
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}({self.entity!s})"
+        return f"{type(self).__name__}({self.entity!s})"
 
     @override
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}:{self.entity!r}>"
+        return f"<{type(self).__name__}:{self.entity!r}>"
 
     @property
     @override
     def instance_name(self) -> str:
-        return f"{self.__class__.__name__}({self.entity.uid})"
+        return f"{type(self).__name__}({self.entity.uid})"
 
     def sort_key(self) -> SupportsRichComparison:
         # Delegate to entity sort key, but we pretend to be the entity for this call
@@ -178,7 +176,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         return self.is_model_field(field) or self.is_computed_field(field)
 
     def can_modify(self, field : str) -> bool:
-        info = self.entity.__class__.model_fields.get(field, None)
+        info = type(self.entity).model_fields.get(field, None)
         if info is None:
             return False
 
@@ -195,7 +193,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
     def get_original_field(self, field : str) -> Any:
         if not self.has_field(field):
-            raise AttributeError(f"Entity of type {self.entity.__class__.__name__} does not have field '{field}'.")
+            raise AttributeError(f"Entity of type {type(self.entity).__name__} does not have field '{field}'.")
         return super(Entity, self.entity).__getattribute__(field)
 
     def _wrap_field(self, field : str, original : Any) -> Any:
@@ -204,7 +202,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
         new = original
 
-        if isinstance(original, OrderedViewFrozenSet):
+        if isinstance(original, OrderedViewSet):
             journalled_type = original.get_journalled_type()
             new = journalled_type(original, instance_parent=self, instance_name=field)
         elif isinstance(original, Sequence) and not isinstance(original, (str, bytes)):
@@ -229,10 +227,10 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
         has_update = field in self._updates
         if not has_update and not self.has_field(field):
-            raise AttributeError(f"Entity of type {self.entity.__class__.__name__} does not have field '{field}'.")
+            raise AttributeError(f"Entity of type {type(self.entity).__name__} does not have field '{field}'.")
 
         if not self.can_modify(field):
-            raise AttributeError(f"Field '{field}' of entity type {self.entity.__class__.__name__} is read-only.")
+            raise AttributeError(f"Field '{field}' of entity type {type(self.entity).__name__} is read-only.")
 
         current = self.get_field(field, wrap=False)
         if value is current:
@@ -248,7 +246,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
                 del self._updates[field]
         else:
             if self.entity.is_protected_field_type(field):
-                raise AttributeError(f"Field '{field}' of entity type {self.entity.__class__.__name__} is protected and cannot be modified. Use the collection's methods to modify it instead.")
+                raise AttributeError(f"Field '{field}' of entity type {type(self.entity).__name__} is protected and cannot be modified. Use the collection's methods to modify it instead.")
             self._updates[field] = value
 
         self._on_dirtied()
@@ -517,16 +515,16 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
     # MARK: Annotations
     @property
-    def annotations(self) -> UidProxySet[Annotation]:
-        return UidProxySet[Annotation](owner=self, field='annotation_uids')
+    def annotations(self) -> UidProxyMutableSet[Annotation]:
+        return UidProxyMutableSet[Annotation](instance=self, field='annotation_uids')
 
 
 
     # MARK: Dependencies
     @property
-    def extra_dependencies(self) -> UidProxySet[Entity]:
-        from ..collections.uid_proxy import UidProxySet
-        return UidProxySet[Entity](owner=self, field='extra_dependency_uids')
+    def extra_dependencies(self) -> UidProxyMutableSet[Entity]:
+        from ..collections.uid_proxy import UidProxyMutableSet
+        return UidProxyMutableSet[Entity](instance=self, field='extra_dependency_uids')
 
     def add_dependency(self, entity_or_uid : Entity | Uid) -> None:
         uid = Entity.narrow_to_uid(entity_or_uid)

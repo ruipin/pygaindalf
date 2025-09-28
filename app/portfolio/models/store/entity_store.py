@@ -15,7 +15,7 @@ from ....util.callguard import callguard_class
 from ..entity import Entity, SupersededError
 from ..entity.entity_audit_log import EntityAuditLog
 from ..entity.entity_dependents import EntityDependents
-from ..uid import IncrementingUidFactory, Uid
+from ...util.uid import IncrementingUidFactory, Uid
 
 if TYPE_CHECKING:
     from .string_uid_mapping import StringUidMapping

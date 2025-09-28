@@ -15,7 +15,7 @@ from ....util.models import SingleInitializationModel
 from ....util.callguard import callguard_class
 from ....util.helpers.frozendict import FrozenDict
 
-from ..uid import Uid
+from ...util.uid import Uid
 
 if TYPE_CHECKING:
     from .entity import Entity
@@ -33,7 +33,7 @@ class EntityAuditType(Enum):
 
     @override
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}.{self.name}"
+        return f"{type(self).__name__}.{self.name}"
 
 
 # MARK: Entity Audit class
@@ -115,7 +115,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
     @property
     def instance_name(self) -> str:
-        return f"{self.__class__.__name__}@{str(self.entity_uid)}"
+        return f"{type(self).__name__}@{str(self.entity_uid)}"
 
     @property
     def instance_parent(self) -> Entity | None:
@@ -168,7 +168,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         # If there is no old entity, then all model fields in the entity are new
         elif old_entity is None and new_entity is not None:
             diff = {}
-            for fldnm in new_entity.__class__.model_fields.keys():
+            for fldnm in type(new_entity).model_fields.keys():
                 if not self._is_diffable_field(fldnm):
                     continue
                 v = getattr(new_entity, fldnm, None)
@@ -182,7 +182,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         # If there is no new entity, then all model fields in the old entity are removed
         elif new_entity is None and old_entity is not None:
             diff = {}
-            for fldnm in old_entity.__class__.model_fields.keys():
+            for fldnm in type(old_entity).model_fields.keys():
                 if not self._is_diffable_field(fldnm):
                     continue
                 v = getattr(old_entity, fldnm, None)

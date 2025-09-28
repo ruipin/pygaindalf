@@ -140,7 +140,7 @@ class ComponentSubclassMeta[C : BaseComponentConfig](LoggableHierarchicalNamedMi
         super().__init__(*args, **kwargs)
 
         if isinstance(self.config_class, TypeVar):
-            raise TypeError(f"{self.__class__.__name__} is a generic class and must not be instantiated without providing an explicit configuration class type argument to override the TypeVar {self.config_class.__name__}.")
+            raise TypeError(f"{type(self).__name__} is a generic class and must not be instantiated without providing an explicit configuration class type argument to override the TypeVar {self.config_class.__name__}.")
 
         self.config = config
 

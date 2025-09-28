@@ -13,7 +13,7 @@ from ....util.helpers import script_info
 from ...journal.session_manager import SessionManager
 from ...journal.session import Session
 
-from ..uid import Uid
+from ...util.uid import Uid
 from ..store.entity_store import EntityStore
 from ..entity import Entity, SupersededError
 
@@ -68,7 +68,7 @@ class EntityRoot(LoggableHierarchicalRootModel):
     @property
     def root(self) -> Entity:
         if self.root_uid is None:
-            raise ValueError(f"{self.__class__.__name__} has no root entity set.")
+            raise ValueError(f"{type(self).__name__} has no root entity set.")
         return self.entity_store[self.root_uid]
 
     @root.setter
@@ -80,7 +80,7 @@ class EntityRoot(LoggableHierarchicalRootModel):
 
     @override
     def __hash__(self) -> int:
-        return hash((self.__class__.__name__, hash(self.root_uid)))
+        return hash((type(self).__name__, hash(self.root_uid)))
 
     @field_validator('root_uid', mode='before')
     @classmethod

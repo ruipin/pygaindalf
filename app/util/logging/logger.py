@@ -45,7 +45,7 @@ def getLogger(obj, parent:Any=None, name:str|None=None) -> Logger:
         if isinstance(obj, str):
             name = obj
         else:
-            cls_name = obj.__class__.__name__
+            cls_name = type(obj).__name__
             if isinstance(cls_name, str):
                 name = cls_name
             else:

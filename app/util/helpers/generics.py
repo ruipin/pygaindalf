@@ -11,11 +11,11 @@ to make it easy to:
 * follow argument bindings through entire inheritance hierarchies, and
 * expose reusable descriptors that resolve type arguments on demand.
 
-Most library methods raise :class:`GenericsError` when the caller provides
+These helper methods raise :class:`GenericsError` when the caller provides
 inputs that make resolution impossible (for example, asking for a parameter
 that was never declared, or querying a non-generic class).
 
-Repeated lookups are cached so the helpers remain inexpensive when used
+Repeated lookups are cached so the helpers remain inexpensive even when used
 repeatedly.
 
 
@@ -71,6 +71,7 @@ Examples
         >>> class IntRepository(AnimalRepository[int]): ...
         >>> IntRepository.animal_type()     # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
+          ...
         GenericsError: IntRepository.T type argument <class 'int'> is not a subclass of <class '__main__.Animal'>
 
     This can be turned off by passing `bound=False` to the descriptor
@@ -100,20 +101,27 @@ from frozendict import frozendict
 from functools import lru_cache
 
 from .instance_lru_cache import instance_lru_cache
+from . import type_hints
 
+
+# MARK: Definitions
 # Maximum number of cached entries used by the memoization helpers below.
 LRU_CACHE_MAXSIZE = 128
 
-# MARK: Definitions
 # Runtime-compatible alias for representing generic annotations on Python < 3.12.
 type GenericAlias = types.GenericAlias | typing._GenericAlias # pyright: ignore[reportAttributeAccessIssue] as typing._GenericAlias does exist, but is undocumented
 
 # Identifiers accepted when referring to a generic parameter definition.
-type ParamType = str | typing.TypeVar | ParameterInfo
-# Values that may appear as a bound argument for a generic parameter.
-type ArgType = type | typing.TypeVar | GenericAlias
+type ParamType = str | typing.TypeVar | ParameterInfo | int
+# Values that may be used as arguments to generic parameter.
+type ArgType = type | GenericAlias | typing.TypeVar | typing.ForwardRef
+# Values that may be used as arguments to generic parameters, excluding ForwardRefs.
+type NonForwardArgType = type | GenericAlias | typing.TypeVar
+# Values that may be used as concrete (i.e. non-TypeVar / non-ForwardRef) arguments to generic parameters.
+type ConcreteArgType = type | GenericAlias
 # Resolved bounds allowed to constrain a ``TypeVar`` argument.
-type BoundType = ArgType | typing.ForwardRef | None
+type BoundType = ArgType | None
+
 
 class GenericsError(TypeError):
     """Signals incorrect generic usage outside the helpers' control.
@@ -128,14 +136,23 @@ class GenericsError(TypeError):
 
 class ParameterInfo(typing.NamedTuple):
     """Metadata describing a generic type parameter for a class or alias."""
-    position : int
-    value    : typing.TypeVar
-    origin   : type | GenericAlias
+    #: Zero-based position of the parameter within the generic declaration.
+    position: int
+    #: The declared ``TypeVar`` for the parameter, if known.
+    value: typing.TypeVar | None
+    #: The originating generic class or alias where the parameter was declared.
+    origin: type | GenericAlias
+
+    @property
+    def known(self) -> bool:
+        """Return ``True`` if this parameter was declared on the originating class."""
+        return self.value is not None
 
     @property
     def name(self) -> str:
         """Return the parameter name derived from the underlying ``TypeVar``."""
-        return self.value.__name__
+        value = self.value
+        return str(self.position) if value is None else value.__name__
 
     @property
     def bound(self) -> BoundType:
@@ -145,13 +162,13 @@ class ParameterInfo(typing.NamedTuple):
         return annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
 
     @classmethod
-    def narrow(cls, target_cls : type | GenericAlias, param : ParameterInfo | str | typing.TypeVar) -> ParameterInfo:
+    def narrow(cls, target_cls : type | GenericAlias, param : ParameterInfo | str | typing.TypeVar | int) -> ParameterInfo:
         """Resolve arbitrary parameter identifiers into a concrete ``ParameterInfo``.
 
         Raises:
             GenericsError: If *param* is not declared on *target_cls*.
         """
-        if isinstance(param, (str, typing.TypeVar)):
+        if isinstance(param, (str, typing.TypeVar, int)):
             return get_parameter_info(target_cls, param)
         elif isinstance(param, ParameterInfo):
             return param
@@ -175,8 +192,10 @@ class ParameterInfo(typing.NamedTuple):
 class ArgumentInfo(typing.NamedTuple):
     """Metadata describing the argument bound to a ``ParameterInfo``."""
 
-    parameter : ParameterInfo
-    value     : ArgType
+    #: The parameter definition associated with this bound argument.
+    parameter: ParameterInfo
+    #: The raw argument currently bound to the parameter.
+    value: ArgType
 
     @property
     def name(self) -> str:
@@ -218,6 +237,7 @@ class ArgumentInfo(typing.NamedTuple):
         return self.name
 
 
+
 # MARK: Pydantic helpers
 try:
     import pydantic
@@ -228,6 +248,19 @@ def is_pydantic_model(cls : type | GenericAlias) -> bool:
     """Return whether *cls* resolves to a Pydantic ``BaseModel`` subclass."""
     origin = get_origin(cls, passthrough=True)
     return pydantic is not None and issubclass(origin, pydantic.BaseModel)
+
+
+
+# MARK: bound_to_str
+def bound_to_str(bound : BoundType) -> str:
+    """Return a human-friendly representation of *bound*."""
+    if bound is None:
+        return 'None'
+    elif isinstance(bound, typing.ForwardRef):
+        return bound.__forward_arg__
+    else:
+        return bound.__name__
+
 
 
 # MARK: get_bases
@@ -244,6 +277,7 @@ def get_original_bases(cls : type | GenericAlias) -> tuple[typing.Any, ...]:
         cls = _cls
 
     return types.get_original_bases(cls)
+
 
 
 # MARK: get_origin
@@ -263,6 +297,7 @@ def get_origin(cls : type | GenericAlias, *, passthrough : bool = False) -> type
         raise GenericsError(f"{cls.__name__} is not a generic class")
     else:
         return typing.cast(type, cls)
+
 
 
 # MARK: get_generic_base
@@ -293,6 +328,14 @@ def get_generic_base(cls : type | GenericAlias) -> type:
     if (base := get_generic_base_or_none(cls)) is None:
         raise GenericsError(f"{cls.__name__} is not a generic class")
     return base
+
+
+
+# MARK: is_generic
+def is_generic(cls : type | GenericAlias) -> bool:
+    """Return whether *cls* is a generic class."""
+    return get_generic_base_or_none(cls) is not None
+
 
 
 # MARK: iter/get_parameter_infos
@@ -342,26 +385,47 @@ def get_parameter_infos(cls : type | GenericAlias, *, fail : bool = True) -> typ
     return frozendict(result)
 
 
-# MARK: get_parameter_info
-def get_parameter_info_or_none(cls : type | GenericAlias, name_or_typevar : str | typing.TypeVar) -> ParameterInfo | None:
-    """Return a specific ``ParameterInfo`` by name or ``TypeVar`` if present."""
-    name = name_or_typevar if isinstance(name_or_typevar, str) else name_or_typevar.__name__
 
-    for param in iter_parameter_infos(cls):
-        if param.name == name:
-            return param
+# MARK: get_parameter_info
+def get_parameter_info_or_none(cls : type | GenericAlias, name_position_or_typevar : str | typing.TypeVar | int, *, default_to_position : bool = True) -> ParameterInfo | None:
+    """Return a specific ``ParameterInfo`` by name, position, or ``TypeVar`` if present."""
+    if isinstance(name_position_or_typevar, int):
+        pos = name_position_or_typevar
+        name = None
+    else:
+        name = name_position_or_typevar if isinstance(name_position_or_typevar, str) else name_position_or_typevar.__name__
+        pos = None
+
+    infos = get_parameter_infos(cls, fail=not default_to_position)
+
+    if name is not None:
+        info = infos.get(name, None)
+        if info is not None:
+            return info
+    else:
+        for info in infos.values():
+            if pos is not None and info.position == pos:
+                return info
+
+    if default_to_position and pos is not None:
+        return ParameterInfo(
+            position = pos,
+            value    = None,
+            origin   = cls,
+        )
 
     return None
 
-def get_parameter_info(cls : type | GenericAlias, name_or_typevar : str | typing.TypeVar) -> ParameterInfo:
+def get_parameter_info(cls : type | GenericAlias, name_position_or_typevar : str | typing.TypeVar | int) -> ParameterInfo:
     """Resolve *name_or_typevar* to a ``ParameterInfo``.
 
     Raises:
         GenericsError: If the requested parameter is not defined on *cls*.
     """
-    if (param := get_parameter_info_or_none(cls, name_or_typevar)) is None:
-        raise GenericsError(f"Could not find generic parameter {name_or_typevar} in {cls.__name__}")
+    if (param := get_parameter_info_or_none(cls, name_position_or_typevar)) is None:
+        raise GenericsError(f"Could not find generic parameter {name_position_or_typevar} in {cls.__name__}")
     return param
+
 
 
 # MARK: has_parameter
@@ -371,9 +435,14 @@ def has_parameter(cls : type | GenericAlias, param : str | typing.TypeVar) -> bo
     return info is not None
 
 
+
 # MARK: get_argument_info
 def _sanity_check_arg_bound(*, param : ParameterInfo, arg : ArgType) -> None:
     """Ensure ``arg`` respects the bound defined on *param*."""
+    if isinstance(arg, typing.ForwardRef):
+        warnings.warn(f"Cannot sanity check {arg} arguments against TypeVar bounds", stacklevel=3)
+        return
+
     arg_origin = get_origin(arg, passthrough=True)
     if not isinstance(arg_origin, type):
         return
@@ -381,17 +450,10 @@ def _sanity_check_arg_bound(*, param : ParameterInfo, arg : ArgType) -> None:
     bound = param.bound
     if bound is None:
         return
-    bound_origin = get_origin(bound, passthrough=True)
-    if not isinstance(bound_origin, type):
-        return
 
-    if not issubclass(arg_origin, bound_origin):
-        bound_str = (
-            bound.__name__ if isinstance(bound, type)
-            else bound.__forward_arg__ if isinstance(bound, typing.ForwardRef)
-            else str(bound)
-        )
-        raise TypeError(f"{param.origin.__name__}.{param.name} type argument <{arg.__name__}> is not a subclass of its bound <{bound_str}>")
+    matched = type_hints.match_type_hint(arg, bound)
+    if matched is None:
+        raise TypeError(f"{param.origin.__name__}.{param.name} type argument <{arg.__name__}> is not a subclass of its bound <{bound_to_str(bound)}>")
 
 def _get_arguments(cls : type | GenericAlias) -> typing.Sequence[ArgType]:
     """Return the argument sequence currently bound to *cls*."""
@@ -408,18 +470,18 @@ def get_argument_info_or_none(cls : GenericAlias, param : ParamType, *, check_bo
     """
     param = ParameterInfo.narrow(cls, param)
 
-    # Get the actual type argument at that index
+    # Collect all class arguments
     if args is None:
         args = _get_arguments(cls)
 
+    # Get the actual argument at the desired index
     arg = None
     if len(args) > param.position:
         arg = args[param.position]
-        if check_bounds:
+        if check_bounds and param is not None:
             _sanity_check_arg_bound(param=param, arg=arg)
 
     if arg is None:
-        return None
         arg = param.value
 
     return ArgumentInfo(
@@ -433,13 +495,8 @@ def get_argument_info(cls : GenericAlias, param : ParamType, *, check_bounds : b
     Raises:
         GenericsError: If *param* cannot be resolved on *cls*.
     """
-    param = ParameterInfo.narrow(cls, param)
-
     if (arg := get_argument_info_or_none(cls, param, check_bounds=check_bounds, args=args)) is None:
-        return ArgumentInfo(
-            parameter = param,
-            value     = param.value, # Fallback to the TypeVar if we can't find a specialisation
-        )
+        raise GenericsError(f"Could not resolve {cls.__name__}.{param} type argument")
     return arg
 
 
@@ -470,6 +527,7 @@ def get_argument_infos(cls : GenericAlias, *, fail : bool = True, args : typing.
     return frozendict(result)
 
 
+
 # MARK: get_argument
 def get_argument(cls : GenericAlias, param : ParamType) -> ArgType:
     """Return the raw type argument bound to *param* for *cls*.
@@ -479,7 +537,7 @@ def get_argument(cls : GenericAlias, param : ParamType) -> ArgType:
     """
     return get_argument_info(cls, param).value
 
-def get_concrete_argument(cls : GenericAlias, param : ParamType) -> type:
+def get_concrete_argument(cls : GenericAlias, param : ParamType) -> ConcreteArgType:
     """Return the concrete origin type bound to *param* for *cls*.
 
     Raises:
@@ -491,6 +549,8 @@ def get_concrete_argument(cls : GenericAlias, param : ParamType) -> type:
     arg = get_argument(cls, param)
     if isinstance(arg, typing.TypeVar):
         raise GenericsError(f"Could not resolve {cls.__name__}.{param.name} type argument to a concrete type")
+    if isinstance(arg, typing.ForwardRef):
+        raise GenericsError(f"Could not resolve {cls.__name__}.{param.name} type argument, got unresolved ForwardRef {arg.__forward_arg__}")
 
     origin = get_origin_or_none(arg)
     if origin is None:
@@ -501,8 +561,10 @@ def get_concrete_argument(cls : GenericAlias, param : ParamType) -> type:
 
 
 # MARK: get_bases_between
-def get_bases_between(cls : type | GenericAlias, parent : type, result : list[type | GenericAlias] | None = None) -> list[type | GenericAlias]:
+def get_bases_between_or_none(cls : type | GenericAlias, parent : type, result : list[type | GenericAlias] | None = None) -> list[type | GenericAlias] | None:
     """Return the inheritance chain between *cls* and *parent*, inclusive.
+
+    If *cls* is not a subclass of *parent*, return ``None``.
 
     Raises:
         GenericsError: If *cls* is not a subclass of *parent* or the chain
@@ -528,31 +590,48 @@ def get_bases_between(cls : type | GenericAlias, parent : type, result : list[ty
             return result
 
         if issubclass(origin, parent):
-            return get_bases_between(base, parent, result)
+            return get_bases_between_or_none(base, parent, result)
 
-    raise GenericsError(f"{cls.__name__} is not a subclass of {parent.__name__}")
+    return None
+
+def get_bases_between(cls : type | GenericAlias, parent : type) -> list[type | GenericAlias]:
+    """Return the inheritance chain between *cls* and *parent*, inclusive.
+
+    Raises:
+        GenericsError: If *cls* is not a subclass of *parent* or the chain
+            includes non-generic components that cannot be inspected.
+    """
+    if (bases := get_bases_between_or_none(cls, parent)) is None:
+        raise GenericsError(f"{cls.__name__} is not a subclass of {parent.__name__}")
+    return bases
+
 
 
 # MARK: get_parent_argument_infos
-def iter_parent_argument_infos(cls : type | GenericAlias, parent : type, param : ParamType) -> typing.Generator[ArgumentInfo]:
+def iter_parent_argument_infos(cls : type | GenericAlias, parent : type, param : ParamType, *, fail : bool = True) -> typing.Generator[ArgumentInfo]:
     """Yield argument bindings for *param* across the inheritance chain to *parent*.
 
     Raises:
-        GenericsError: If the inheritance chain or requested parameter cannot
-            be resolved.
+        GenericsError: If *fail* and the inheritance chain or requested parameter cannot be resolved.
     """
     param = ParameterInfo.narrow(parent, param)
 
-    bases = get_bases_between(cls, parent)
+    bases = get_bases_between_or_none(cls, parent)
     if not bases:
-        raise GenericsError(f"{cls.__name__} is not a subclass of {parent.__name__}")
+        if fail:
+            raise GenericsError(f"{cls.__name__} is not a subclass of {parent.__name__}")
+        return
 
     current = None
     for base in reversed(bases):
         # NOTE: We use check_bounds=False here as we will check the final concrete type at the end
         #       and we want to do a depth-first traversal of the bounds i.e. the parent should check its bounds first, then the first child, then the second, etc.
         if current is None:
-            current = get_argument_info(base, param, check_bounds=False)
+            current = get_argument_info_or_none(base, param, check_bounds=False)
+            if current is None:
+                if fail:
+                    raise GenericsError(f"Could not resolve {base.__name__}.{param.name} type argument")
+                return
         else:
             typevar = current.value
             if not isinstance(typevar, typing.TypeVar):
@@ -566,6 +645,8 @@ def iter_parent_argument_infos(cls : type | GenericAlias, parent : type, param :
                     continue
                 # Otherwise we assume that the last parameter we saw is the last one that was specialised, and stop here
                 else:
+                    if cls.__name__.startswith('OrderedView'):
+                        raise RuntimeError(f"Could not find specialisation for {typevar} in {base.__name__}")
                     break
             current = next_arg
 
@@ -574,36 +655,48 @@ def iter_parent_argument_infos(cls : type | GenericAlias, parent : type, param :
             return
 
 @lru_cache(maxsize=LRU_CACHE_MAXSIZE)
-def get_parent_argument_infos(cls : type | GenericAlias, parent : type, param : ParamType) -> typing.Sequence[ArgumentInfo]:
+def get_parent_argument_infos(cls : type | GenericAlias, parent : type, param : ParamType, *, fail : bool = True) -> typing.Sequence[ArgumentInfo]:
     """Return the cached sequence of argument bindings from *cls* to *parent*.
 
-    Results are cached via :func:`functools.lru_cache` with
-    ``LRU_CACHE_MAXSIZE`` so the inheritance chain is walked only once per
-    parameter combination.
+    Results are cached via :func:`functools.lru_cache` with ``LRU_CACHE_MAXSIZE`` so the inheritance chain is walked only once per parameter combination.
 
     Raises:
-        GenericsError: Propagated when the inheritance chain or parameter
-            cannot be resolved.
+        GenericsError: If *fail* and the inheritance chain or parameter cannot be resolved.
     """
-    return tuple(iter_parent_argument_infos(cls, parent, param))
+    return tuple(iter_parent_argument_infos(cls, parent, param, fail=fail))
+
 
 
 # MARK: get_parent_argument_info
-def get_parent_argument_info_or_none(cls : type | GenericAlias, parent : type, param : ParamType, *, check_bounds : bool = True) -> ArgumentInfo | None:
+def get_parent_argument_info_or_none(cls : type | GenericAlias, parent : type | typing.Iterable[type], param : ParamType, *, check_bounds : bool = True, fail : bool = False) -> ArgumentInfo | None:
     """Return the final ``ArgumentInfo`` for *param* inherited from *parent* if any.
 
+    If *parent* is an iterable of types, check each in order until one is found that specialises *param*, if any.
+
     Raises:
-        GenericsError: If the inheritance chain or requested parameter cannot
-            be resolved.
+        GenericsError: If *fail* and the inheritance chain or requested parameter cannot be resolved.
     """
-    if check_bounds:
-        args = get_parent_argument_infos(cls, parent, param)
-        result =args[-1] if args else None
+    if isinstance(parent, type):
+        parents = (parent,)
+        _fail = True
     else:
-        args = None
-        result = None
-        for result in iter_parent_argument_infos(cls, parent, param):
-            pass
+        parents = parent
+        _fail = fail
+
+    result = None
+    args = None
+    for p in parents:
+        if check_bounds:
+            args = get_parent_argument_infos(cls, p, param, fail=_fail)
+            result =args[-1] if args else None
+        else:
+            args = None
+            result = None
+            for result in iter_parent_argument_infos(cls, p, param, fail=_fail):
+                pass
+
+        if result is not None:
+            break
 
     # Sanity check the concrete specialisation against any bounds
     if check_bounds and result is not None and result.is_concrete:
@@ -613,15 +706,18 @@ def get_parent_argument_info_or_none(cls : type | GenericAlias, parent : type, p
 
     return result
 
-def get_parent_argument_info(cls : type | GenericAlias, parent : type, param : ParamType, *, check_bounds : bool = True) -> ArgumentInfo:
+def get_parent_argument_info(cls : type | GenericAlias, parent : type | typing.Iterable[type], param : ParamType, *, check_bounds : bool = True) -> ArgumentInfo:
     """Return the resolved ``ArgumentInfo`` for *param* from *parent*.
 
+    If *parent* is an iterable of types, check each in order until one is found that specialises *param*.
+
     Raises:
-        GenericsError: If the inheritance chain does not specialise *param*.
+        GenericsError: If the inheritance chain does not specialise *param*, or if *param* cannot be resolved.
     """
-    if (arg := get_parent_argument_info_or_none(cls, parent, param, check_bounds=check_bounds)) is None:
+    if (arg := get_parent_argument_info_or_none(cls, parent, param, check_bounds=check_bounds, fail=True)) is None:
         raise GenericsError(f"Could not resolve {cls.__name__}.{param} type argument to a concrete type")
     return arg
+
 
 
 # MARK: get_parent_argument
@@ -629,37 +725,55 @@ class GetParentArgumentKwargs(typing.TypedDict, total=True):
     """Typed keyword arguments accepted by ``get_parent_argument``."""
     bound : typing.NotRequired[type | bool]
 
-def get_parent_argument[T : type](cls : T, parent : T, param : ParamType, **kwargs : typing.Unpack[GetParentArgumentKwargs]) -> ArgType:
-    """Return the value or bound resolved for *param* on *parent* within *cls*.
+def get_parent_argument_or_none(cls : type | GenericAlias, parent : type | typing.Iterable[type], param : ParamType, **kwargs : typing.Unpack[GetParentArgumentKwargs]) -> ArgType | None:
+    """Return the value or bound resolved for *param* on *parent* within *cls* if any.
+
+    If *parent* is an iterable of types, check each in order until one is found that specialises *param*, if any.
 
     Raises:
-        GenericsError: If *param* cannot be resolved or violates the optional
-            ``bound`` constraint.
+        GenericsError: If *param* cannot be resolved or violates the optional ``bound`` constraint.
     """
     bound = kwargs.get('bound', True)
 
-    arg = get_parent_argument_info(
+    arg = get_parent_argument_info_or_none(
         cls,
         parent,
         param,
         check_bounds=True if bound is True else False
     )
+    if arg is None:
+        return None
+
     result = arg.value_or_bound
 
     if not isinstance(bound, bool):
-        result_origin = get_origin(result, passthrough=True)
-        if not issubclass(result_origin, bound):
+        matched = type_hints.match_type_hint(result, bound)
+        if matched is None:
             raise GenericsError(f"{cls.__name__}.{param} type argument {result} is not a subclass of {bound}")
 
     return result
+
+def get_parent_argument(cls : type | GenericAlias, parent : type | typing.Iterable[type], param : ParamType, **kwargs : typing.Unpack[GetParentArgumentKwargs]) -> ArgType:
+    """Return the value or bound resolved for *param* on *parent* within *cls*.
+
+    If *parent* is an iterable of types, check each in order until one is found that specialises *param*.
+
+    Raises:
+        GenericsError: If *param* cannot be resolved or violates the optional ``bound`` constraint.
+    """
+    if (arg := get_parent_argument_or_none(cls, parent, param, **kwargs)) is None:
+        raise GenericsError(f"Could not resolve {cls.__name__}.{param} type argument to a concrete type")
+    return arg
 
 
 class GetConcreteParentArgumentKwargs(GetParentArgumentKwargs, total=True):
     """Typed keyword arguments accepted by ``get_concrete_parent_argument``."""
     origin : typing.NotRequired[bool]
 
-def get_concrete_parent_argument[T : type](cls : T, parent : T, param : ParamType, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> ArgType:
+def get_concrete_parent_argument(cls : type | GenericAlias, parent : type | typing.Iterable[type], param : ParamType, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> ConcreteArgType:
     """Return the concrete argument resolved for *param* from *parent* within *cls*.
+
+    If *parent* is an iterable of types, check each in order until one is found that specialises *param*.
 
     Raises:
         GenericsError: If *param* cannot be resolved to a concrete type.
@@ -676,8 +790,10 @@ def get_concrete_parent_argument[T : type](cls : T, parent : T, param : ParamTyp
 
     return arg
 
-def get_concrete_parent_argument_origin[T : type](cls : T, parent : T, param : ParamType, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> type:
+def get_concrete_parent_argument_origin(cls : type | GenericAlias, parent : type | typing.Iterable[type], param : ParamType, **kwargs : typing.Unpack[GetConcreteParentArgumentKwargs]) -> type:
     """Return the origin type for the concrete argument resolved from *parent*.
+
+    If *parent* is an iterable of types, check each in order until one is found that specialises *param*.
 
     Raises:
         GenericsError: If *param* cannot be resolved to a concrete type.
@@ -686,6 +802,7 @@ def get_concrete_parent_argument_origin[T : type](cls : T, parent : T, param : P
         raise ValueError("get_concrete_parent_argument_origin always sets origin=True, do not pass it in kwargs")
     kwargs['origin'] = True
     return typing.cast(type, get_concrete_parent_argument(cls, parent, param, **kwargs))
+
 
 
 # MARK: introspection method descriptor
@@ -710,11 +827,7 @@ class GenericIntrospectionMethod[R : object](classmethod[typing.Any, ..., type[R
             return None
         bound = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
         if isinstance(bound, typing.ForwardRef):
-            warnings.warn("ForwardRef resolution not yet implemented, no bounds will be enforced", stacklevel=2)
-            return None
-        bound = get_origin(bound, passthrough=True)
-        if not isinstance(bound, type):
-            warnings.warn(f"GenericIntrospectionMethod only currently supports concrete type bounds, got {bound}, no bounds will be enforced", stacklevel=2)
+            warnings.warn(f"{self.__name__}: ForwardRef resolution not yet implemented, {self._parent.__name__ if self._parent is not None else '<unknown>'}.{self._param} bounds {bound} will not be enforced", stacklevel=2)
             return None
         return bound
 

@@ -15,7 +15,7 @@ from ....util.models import SingleInitializationModel
 from ....util.callguard import callguard_class
 from ....util.helpers.frozendict import FrozenDict
 
-from ..uid import Uid
+from ...util.uid import Uid
 
 if TYPE_CHECKING:
     from .entity import Entity
@@ -78,7 +78,7 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
 
     @property
     def instance_name(self) -> str:
-        return f"{self.__class__.__name__}@{str(self.entity_uid)}"
+        return f"{type(self).__name__}@{str(self.entity_uid)}"
 
     @property
     def instance_parent(self) -> Entity | None:
@@ -156,7 +156,7 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
 
         # Notify all extra dependencies that they can remove us from their dependents
         for uid in self._extra_dependency_uids:
-            if (other := self.__class__.by_uid(uid)) is not None:
+            if (other := type(self).by_uid(uid)) is not None:
                 other.remove_dependent(self.entity_uid)
 
     def on_init(self, entity : Entity) -> None:
@@ -171,12 +171,12 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
 
         # Remove dependencies that are no longer present
         for uid in self._extra_dependency_uids - current_extra_dependencies:
-            if (other := self.__class__.by_uid(uid)) is not None:
+            if (other := type(self).by_uid(uid)) is not None:
                 other.remove_dependent(self.entity_uid)
 
         # Add new dependencies
         for uid in current_extra_dependencies - self._extra_dependency_uids:
-            if (other := self.__class__.by_uid(uid)) is not None:
+            if (other := type(self).by_uid(uid)) is not None:
                 other.add_dependent(self.entity_uid)
 
         # Update our record of extra dependencies

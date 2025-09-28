@@ -16,7 +16,7 @@ from ...util.mixins import NamedMixinMinimal, NamedProtocol, NamedMutableProtoco
 from ...util.helpers import script_info
 
 if TYPE_CHECKING:
-    from .entity import Entity
+    from ..models.entity import Entity
 
 
 UID_SEPARATOR = '#'
@@ -87,12 +87,12 @@ class Uid:
 
     @property
     def entity_or_none(self) -> Entity | None:
-        from .entity import Entity
+        from ..models.entity import Entity
         return Entity.by_uid_or_none(self)
 
     @property
     def entity(self) -> Entity:
-        from .entity import Entity
+        from ..models.entity import Entity
         return Entity.by_uid(self)
 
     @override

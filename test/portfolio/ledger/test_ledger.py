@@ -66,7 +66,7 @@ class TestLedger:
 
         assert len(ledg) == 2
         assert ledg.length == 2
-        # OrderedViewSet sorts by transaction date; tx1 earlier than tx2
+        # OrderedViewMutableSet sorts by transaction date; tx1 earlier than tx2
         assert ledg[0] is tx1
         assert ledg[1] is tx2
         assert list(iter(ledg)) == [tx1, tx2]
