@@ -1,15 +1,17 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import datetime
+
 from decimal import Decimal
 
 import pytest
+
 from iso4217 import Currency
 
+from app.portfolio.models.entity.entity_audit_log import EntityAuditLog, EntityAuditType
 from app.portfolio.models.instrument.instrument import Instrument
-from app.portfolio.models.transaction.transaction import Transaction, TransactionType
-from app.portfolio.models.entity.entity_audit_log import EntityAuditType, EntityAuditLog
+from app.portfolio.models.transaction import Transaction, TransactionType
 
 
 @pytest.mark.portfolio
@@ -19,12 +21,12 @@ class TestTransaction:
         tx = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
-            quantity=Decimal("10"),
-            consideration=Decimal("1500"),
-            fees=Decimal("5"),
+            quantity=Decimal(10),
+            consideration=Decimal(1500),
+            fees=Decimal(5),
         )
 
-        assert tx.uid.namespace == f"Transaction"
+        assert tx.uid.namespace == "Transaction"
         assert tx.uid.id == 1  # first transaction for this instrument namespace
         assert tx.instance_name == str(tx.uid)
 
@@ -36,7 +38,7 @@ class TestTransaction:
         assert tx.entity_log.next_version == 2
 
     def test_multiple_transactions_increment_uid_id_and_audit(self):
-        inst = Instrument(
+        Instrument(
             ticker="MSFT",
             currency=Currency("USD"),
         )
@@ -44,17 +46,17 @@ class TestTransaction:
         tx1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 2),
-            quantity=Decimal("5"),
-            consideration=Decimal("750"),
+            quantity=Decimal(5),
+            consideration=Decimal(750),
         )
         tx2 = Transaction(
             type=TransactionType.SELL,
             date=datetime.date(2025, 1, 3),
-            quantity=Decimal("2"),
-            consideration=Decimal("320"),
+            quantity=Decimal(2),
+            consideration=Decimal(320),
         )
 
-        assert tx1.uid.namespace == tx2.uid.namespace == f"Transaction"
+        assert tx1.uid.namespace == tx2.uid.namespace == "Transaction"
         assert tx1.uid.id == 1
         assert tx2.uid.id == 2
 
@@ -63,19 +65,19 @@ class TestTransaction:
         assert tx2.entity_log.entity_uid == tx2.uid
 
     def test_update_creates_new_version_and_audit_entry(self):
-        inst = Instrument(
+        Instrument(
             ticker="GOOGL",
             currency=Currency("USD"),
         )
         tx1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 2, 1),
-            quantity=Decimal("3"),
-            consideration=Decimal("405"),
+            quantity=Decimal(3),
+            consideration=Decimal(405),
         )
 
         # Update via entity update mechanism (increase quantity)
-        tx2 = tx1.update(quantity=Decimal("4"))
+        tx2 = tx1.update(quantity=Decimal(4))
 
         assert tx2 is not tx1
         assert tx1.version == 1
@@ -90,11 +92,11 @@ class TestTransaction:
         assert entry_v1.what == EntityAuditType.CREATED
         if EntityAuditLog.TRACK_ENTITY_DIFF:
             assert entry_v1.diff == {
-                'type': TransactionType.BUY,
-                'date': datetime.date(2025, 2, 1),
-                'quantity': Decimal("3"),
-                'consideration': Decimal("405"),
-                'fees': Decimal("0"),
+                "type": TransactionType.BUY,
+                "date": datetime.date(2025, 2, 1),
+                "quantity": Decimal(3),
+                "consideration": Decimal(405),
+                "fees": Decimal(0),
             }
 
         entry_v2 = tx2.entity_log.get_entry_by_version(2)
@@ -102,5 +104,5 @@ class TestTransaction:
         assert entry_v2.what == EntityAuditType.UPDATED
         if EntityAuditLog.TRACK_ENTITY_DIFF:
             assert entry_v2.diff == {
-                'quantity': Decimal("4"),
+                "quantity": Decimal(4),
             }

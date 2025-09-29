@@ -1,17 +1,17 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import pytest
-from typing import Any, Iterator, override, ClassVar
-from pydantic import Field, PrivateAttr, ValidationError, BaseModel, InstanceOf, ConfigDict
 
-from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.models.root import EntityRoot
-from app.portfolio.journal.session import Session
-from app.portfolio.journal.entity_journal import EntityJournal
-from app.portfolio.collections.journalled.sequence import JournalledSequence
+import pytest
+
+from pydantic import Field, ValidationError
+
 from app.portfolio.collections.journalled.mapping import JournalledMapping
+from app.portfolio.collections.journalled.sequence import JournalledSequence
+from app.portfolio.journal.entity_journal import EntityJournal
+from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.models.entity.incrementing_uid_entity import IncrementingUidEntity
+from app.portfolio.models.root import EntityRoot
 from app.portfolio.util.superseded import SupersededError
 
 
@@ -31,7 +31,7 @@ class SampleEntity(IncrementingUidEntity):
 
 
 # --- Fixtures --------------------------------------------------------------------
-@pytest.fixture(scope='function')
+@pytest.fixture
 def entity(entity_root: EntityRoot) -> SampleEntity:
     with entity_root.session_manager(actor="entity fixture", reason="fixture setup"):
         entity = entity_root.root = SampleEntity(value=1)
@@ -39,6 +39,7 @@ def entity(entity_root: EntityRoot) -> SampleEntity:
 
 
 # --- Tests -----------------------------------------------------------------------
+
 
 @pytest.mark.journal
 @pytest.mark.session
@@ -58,7 +59,7 @@ class TestSessionEntityJournal:
 
             entity.journal.value = 42  # journal set, not pydantic mutation
             assert entity.journal.value == 42  # read sees tentative update
-            assert entity.value == 1 # but entity does not change
+            assert entity.value == 1  # but entity does not change
             j = entity.journal
             assert isinstance(j, EntityJournal)
             assert j.dirty is True
@@ -115,7 +116,7 @@ class TestSessionEntityJournal:
             s.abort()
             assert entity.dirty is False
 
-    def test_start_then_abort_no_edits_noop(self, entity : SampleEntity, session_manager: SessionManager):
+    def test_start_then_abort_no_edits_noop(self, entity: SampleEntity, session_manager: SessionManager):  # noqa: ARG002
         with session_manager(actor="tester", reason="noop") as s:
             assert s.dirty is False
             s.abort()  # no edits -> no-op
@@ -132,7 +133,7 @@ class TestSessionEntityJournal:
             assert s.dirty is False
             assert entity.value == 1  # reverted
 
-    def test_session_commit_without_changes_noop(self, entity : SampleEntity, session_manager: SessionManager):
+    def test_session_commit_without_changes_noop(self, entity: SampleEntity, session_manager: SessionManager):  # noqa: ARG002
         with session_manager(actor="tester", reason="noop-commit") as s:
             assert s.dirty is False
             s.commit()  # should not raise (no changes)
@@ -179,12 +180,11 @@ class TestSessionEntityJournal:
                 s.get_entity_journal(entity=entity)
 
     def test_using_invalid_journal_fails(self, entity: SampleEntity, session_manager: SessionManager):
-        with session_manager(actor="tester", reason="unit-test") as s:
+        with session_manager(actor="tester", reason="unit-test"):
             j = entity.journal
             j.mark_superseded()
             with pytest.raises(SupersededError):
                 j.get_field("value")
-
 
     # --- Additional behavior -----------------------------------------------------------------
     def test_collection_edits_do_not_mutate_originals(self, entity: SampleEntity, session_manager: SessionManager):

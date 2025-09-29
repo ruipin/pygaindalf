@@ -3,47 +3,49 @@
 Covers all public functions (excluding private ones) and ignores GenericIntrospectionMixin.
 """
 
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import typing
-import pytest
 from typing import TypeVar
 
+import pytest
+
 from app.util.helpers.generics import (
+    ArgumentInfo,
     GenericsError,
     ParameterInfo,
-    ArgumentInfo,
-    get_original_bases,
-    get_origin_or_none,
-    get_origin,
-    get_generic_base_or_none,
-    get_generic_base,
-    iter_parameter_infos,
-    get_parameter_infos,
-    get_parameter_info_or_none,
-    get_parameter_info,
-    has_parameter,
-    get_argument_info,
-    iter_argument_infos,
-    get_argument_infos,
     get_argument,
-    get_concrete_argument,
+    get_argument_info,
+    get_argument_infos,
     get_bases_between,
-    get_parent_argument_info_or_none,
-    get_parent_argument_info,
-    get_parent_argument,
+    get_concrete_argument,
     get_concrete_parent_argument,
+    get_generic_base,
+    get_generic_base_or_none,
+    get_origin,
+    get_origin_or_none,
+    get_original_bases,
+    get_parameter_info,
+    get_parameter_info_or_none,
+    get_parameter_infos,
+    get_parent_argument,
+    get_parent_argument_info,
+    get_parent_argument_info_or_none,
+    has_parameter,
+    iter_argument_infos,
+    iter_parameter_infos,
 )
+
 
 """
 Test suite is split into intent-based classes. Each test class defines local
 generic types to keep names focused and reusable across classes.
 """
 
-#-------------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------------
 # MARK: Origin and base helpers
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestOriginAndBases:
@@ -66,7 +68,6 @@ class TestOriginAndBases:
     def test_get_origin_and_generic_base(self):
         Pair = TestOriginAndBases.Pair
         Plain = TestOriginAndBases.Plain
-        Parent = TestOriginAndBases.Parent
         Mid = TestOriginAndBases.Mid
         Leaf = TestOriginAndBases.Leaf
 
@@ -89,9 +90,9 @@ class TestOriginAndBases:
         assert any(get_origin_or_none(b) is Mid for b in bases)
 
 
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # MARK: Generic parameter introspection (arg info) and has_arg
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestArgInfoAndHasArg:
@@ -137,9 +138,9 @@ class TestArgInfoAndHasArg:
         assert has_parameter(Wrapper[int], "T") is True
 
 
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # MARK: Argument specialization and iteration
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestSpecializations:
@@ -161,9 +162,9 @@ class TestSpecializations:
         assert specs_map["T"].value is str and specs_map["U"].value is int
 
 
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # MARK: Direct argument access and bounds
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestDirectArgAccess:
@@ -192,8 +193,8 @@ class TestDirectArgAccess:
     def test_get_arg_bound_violation(self):
         Pair = TestDirectArgAccess.Pair
         with pytest.raises(TypeError) as ei:
-            get_argument(Pair[str, str], "U") # pyright: ignore[reportInvalidTypeArguments]
-        assert "Pair.U type argument <str> is not a subclass of its bound <int>" == str(ei.value)
+            get_argument(Pair[str, str], "U")  # pyright: ignore[reportInvalidTypeArguments]
+        assert str(ei.value) == "Pair.U type argument <str> is not a subclass of its bound <int>"
 
     def test_get_concrete_arg_unresolved_typevar(self):
         Pair = TestDirectArgAccess.Pair
@@ -202,9 +203,9 @@ class TestDirectArgAccess:
         assert str(ei.value) == "Could not resolve Pair.U type argument to a concrete type"
 
 
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # MARK: Parent chain traversal & inheritance mapping
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestParentTraversal:
@@ -253,19 +254,19 @@ class TestParentTraversal:
             get_concrete_parent_argument(LeafUnresolved, ParentGeneric, "T")
         assert str(ei.value) == "Could not resolve LeafUnresolved.T type argument to a concrete type, got <Z>"
 
-
     def test_get_bases_between_not_subclass(self):
         class Unrelated:
             pass
+
         ParentGeneric = TestParentTraversal.ParentGeneric
         with pytest.raises(GenericsError) as ei:
             get_bases_between(Unrelated, ParentGeneric)
         assert str(ei.value) == "Unrelated is not a subclass of ParentGeneric"
 
 
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 # MARK: Generic name remapping & shadowing
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestNameRemappingAndShadowing:
@@ -297,38 +298,51 @@ class TestNameRemappingAndShadowing:
 
     # Bound-related renaming/shadowing tests moved to TestBoundsAndPropagation
 
-#-------------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------------
 # MARK: Bounds propagation and enforcement
-#-------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestBoundsAndPropagation:
     # Shared base and subclasses for bound tests
     class Animal: ...
+
     class Dog(Animal): ...
+
     class Cat(Animal): ...
 
     # Shared generic classes for bounds scenarios
     class BoundOnly[A: Animal]:
         pass
+
     class UnboundAndBound[X, Y: int]:
         pass
+
     class Kennel[P: Animal]:
         pass
+
     class ParentBound[T: Animal]:
         pass
+
     class MidPass[X: Animal](ParentBound[X]):
         pass
+
     class LeafDog(MidPass[Dog]):
         pass
+
     class LeafInt(MidPass[int]):  # pyright: ignore[reportInvalidTypeArguments]
         pass
+
     class ParentPairBound[T: Animal, U]:
         pass
+
     class ChildRenamed[X: Animal, Y](ParentPairBound[X, Y]):
         pass
+
     class Parent[T: Animal, U]:
         pass
+
     class Child[X, T, Y: Animal](Parent[Y, T]):
         pass
 

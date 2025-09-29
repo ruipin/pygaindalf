@@ -2,18 +2,23 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from typing import Any, Callable, override
+from typing import TYPE_CHECKING, Any, override
+
 from . import script_info
 
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
 # NOTE: We extend property to piggyback on any code that handles property descriptors differently than other class variables
-class ClassPropertyDescriptor[C : object, T : Any](property):
-    def __init__(self, fget: Callable[[C], T], *, cached : bool = False):
+class ClassPropertyDescriptor[C: object, T: Any](property):
+    def __init__(self, fget: Callable[[C], T], *, cached: bool = False) -> None:
         self.getter: Any = fget
         self.cached = cached
 
     @override
-    def __get__(self, obj: Any, cls: type | None = None) -> T: # pyright: ignore[reportIncompatibleMethodOverride] as we know we are not compatible with property
+    def __get__(self, obj: Any, cls: type | None = None) -> T:  # pyright: ignore[reportIncompatibleMethodOverride] as we know we are not compatible with property
         if script_info.is_documentation_build():
             return self.getter
 
@@ -26,18 +31,21 @@ class ClassPropertyDescriptor[C : object, T : Any](property):
 
     @override
     def __set__(self, obj: Any, value: Any) -> None:
-        raise AttributeError("Can't set classproperty descriptors")
+        msg = "Can't set classproperty descriptors"
+        raise AttributeError(msg)
 
     @override
     def __delete__(self, obj: Any) -> None:
-        raise AttributeError("Can't delete classproperty descriptors")
+        msg = "Can't delete classproperty descriptors"
+        raise AttributeError(msg)
 
 
-def classproperty[C : object, T : Any](func : Callable[[C], T], *, cached : bool = False) -> ClassPropertyDescriptor[C, T]:
+def classproperty[C: object, T: Any](func: Callable[[C], T], *, cached: bool = False) -> ClassPropertyDescriptor[C, T]:
     if not script_info.is_documentation_build():
         if not isinstance(func, (classmethod, staticmethod)):
-            func = classmethod(func) # pyright: ignore
-    return ClassPropertyDescriptor(func, cached=cached) # pyright: ignore
+            func = classmethod(func)  # pyright: ignore[reportAssignmentType, reportArgumentType]
+    return ClassPropertyDescriptor(func, cached=cached)  # pyright: ignore[reportArgumentType]
 
-def cached_classproperty[C : object, T : Any](func : Callable[[C], T]) -> ClassPropertyDescriptor[C, T]:
+
+def cached_classproperty[C: object, T: Any](func: Callable[[C], T]) -> ClassPropertyDescriptor[C, T]:
     return classproperty(func, cached=True)

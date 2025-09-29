@@ -1,13 +1,17 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import typing
+
 import pytest
 
 from app.util.helpers.generics import GenericIntrospectionMethod, GenericsError
 
+
 # Simple domain types at module scope so they are visible inside nested class bodies
 class Animal: ...
+
+
 class Dog(Animal): ...
 
 

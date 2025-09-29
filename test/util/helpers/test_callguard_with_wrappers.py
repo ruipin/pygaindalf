@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPLv3-or-later
-# Copyright © 2025 pygaindalf
+# Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
-from app.util.callguard import callguard_class, CallguardError, CALLGUARD_ENABLED
-from app.util.helpers.wrappers import wrapper, before, before_attribute_check
+
+from app.util.callguard import CALLGUARD_ENABLED, CallguardError, callguard_class
+from app.util.helpers.wrappers import before, before_attribute_check, wrapper
 
 
 if not CALLGUARD_ENABLED:
@@ -17,7 +18,7 @@ class TestCallguardWithWrappers:
         events: list[str] = []
 
         @wrapper
-        def custom_wrapper(wrapped, *args, **kwargs):  # type: ignore
+        def custom_wrapper(wrapped, *args, **kwargs):
             events.append(f"wrapper:{wrapped.__name__}")
             result = wrapped(*args, **kwargs)
             if isinstance(result, str):
@@ -48,7 +49,7 @@ class TestCallguardWithWrappers:
         events: list[str] = []
 
         @before
-        def log_before(wrapped, *args, **kwargs):  # type: ignore
+        def log_before(wrapped, *args, **kwargs):
             events.append(f"before:{wrapped.__name__}")
 
         @callguard_class(allow_same_module=False, decorator=log_before, decorate_private_methods=True, decorate_public_methods=False)
@@ -67,15 +68,16 @@ class TestCallguardWithWrappers:
         assert events == ["before:_a"]
 
     def test_before_attribute_check_pass_internal_fail_external(self):
-    # Use attribute check decorator as the custom decorator for guarding
-        attr_check_decorator = before_attribute_check(attribute='state', desired='ready')
+        # Use attribute check decorator as the custom decorator for guarding
+        attr_check_decorator = before_attribute_check(attribute="state", desired="ready")
+
         @callguard_class(allow_same_module=False, decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:
-                self.state = 'ready'
+                self.state = "ready"
 
             def _do(self) -> str:
-                return 'ok'
+                return "ok"
 
             def run(self) -> str:
                 return self._do()
@@ -85,17 +87,18 @@ class TestCallguardWithWrappers:
         with pytest.raises(CallguardError):
             s._do()
         # Internal call passes attribute check
-        assert s.run() == 'ok'
+        assert s.run() == "ok"
 
     def test_before_attribute_check_fails_internal(self):
-        attr_check_decorator = before_attribute_check(attribute='state', desired='ready')
+        attr_check_decorator = before_attribute_check(attribute="state", desired="ready")
+
         @callguard_class(allow_same_module=False, decorator=attr_check_decorator, decorate_private_methods=True, decorate_public_methods=False)
         class Sample:
             def __init__(self) -> None:
-                self.state = 'not_ready'
+                self.state = "not_ready"
 
             def _do(self) -> str:
-                return 'ok'
+                return "ok"
 
             def run(self) -> str:
                 return self._do()
@@ -104,5 +107,5 @@ class TestCallguardWithWrappers:
         with pytest.raises(CallguardError):
             s._do()  # still blocked externally (callguard)
         # Internal call triggers attribute check and raises ValueError
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Attribute 'state' must be ready when calling Sample._do"):
             s.run()

@@ -2,21 +2,27 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from .iterable   import EntityProxyIterable
-from .iterator   import EntityProxyIterator
 from .collection import EntityProxyCollection, EntityProxyMutableCollection
-from .sequence   import EntityProxySequence, EntityProxyMutableSequence
-from .mapping    import EntityProxyMapping, EntityProxyMutableMapping
-from .set        import *
+from .iterable import EntityProxyIterable
+from .iterator import EntityProxyIterator
+from .mapping import EntityProxyMapping, EntityProxyMutableMapping
+from .sequence import EntityProxyMutableSequence, EntityProxySequence
+from .set import EntityProxyMutableSet, EntityProxySet, GenericEntityProxyMutableSet, GenericEntityProxySet
 
 
 __all__ = [
-    "EntityProxyIterable"      ,
-    "EntityProxyIterator"      ,
-    "EntityProxyCollection"    , "EntityProxyMutableCollection"    ,
-    "EntityProxySequence"      , "EntityProxyMutableSequence"      ,
-    "EntityProxyMapping"       , "EntityProxyMutableMapping"       ,
-    "EntityProxySet"           , "EntityProxyMutableSet"           ,
-    "GenericEntityProxySet"    , "GenericEntityProxyMutableSet"    ,
-    "EntityProxySet"           , "EntityProxyMutableSet"           ,
+    "EntityProxyCollection",
+    "EntityProxyIterable",
+    "EntityProxyIterator",
+    "EntityProxyMapping",
+    "EntityProxyMutableCollection",
+    "EntityProxyMutableMapping",
+    "EntityProxyMutableSequence",
+    "EntityProxyMutableSet",
+    "EntityProxyMutableSet",
+    "EntityProxySequence",
+    "EntityProxySet",
+    "EntityProxySet",
+    "GenericEntityProxyMutableSet",
+    "GenericEntityProxySet",
 ]

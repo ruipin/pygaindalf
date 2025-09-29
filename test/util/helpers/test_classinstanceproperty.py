@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-"""
-Unit tests for the @classinstanceproperty decorator.
+"""Unit tests for the @classinstanceproperty decorator.
+
 Validates class-level and instance-level access and read-only behavior.
 """
 
 import pytest
+
 from app.util.helpers.classinstanceproperty import classinstanceproperty
 
 
@@ -17,17 +18,18 @@ class Foo:
         self.base = 10
 
     @classinstanceproperty
-    def value(first):
+    def value(self):
         # first is instance when accessed from an instance, else class
-        return first.base
+        return self.base
 
     @classinstanceproperty
-    def doubled(first):
-        return first.base * 2
+    def doubled(self):
+        return self.base * 2
 
 
 class Bar(Foo):
     base = 100
+
     def __init__(self) -> None:
         self.base = 200
 

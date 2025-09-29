@@ -1,18 +1,19 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import datetime
+
 from decimal import Decimal
-from types import MethodType
 
 import pytest
+
 from iso4217 import Currency
 
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.instrument.instrument_proxy import InstrumentProxy
 from app.portfolio.models.ledger.ledger import Ledger
 from app.portfolio.models.ledger.ledger_proxy import LedgerProxy
-from app.portfolio.models.transaction.transaction import Transaction, TransactionType
+from app.portfolio.models.transaction import Transaction, TransactionType
 from app.portfolio.models.transaction.transaction_proxy import TransactionProxy
 
 
@@ -78,8 +79,8 @@ class TestLedgerProxy:
         transaction = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 6, 1),
-            quantity=Decimal("7"),
-            consideration=Decimal("910"),
+            quantity=Decimal(7),
+            consideration=Decimal(910),
         )
 
         ledger = Ledger(
@@ -103,14 +104,14 @@ class TestLedgerProxy:
         tx1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 7, 1),
-            quantity=Decimal("15"),
-            consideration=Decimal("825"),
+            quantity=Decimal(15),
+            consideration=Decimal(825),
         )
         tx2 = Transaction(
             type=TransactionType.SELL,
             date=datetime.date(2025, 7, 2),
-            quantity=Decimal("5"),
-            consideration=Decimal("320"),
+            quantity=Decimal(5),
+            consideration=Decimal(320),
         )
 
         ledger = Ledger(
@@ -146,8 +147,8 @@ class TestLedgerProxy:
         tx = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 8, 1),
-            quantity=Decimal("3"),
-            consideration=Decimal("105"),
+            quantity=Decimal(3),
+            consideration=Decimal(105),
         )
 
         ledger = Ledger(
@@ -169,14 +170,14 @@ class TestLedgerProxy:
         tx1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 4, 1),
-            quantity=Decimal("10"),
-            consideration=Decimal("1500"),
+            quantity=Decimal(10),
+            consideration=Decimal(1500),
         )
         tx2 = Transaction(
             type=TransactionType.SELL,
             date=datetime.date(2025, 4, 2),
-            quantity=Decimal("5"),
-            consideration=Decimal("800"),
+            quantity=Decimal(5),
+            consideration=Decimal(800),
         )
 
         ledger = Ledger(

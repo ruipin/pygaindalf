@@ -1,0 +1,289 @@
+# Set the maximum line length
+line-length = 160 # 2*80
+
+# Allow unsafe fixes
+unsafe-fixes = true
+
+
+
+#####
+# Formatting style
+[format]
+indent-style = "space"
+line-ending = "lf"
+quote-style = "double"
+docstring-code-format = true
+
+
+
+#####
+# Linting configuration
+[lint]
+# Enable preview, make it explicit only
+preview = true
+explicit-preview-rules = true
+
+# Custom logger objects
+logger-objects = ["app.util.logging.logger.Logger"]
+
+# Tell the linter to ignore 'MARK:' comments (used for marking sections in code)
+task-tags = ["MARK"]
+
+# See https://docs.astral.sh/ruff/rules/
+# Select rules to enforce
+select = [
+    # Add all rules to the enforced ruleset by default.
+    "ALL",
+
+    # Enable preview rules
+    "CPY001", # https://docs.astral.sh/ruff/rules/missing-copyright-notice/
+]
+
+# Ignore specific rules.
+ignore = [
+    #### Conflicting lint rules listed in https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "W191", # https://docs.astral.sh/ruff/rules/tab-indentation/
+    "E111", # https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple/
+    "E114", # https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple-comment/
+    "E117", # https://docs.astral.sh/ruff/rules/over-indented/
+    "D206", # https://docs.astral.sh/ruff/rules/docstring-tab-indentation/
+    "D300", # https://docs.astral.sh/ruff/rules/triple-single-quotes/
+    "Q000", # https://docs.astral.sh/ruff/rules/bad-quotes-inline-string/
+    "Q001", # https://docs.astral.sh/ruff/rules/bad-quotes-multiline-string/
+    "Q002", # https://docs.astral.sh/ruff/rules/bad-quotes-docstring/
+    "Q003", # https://docs.astral.sh/ruff/rules/avoidable-escaped-quote/
+    "COM812", # https://docs.astral.sh/ruff/rules/missing-trailing-comma/
+    "COM819", # https://docs.astral.sh/ruff/rules/prohibited-trailing-comma/
+    "ISC002", # https://docs.astral.sh/ruff/rules/multi-line-implicit-string-concatenation/
+    "E501", # https://docs.astral.sh/ruff/rules/line-too-long/
+
+
+    #### Custom rules
+    # https://docs.astral.sh/ruff/rules/#flake8-annotations-ann
+    "ANN002", # https://docs.astral.sh/ruff/rules/missing-type-args/ - *args type annotations are IMO unnecessary and often hard to read/write
+    "ANN003", # https://docs.astral.sh/ruff/rules/missing-type-kwargs/ - same as above, but for **kwargs
+    "ANN401", # https://docs.astral.sh/ruff/rules/any-type/ - there are too many use cases for explicit 'Any' annotations to make this check useful
+
+    # https://docs.astral.sh/ruff/rules/#pydoclint-doc
+    "D1", # undocumented-* disabled as too many modules have no docstrings right now, will enable later
+    "D203", # https://docs.astral.sh/ruff/rules/incorrect-blank-line-before-class/ - using D211 instead
+    "D213", # https://docs.astral.sh/ruff/rules/multi-line-summary-second-line/ - using D212 instead
+
+    # https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+    "B010", # https://docs.astral.sh/ruff/rules/set-attr-with-constant/ - useful when setting an attribute that pyright believes does not exist, to avoid having to use 'pyright: ignore' comments
+    "B024", # https://docs.astral.sh/ruff/rules/abstract-base-class-without-abstract-method/ - we use ABCMeta for mixins/interface that are not meant to be instantiated directly, even without abstract methods
+
+    # https://github.com/tommilligan/flake8-fixme - too noisy for now, will consider later
+    "FIX",
+
+    # https://docs.astral.sh/ruff/rules/#pylint-pl
+    "PLC0415", # https://docs.astral.sh/ruff/rules/import-outside-top-level/ - often necessary to avoid circular imports, or to reduce startup time, and causes too many false negatives
+    "PLR0911", # https://docs.astral.sh/ruff/rules/too-many-return-statements/ - I agree in priciple, but too many false positives where the function is still readable and the returns are there for a reason
+    "PLR0912", # https://docs.astral.sh/ruff/rules/too-many-branches/ - same as above
+    "PLR5501", # https://docs.astral.sh/ruff/rules/collapsible-else-if/ - sometimes useful for visual structure, I disagree removing these makes the code more readable
+    "PLW2901", # https://docs.astral.sh/ruff/rules/redefined-loop-name/ - shadowing loop variables within a loop is sometimes useful, and can be more readable
+
+    # https://docs.astral.sh/ruff/rules/#flake8-pyi-pyi
+    "PYI019", # https://docs.astral.sh/ruff/rules/custom-type-var-for-self/ there seem to be cases where using a custom TypeVar instead of Self is useful, in particular it aids pyright in some complex inheritance cases
+
+    # https://docs.astral.sh/ruff/rules/#flake8-return-ret
+    "RET503", # https://docs.astral.sh/ruff/rules/implicit-return/ - overlaps with a (IMO much less noisy) pyright check
+    "RET505", # https://docs.astral.sh/ruff/rules/superfluous-else-return/ - sometimes useful for visual structure, I disagree removing these makes the code more readable
+    "RET506", # https://docs.astral.sh/ruff/rules/superfluous-else-raise/ - same as above
+    "RET507", # https://docs.astral.sh/ruff/rules/superfluous-else-continue/ - same as above
+    "RET508", # https://docs.astral.sh/ruff/rules/superfluous-else-break/ - same as above
+
+    # https://docs.astral.sh/ruff/rules/assert/
+    "S101", # https://docs.astral.sh/ruff/rules/assert/ - assert statements are useful for testing invariants during development, i.e. those conditions that should never be false unless there's a bug
+    "S113", # https://docs.astral.sh/ruff/rules/request-without-timeout/ - we set timeouts globally via our custom session logic
+
+    # https://docs.astral.sh/ruff/rules/#flake8-simplify-sim
+    "SIM102", # https://docs.astral.sh/ruff/rules/collapsible-if/ - I disagree removing these necessarily makes the code more readable, in fact it often does the opposite
+
+    # https://docs.astral.sh/ruff/rules/#flake8-todos-td
+    "TD002", # https://docs.astral.sh/ruff/rules/missing-todo-author/ - not useful for solo projects
+    "TD003", # https://docs.astral.sh/ruff/rules/missing-todo-link/ - app is in heavy development, too early to start tracking issues
+
+    # https://docs.astral.sh/ruff/rules/#flake8-tidy-imports-tid
+    "TID252", # https://docs.astral.sh/ruff/rules/relative-imports/ - I disagree relative imports are less readable. In fact, I find them more readable in many cases.
+
+    # https://docs.astral.sh/ruff/rules/#tryceratops-try
+    "TRY003", # https://docs.astral.sh/ruff/rules/raise-vanilla-args/ - not very useful in practice
+]
+
+
+[lint.extend-per-file-ignores]
+"test/*" = [
+    # https://docs.astral.sh/ruff/rules/#flake8-annotations-ann
+    "ANN", # type annotations are not necessary in tests
+
+    # https://docs.astral.sh/ruff/rules/#flake8-errmsg-em
+    "EM101", # https://docs.astral.sh/ruff/rules/raw-string-in-exception/ - not user facing so this doesn't matter
+
+    # https://docs.astral.sh/ruff/rules/#pep8-naming-n
+    "N806", # https://docs.astral.sh/ruff/rules/non-lowercase-variable-in-function/ - test functions often import classes from other scopes and use them as variables
+
+    # https://docs.astral.sh/ruff/rules/#pylint-pl
+    "PLR0915", # https://docs.astral.sh/ruff/rules/too-many-statements/ - test functions often have many statements
+    "PLR2004", # https://docs.astral.sh/ruff/rules/magic-value-comparison/ - magic values are often useful in tests
+
+    # https://docs.astral.sh/ruff/rules/#flake8-pytest-style-pt
+    "PT012", # https://docs.astral.sh/ruff/rules/pytest-raises-with-multiple-statements/ - necessary to test that session_manager with-blocks work as expected
+    "PT018", # https://docs.astral.sh/ruff/rules/pytest-composite-assertion/ - composite assertions are often more readable in tests, and pytest gives good error messages for them anyway
+
+    # https://docs.astral.sh/ruff/rules/#flake8-self-slf
+    "SLF001", # https://docs.astral.sh/ruff/rules/private-member-access/ - we need to test protected/private methods in tests
+
+    # https://docs.astral.sh/ruff/rules/#flake8-type-checking-tc
+    "TC001", # https://docs.astral.sh/ruff/rules/typing-only-first-party-import/ - we don't need to worry about guarding third-party imports in tests
+]
+
+"test/**/*callguard*.py" = [
+    # https://docs.astral.sh/ruff/rules/#flake8-self-slf
+    "SLF001", # https://docs.astral.sh/ruff/rules/private-member-access/ - we need to test protected/private methods in callguard tests
+]
+
+"test/**/logging/*" = [
+    # https://docs.astral.sh/ruff/rules/#pep8-naming-n
+    "N802", # https://docs.astral.sh/ruff/rules/invalid-function-name/ - logging functions sometimes use uppercase letters
+]
+
+"**/conftest.py" = [
+    # https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "F403", # https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/ - used for convenience
+]
+
+"docs/conf.py" = [
+    "ALL", # many rules don't make sense in Sphinx conf.py files
+]
+
+
+#####
+# Lint pluging configurations
+
+# https://docs.astral.sh/ruff/settings/#lintflake8-annotations
+[lint.flake8-annotations]
+# Suppress ANN401 for dynamically typed *args and **kwargs arguments.
+allow-star-arg-any = true
+
+# suppress ANN000-level violations for arguments matching the "dummy" variable regex (like _).
+suppress-dummy-args = true
+
+
+# https://docs.astral.sh/ruff/settings/#lintflake8-boolean-trap
+[lint.flake8-boolean-trap]
+extend-allowed-calls = [
+    # See https://docs.astral.sh/ruff/settings/#lint_flake8-boolean-trap_extend-allowed-calls
+    "pydantic.Field", "django.db.models.Value",
+
+    # Custom functions
+    "app.util.config.inherit.FieldInherit"
+]
+
+
+# https://docs.astral.sh/ruff/settings/#lintflake8-copyright
+[lint.flake8-copyright]
+author = "Rui Pinheiro"
+notice-rgx = "# SPDX-License-Identifier: GPLv3-or-later\n# Copyright © [0-9]{4} pygaindalf"
+
+
+# https://docs.astral.sh/ruff/settings/#lintflake8-type-checking
+[lint.flake8-type-checking]
+# Exempt certain modules from being moved into TYPE_CHECKING blocks
+exempt-modules = [
+    "typing", "typing-extensions", "types", "pydantic", "dataclasses", "collections.abc"
+]
+
+# Base classes that require their member type hints to be available at runtime.
+runtime-evaluated-base-classes = [
+    # See https://docs.astral.sh/ruff/settings/#lint_flake8-type-checking_runtime-evaluated-base-classes
+    "pydantic.BaseModel", "sqlalchemy.orm.DeclarativeBase",
+
+    # Custom config pydantic models
+    "app.util.config.models.base_model.BaseConfigModel", "app.util.config.models.BaseConfigModel"  ,
+    "app.util.config.models.base.ConfigLoggingOnly"    , "app.util.config.models.ConfigLoggingOnly",
+    "app.util.config.models.base.ConfigBase"           , "app.util.config.models.ConfigBase"       , "app.util.config.ConfigBase",
+    "app.config.default.DefaultConfig"                 , "app.config.DefaultConfig"                ,
+    "app.config.main.Config"                           , "app.config.Config"                       ,
+
+    # Custom pydantic models
+    "app.util.models.hierarchical_root.HierarchicalRootModel"    , "app.util.models.HierarchicalRootModel"             ,
+    "app.util.models.hierarchical_child.HierarchicalModel"       , "app.util.models.HierarchicalModel"                 ,
+    "app.util.models.single_initialization.SingleInitialization" , "app.util.models.SingleInitializationModel"         ,
+    "app.util.models.loggable.LoggableModel"                     , "app.util.models.LoggableModel"                     ,
+    "app.util.models.combined.HierarchicalNamedModel"            , "app.util.models.HierarchicalNamedModel"            ,
+    "app.util.models.combined.HierarchicalRootNamedModel"        , "app.util.models.HierarchicalRootNamedModel"        ,
+    "app.util.models.combined.LoggableHierarchicalRootModel"     , "app.util.models.LoggableHierarchicalRootModel"     ,
+    "app.util.models.combined.LoggableHierarchicalModel"         , "app.util.models.LoggableHierarchicalModel"         ,
+    "app.util.models.combined.LoggableHierarchicalRootNamedModel", "app.util.models.LoggableHierarchicalRootNamedModel",
+    "app.util.models.combined.LoggableHierarchicalNamedModel"    , "app.util.models.LoggableHierarchicalNamedModel"    ,
+
+    # Portfolio
+    "app.portfolio.models.entity.EntityFieldsBase", "app.portfolio.models.EntityFieldsBase" ,
+
+    # Component pydantic models
+    "app.components.component.BaseComponentConfig"               , "app.components.BaseComponentConfig"                   ,
+    "app.component.providers.provider.BaseProviderConfig"        , "app.component.providers.BaseProviderConfig"           ,
+    "app.component.providers.forex.forex.BaseForexProviderConfig", "app.component.providers.forex.BaseForexProviderConfig",
+]
+
+# Decorators that require their argument/return type hints to be available at runtime
+runtime-evaluated-decorators = [
+    # See https://docs.astral.sh/ruff/settings/#lint_flake8-type-checking_runtime-evaluated-decorators
+    "pydantic.validate_call", "attrs.define"
+
+    # Custom decorators
+    #...
+]
+
+
+# https://docs.astral.sh/ruff/settings/#lintflake8-unused-arguments
+[lint.flake8-unused-arguments]
+# Ignore *args and **kwargs unused arguments
+ignore-variadic-names = true
+
+
+# https://docs.astral.sh/ruff/settings/#lintisort
+[lint.isort]
+# Use 1 line between 'import x' and 'from x import y' statements
+lines-between-types = 1
+
+# Leave 2 blank lines after the imports section
+lines-after-imports = 2
+
+
+# https://docs.astral.sh/ruff/settings/#lintmccabe
+[lint.mccabe]
+max-complexity = 15 # default is 10, but IMO that is too low for many cases
+
+
+# https://docs.astral.sh/ruff/settings/#lintpep8-naming
+[lint.pep8-naming]
+classmethod-decorators = [
+    # Allow Pydantic's `@validator` decorator to trigger class method treatment.
+    "pydantic.validator",
+    "pydantic.field_validator",
+    # Allow SQLAlchemy's dynamic decorators, like `@field.expression`, to trigger class method treatment.
+    "declared_attr",
+    "expression",
+    "comparator",
+
+    # Custom decorators
+    "app.util.helpers.classproperty.classproperty", "app.util.helpers.classproperty",
+    "app.util.helpers.classproperty.cached_classproperty", "app.util.helpers.cached_classproperty"
+]
+
+staticmethod-decorators = [
+    # Allow Belay's `@Device.teardown` decorator to trigger static method treatment.
+    "belay.Device.teardown"
+]
+
+extend-ignore-names = [
+    "getLogger", # Custom logger getter function, similar to logging.getLogger
+]
+
+
+# https://docs.astral.sh/ruff/settings/#lintpycodestyle
+[lint.pycodestyle]
+# Set the maximum docstring line length
+max-doc-length = 160

@@ -2,5 +2,12 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from .entity_journal import EntityJournal
-from .session_manager import SessionManager
 from .session import Session
+from .session_manager import SessionManager
+
+
+__all__ = [
+    "EntityJournal",
+    "Session",
+    "SessionManager",
+]

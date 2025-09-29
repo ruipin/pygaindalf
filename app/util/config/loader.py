@@ -2,49 +2,49 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-import yaml
-import argparse
+import pathlib
 import sys
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..mixins import LoggableMixin
+import yaml
 
-from .models.config_path import ConfigFilePath
-from ..helpers import script_info
-from ..helpers import script_version
-
+from ..helpers import script_info, script_version
 from ..logging.manager import LoggingManager
-
-from .yaml_loader import IncludeLoader
-from .models import ConfigLoggingOnly, ConfigBase
+from ..mixins import LoggableMixin
 from ..requests import RequestsManager
+from .models import ConfigBase, ConfigLoggingOnly
+from .models.config_path import ConfigFilePath
+from .yaml_loader import IncludeLoader
+
+
+if TYPE_CHECKING:
+    import argparse
 
 
 class ConfigFileLoader[C: ConfigBase](LoggableMixin):
-    def __init__(self, config_class: type[C], args : argparse.Namespace):
+    def __init__(self, config_class: type[C], args: argparse.Namespace) -> None:
         self.config_class = config_class
         self.args = args
         self.config = None
-        self.path = '-'
-
+        self.path = "-"
 
     def _merge_args(self) -> None:
         for name, value in vars(self.args).items():
             if value is None:
                 continue
 
-            split = name.split('.')
-            if len(split) <= 0 or split[0] == 'app':
+            split = name.split(".")
+            if len(split) <= 0 or split[0] == "app":
                 continue
 
             # Key is in the form 'config.key.subkey.subsubkey.etc'
             # Traverse the data structure to find the right place to insert the value
-            d : dict[str, Any] = self.data
+            d: dict[str, Any] = self.data
 
             if len(split) > 1:
                 for key in split[:-1]:
-                    next_d = d.get(key, None)
+                    next_d = d.get(key)
 
                     if not isinstance(next_d, dict):
                         next_d = {}
@@ -53,7 +53,8 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
                     d = next_d
 
             if d is None:
-                raise RuntimeError(f"Failed to find the right place to insert the value for key '{key}' in the configuration data")
+                msg = f"Failed to find the right place to insert the value for key '{key}' in the configuration data"
+                raise RuntimeError(msg)
 
             # Now we are at the right place, insert the value
             key = split[-1]
@@ -64,34 +65,41 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
                     continue
             d[key] = value
 
-
-    def open(self, path : ConfigFilePath | str) -> C:
+    def open(self, path: ConfigFilePath | pathlib.Path | str) -> C:
         if self.config is not None:
-            raise RuntimeError("Configuration already loaded. Cannot load again.")
+            msg = "Configuration already loaded. Cannot load again."
+            raise RuntimeError(msg)
 
-        if isinstance(path, str):
+        if isinstance(path, pathlib.Path):
+            path = ConfigFilePath(str(path))
+        elif isinstance(path, str):
             path = ConfigFilePath(path)
 
         self.path = path
 
         with self.path.open() as f:
             # Load the YAML file
-            data = yaml.load(f, IncludeLoader)
+            data = yaml.load(f, IncludeLoader)  # noqa: S506 as IncludeLoader extends yaml.SafeLoader
 
         if not isinstance(data, dict):
-            raise TypeError(f"Invalid configuration file format. Expected a dictionary, got {type(self.data).__name__}")
+            msg = f"Invalid configuration file format. Expected a dictionary, got {type(self.data).__name__}"
+            raise TypeError(msg)
 
         return self.load(data)
 
-
-    def load(self, data : dict[str, Any] | str) -> C:
+    def load(self, data: dict[str, Any] | str) -> C:
         if self.config is not None:
-            raise RuntimeError("Configuration already loaded. Cannot load again.")
+            msg = "Configuration already loaded. Cannot load again."
+            raise RuntimeError(msg)
 
         if isinstance(data, str):
-            self.data : dict[str, Any] = yaml.load(data, IncludeLoader)
+            self.data: dict[str, Any] = yaml.load(data, IncludeLoader)  # noqa: S506 as IncludeLoader extends yaml.SafeLoader
         else:
             self.data = data
+
+        if self.data is None:
+            msg = "Configuration is empty"
+            raise ValueError(msg)
 
         # Merge the loaded data with the application arguments
         self._merge_args()
@@ -100,27 +108,21 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
         self._init_logging_manager()
 
         # Inject static configuration data
-        if 'app' in self.data:
-            raise RuntimeError("Configuration file contains 'app' section. This is reserved for internal use.")
-        self.data['app'] = {
-            'name': script_info.get_script_name(),
-            'exe': script_info.get_exe_name(),
-            'version': {
-                'revision': script_version.git_revision,
-                'version': script_version.version,
-                'full': script_version.version_string
-            },
-            'paths': {
-                'config': self.path,
-                'home': script_info.get_script_home()
-            },
-            'test': script_info.is_unit_test()
+        if "app" in self.data:
+            msg = "Configuration file contains 'app' section. This is reserved for internal use."
+            raise ValueError(msg)
+        self.data["app"] = {
+            "name": script_info.get_script_name(),
+            "exe": script_info.get_exe_name(),
+            "version": {"revision": script_version.git_revision, "version": script_version.version, "full": script_version.version_string},
+            "paths": {"config": self.path, "home": script_info.get_script_home()},
+            "test": script_info.is_unit_test(),
         }
 
         # Log app header, arguments
         if not script_info.is_unit_test():
-            self.log.info("****** %s %s ******", self.data['app']['name'], self.data['app']['version']['full'], extra={'simple': True})
-            self.log.debug('Command line: %s', ' '.join(sys.argv))
+            self.log.info("****** %s %s ******", self.data["app"]["name"], self.data["app"]["version"]["full"], extra={"simple": True})
+            self.log.debug("Command line: %s", " ".join(sys.argv))
 
         # Initialise the global configuration object
         self.config = self.config_class.model_validate(self.data)
@@ -136,22 +138,21 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
         # Done
         return self.config
 
-
     def _init_logging_manager(self) -> None:
         if not script_info.is_unit_test():
             # Convert logging config entry into LoggingConfig object
-            data = self.data.get('logging', {})
+            data = self.data.get("logging", {})
             config = ConfigLoggingOnly(logging=data)
-            self.data['logging'] = config.logging
+            self.data["logging"] = config.logging
 
             # Initialize the logging manager with the config
             manager = LoggingManager()
             manager.initialize(config.logging)
 
-
     def _init_requests_manager(self) -> None:
         if self.config is None:
-            raise RuntimeError("Configuration not loaded. Call 'load()' first.")
+            msg = "Configuration not loaded. Call 'load()' first."
+            raise RuntimeError(msg)
 
         manager = RequestsManager()
 

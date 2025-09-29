@@ -2,13 +2,14 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from typing import override, Any, TYPE_CHECKING
 from abc import ABCMeta
+from typing import TYPE_CHECKING, Any, override
 
 from ....util.helpers import mro
 from ...journal.entity_journal import EntityJournal
-from ...util.uid import Uid, UID_SEPARATOR
+from ...util.uid import UID_SEPARATOR, Uid
 from .entity import Entity
+
 
 if TYPE_CHECKING:
     from .entity_proxy import EntityProxy
@@ -21,15 +22,16 @@ class IncrementingUidEntityMixin(Entity if TYPE_CHECKING else object, metaclass=
 
     @classmethod
     @override
-    def _calculate_uid(cls, data : dict[str, Any]) -> Uid:
+    def _calculate_uid(cls, data: dict[str, Any]) -> Uid:
         return cls._get_entity_store().generate_next_uid(cls.uid_namespace())
 
     @classmethod
     @override
-    def calculate_instance_name_from_dict(cls, data : dict[str, Any]) -> str:
-        uid = data.get('uid', None)
+    def calculate_instance_name_from_dict(cls, data: dict[str, Any]) -> str:
+        uid = data.get("uid")
         if not isinstance(uid, Uid):
-            raise TypeError(f"Expected 'uid' to be of type Uid, got {type(uid).__name__}.")
+            msg = f"Expected 'uid' to be of type Uid, got {type(uid).__name__}."
+            raise TypeError(msg)
         return str(uid)
 
     @property
@@ -37,9 +39,9 @@ class IncrementingUidEntityMixin(Entity if TYPE_CHECKING else object, metaclass=
     def instance_name(self) -> str:
         try:
             return str(self.uid)
-        except:
+        except Exception:  # noqa: BLE001 as we want to ensure we can use this in exception messages
             return f"{type(self).__name__}{UID_SEPARATOR}<invalid-uid>"
 
 
-class IncrementingUidEntity[T_Journal : EntityJournal, T_Proxy : EntityProxy](IncrementingUidEntityMixin, Entity[T_Journal, T_Proxy], metaclass=ABCMeta):
+class IncrementingUidEntity[T_Journal: EntityJournal, T_Proxy: EntityProxy](IncrementingUidEntityMixin, Entity[T_Journal, T_Proxy], metaclass=ABCMeta):
     pass

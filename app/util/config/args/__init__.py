@@ -2,5 +2,11 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from .parser import *
-from .default import *
+from .default import DefaultArgParser
+from .parser import ArgParserBase
+
+
+__all__ = [
+    "ArgParserBase",
+    "DefaultArgParser",
+]

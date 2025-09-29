@@ -1,31 +1,37 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import datetime
-import pytest
+
 from decimal import Decimal
+
+import pytest
 
 from iso4217 import Currency
 
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
-from app.portfolio.models.transaction.transaction import Transaction, TransactionType
+from app.portfolio.models.transaction import Transaction, TransactionType
 
 
 @pytest.mark.portfolio
 @pytest.mark.ledger
 class TestLedger:
     def test_initialization_uses_instrument_name_and_audit(self):
-        inst = Instrument.model_validate({
-            "ticker": "MSFT",
-            "currency": Currency("USD"),
-        })
-        ledg = Ledger.model_validate({
-            "instrument_uid": inst.uid,
-        })
+        inst = Instrument.model_validate(
+            {
+                "ticker": "MSFT",
+                "currency": Currency("USD"),
+            }
+        )
+        ledg = Ledger.model_validate(
+            {
+                "instrument_uid": inst.uid,
+            }
+        )
 
         # Name and linkage
-        assert ledg.instance_name == f'Ledger@{inst.instance_name}'
+        assert ledg.instance_name == f"Ledger@{inst.instance_name}"
         assert ledg.instrument is inst
 
         # Instance store lookup
@@ -48,14 +54,14 @@ class TestLedger:
         tx1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
-            quantity=Decimal("10"),
-            consideration=Decimal("1500"),
+            quantity=Decimal(10),
+            consideration=Decimal(1500),
         )
         tx2 = Transaction(
             type=TransactionType.SELL,
             date=datetime.date(2025, 1, 5),
-            quantity=Decimal("4"),
-            consideration=Decimal("620"),
+            quantity=Decimal(4),
+            consideration=Decimal(620),
         )
 
         ledg = Ledger(
@@ -80,20 +86,22 @@ class TestLedger:
         tx1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 4, 1),
-            quantity=Decimal("1"),
-            consideration=Decimal("500"),
+            quantity=Decimal(1),
+            consideration=Decimal(500),
         )
         tx2 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 4, 2),
-            quantity=Decimal("2"),
-            consideration=Decimal("1000"),
+            quantity=Decimal(2),
+            consideration=Decimal(1000),
         )
         # Supply a tuple (sequence) to test broader Iterable support
-        ledg = Ledger.model_validate({
-            "instrument_uid": inst.uid,
-            "transaction_uids": (tx1.uid, tx2.uid),
-        })
+        ledg = Ledger.model_validate(
+            {
+                "instrument_uid": inst.uid,
+                "transaction_uids": (tx1.uid, tx2.uid),
+            }
+        )
         assert len(ledg) == 2
         assert ledg[0] is tx1 and ledg[1] is tx2
 

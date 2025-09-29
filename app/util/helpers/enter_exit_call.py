@@ -1,71 +1,73 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import Self
-from collections.abc import Iterable, Callable, Mapping
+from typing import TYPE_CHECKING, NamedTuple, Self
 
 
-class EnterExitCall(object):
-    """
-    Context manager to call enter and exit methods with optional arguments.
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Mapping
+
+
+class EnterExitCallInfo(NamedTuple):
+    mthd: Callable
+    args: Iterable | None
+    kwargs: Mapping | None
+
+
+class EnterExitCall:
+    """Context manager to call enter and exit methods with optional arguments.
+
     Useful for temporarily changing state (e.g., freezing/unfreezing) in a with-block.
     """
 
-    def __init__(self, mthd_enter : Callable, mthd_exit : Callable,
-                 args_enter: Iterable|None = None, kwargs_enter: Mapping|None = None,
-                 args_exit : Iterable|None = None, kwargs_exit : Mapping|None = None):
-        """
-        Initialize the EnterExitCall context manager.
-
-        Args:
-            mthd_enter (Callable): Callable to invoke on enter.
-            mthd_exit (Callable): Callable to invoke on exit.
-            args_enter (Optional[Iterable]): Positional arguments for enter.
-            kwargs_enter (Optional[Mapping]): Keyword arguments for enter.
-            args_exit (Optional[Iterable]): Positional arguments for exit.
-            kwargs_exit (Optional[Mapping]): Keyword arguments for exit.
-        """
-        self.mthd_enter   = mthd_enter
-        self.args_enter   = args_enter
-        self.kwargs_enter = kwargs_enter
-
-        self.mthd_exit   = mthd_exit
-        self.args_exit   = args_exit
-        self.kwargs_exit = kwargs_exit
+    def __init__(
+        self,
+        enter: EnterExitCallInfo | Callable,
+        exit: EnterExitCallInfo | Callable,  # noqa: A002 as it matches the __exit__ method name
+    ) -> None:
+        """Initialize the EnterExitCall context manager."""
+        self._enter = enter
+        self._exit = exit
 
         self.enter()
 
     def enter(self) -> Self:
-        """
-        Call the enter method with provided arguments.
-        """
-        args   = self.args_enter   or ()
-        kwargs = self.kwargs_enter or {}
-        self.mthd_enter(*args, **kwargs)
+        """Call the enter method with provided arguments."""
+        info = self._enter
+        if callable(info):
+            info()
+        else:
+            args = info.args or ()
+            kwargs = info.kwargs or {}
+            info.mthd(*args, **kwargs)
         return self
 
     def __enter__(self) -> Self:
-        """
-        Enter the context (calls enter method).
+        """Enter the context (calls enter method).
+
         Returns:
             EnterExitCall: The context manager instance.
+
         """
         return self.enter()
 
     def exit(self) -> None:
-        """
-        Call the exit method with provided arguments.
-        """
-        args   = self.args_exit   or ()
-        kwargs = self.kwargs_exit or {}
-        self.mthd_exit(*args, **kwargs)
+        """Call the exit method with provided arguments."""
+        info = self._exit
+        if callable(info):
+            info()
+        else:
+            args = info.args or ()
+            kwargs = info.kwargs or {}
+            info.mthd(*args, **kwargs)
 
     def __exit__(self, _, __, ___) -> None:
-        """
-        Exit the context (calls exit method).
+        """Exit the context (calls exit method).
+
         Args:
             _ : Exception type (unused).
             __: Exception value (unused).
             ___: Exception traceback (unused).
+
         """
         self.exit()

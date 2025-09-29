@@ -7,8 +7,9 @@ import datetime
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
-
 from sphinx_pyproject import SphinxConfig as PyProjectSphinxConfig
+
+
 config = PyProjectSphinxConfig("../pyproject.toml")
 
 project = config.name
@@ -20,38 +21,40 @@ release = config.version
 # We need to import modules from one directory up
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
+
+
+sys.path.insert(0, os.path.abspath(".."))
 
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon', # For Google-style docstrings
-    'sphinx_autodoc_typehints', # For type hints in docstrings
-    'sphinx.ext.inheritance_diagram', # For class inheritance diagrams
-    'sphinx.ext.intersphinx', # For linking to other projects' documentation
-    'sphinx.ext.githubpages', # For GitHub Pages support
-    'myst_parser', # For parsing Markdown files
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.napoleon",  # For Google-style docstrings
+    "sphinx_autodoc_typehints",  # For type hints in docstrings
+    "sphinx.ext.inheritance_diagram",  # For class inheritance diagrams
+    "sphinx.ext.intersphinx",  # For linking to other projects' documentation
+    "sphinx.ext.githubpages",  # For GitHub Pages support
+    "myst_parser",  # For parsing Markdown files
 ]
 
 autosummary_generate = True  # Turn on sphinx.ext.autosummary
 autosummary_ignore_imports = True
 
-autoclass_content = 'class'
+autoclass_content = "class"
 
 autodoc_warningiserror = True  # Treat warnings as errors in autodoc
-autodoc_class_signature = 'separated'  # Use the 'separated' style for class signatures
+autodoc_class_signature = "separated"  # Use the 'separated' style for class signatures
 autodoc_inherit_docstrings = False  # Do not inherit docstrings from parent classes
-autodoc_typehints = 'both'  # Show type hints in both the signature and the docstring
-autodoc_mock_imports = ['_typeshed']
+autodoc_typehints = "both"  # Show type hints in both the signature and the docstring
+autodoc_mock_imports = ["_typeshed"]
 
 inheritance_graph_attrs = dict(size='""')
 
-templates_path = ['_templates']
+templates_path = ["_templates"]
 exclude_patterns = []
 
 myst_heading_anchors = 5
@@ -62,17 +65,17 @@ myst_enable_extensions = [
 ]
 
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/3.13', None),
-    'rich': ('https://rich.readthedocs.io/en/latest/', None),
-    'pydantic': ('https://docs.pydantic.dev/latest/', None),
-    'requests': ('https://docs.python-requests.org/en/latest/', None),
-    'requests_cache': ('https://requests-cache.readthedocs.io/en/stable/', None),
-    'requests_ratelimiter': ('https://requests-ratelimiter.readthedocs.io/en/stable/', None),
+    "python": ("https://docs.python.org/3.13", None),
+    "rich": ("https://rich.readthedocs.io/en/latest/", None),
+    "pydantic": ("https://docs.pydantic.dev/latest/", None),
+    "requests": ("https://docs.python-requests.org/en/latest/", None),
+    "requests_cache": ("https://requests-cache.readthedocs.io/en/stable/", None),
+    "requests_ratelimiter": ("https://requests-ratelimiter.readthedocs.io/en/stable/", None),
 }
 
 source_suffix = {
-    '.rst': 'restructuredtext',
-    '.md': 'markdown',
+    ".rst": "restructuredtext",
+    ".md": "markdown",
 }
 
 
@@ -80,26 +83,27 @@ source_suffix = {
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "sphinx_rtd_theme"
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
 html_theme_options = {
-    'navigation_depth': -1,
-    'sticky_navigation': True,
-    'titles_only': True,
-    'style_external_links': True,
+    "navigation_depth": -1,
+    "sticky_navigation": True,
+    "titles_only": True,
+    "style_external_links": True,
 }
-
-
 
 
 # -- Custom Sphinx extension for converting Markdown links to RST format ------
 import re
+
 from sphinx.application import Sphinx
+
 
 # Matches [`Text`][fully.qualified.name]
 MD_REF = re.compile(r"\[`([^\]]+)`\]\[([^\]]+)\]")
 # Matches [`fully.qualified.name`] (only if it looks dotted)
 MD_FQNAME = re.compile(r"\[`([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)`\]")
+
 
 def md_links_to_rst(app, what, name, obj, options, lines):
     for i, line in enumerate(lines):
@@ -109,28 +113,39 @@ def md_links_to_rst(app, what, name, obj, options, lines):
         line = MD_FQNAME.sub(r":py:obj:`\1`", line)
         lines[i] = line
 
+
 def setup(app: Sphinx):
     app.connect("autodoc-process-docstring", md_links_to_rst)
 
 
-
 # ---------- Custom sphinx extension to fix Python 3.14 annotations ------------
-import functools, annotationlib, inspect
+import annotationlib
+import functools
+import inspect
+
 
 # sphinx.ext.autodoc
 inspect_signature = inspect.signature
+
+
 @functools.wraps(inspect.signature)
 def patched_inspect_signature(*args, **kwargs):
-    if 'annotation_format' not in kwargs:
-        kwargs['annotation_format'] = annotationlib.Format.FORWARDREF
+    if "annotation_format" not in kwargs:
+        kwargs["annotation_format"] = annotationlib.Format.FORWARDREF
     return inspect_signature(*args, **kwargs)
+
+
 inspect.signature = patched_inspect_signature
 
 # sphinx_autodoc_typehints
+from typing import Any, Callable, TypeVar
+
 import sphinx_autodoc_typehints
-from typing import Callable, TypeVar, Any
+
 
 sphinx_autodoc_typehints_process_signature = sphinx_autodoc_typehints.process_signature
+
+
 @functools.wraps(sphinx_autodoc_typehints_process_signature)
 def patched_sphinx_autodoc_typehints_process_signature(app, what, name, obj, options, signature, return_annotation: str):
     if not callable(obj):
@@ -142,26 +157,21 @@ def patched_sphinx_autodoc_typehints_process_signature(app, what, name, obj, opt
     if not annotations:  # when has no annotation we cannot autodoc typehints so bail
         return None
 
-    obj = inspect.unwrap(obj)
-    sph_signature = sphinx_autodoc_typehints.sphinx_signature(obj, type_aliases=app.config["autodoc_type_aliases"])
+    obj = inspect.unwrap(obj)  # pyright: ignore[reportArgumentType]
+    sph_signature = sphinx_autodoc_typehints.sphinx_signature(obj, type_aliases=app.config["autodoc_type_aliases"])  # pyright: ignore[reportPrivateImportUsage]
     typehints_formatter: Callable[..., str | None] | None = getattr(app.config, "typehints_formatter", None)
 
     def _get_formatted_annotation(annotation: TypeVar) -> TypeVar:
         if typehints_formatter is None:
             return annotation
         formatted_name = typehints_formatter(annotation)
-        return annotation if not isinstance(formatted_name, str) else TypeVar(formatted_name)
+        return annotation if not isinstance(formatted_name, str) else TypeVar(formatted_name)  # pyright: ignore[reportReturnType, reportGeneralTypeIssues]
 
     if app.config.typehints_use_signature_return:
-        sph_signature = sph_signature.replace(
-            return_annotation=_get_formatted_annotation(sph_signature.return_annotation)
-        )
+        sph_signature = sph_signature.replace(return_annotation=_get_formatted_annotation(sph_signature.return_annotation))
 
     if app.config.typehints_use_signature:
-        parameters = [
-            param.replace(annotation=_get_formatted_annotation(param.annotation))
-            for param in sph_signature.parameters.values()
-        ]
+        parameters = [param.replace(annotation=_get_formatted_annotation(param.annotation)) for param in sph_signature.parameters.values()]
     else:
         parameters = [param.replace(annotation=inspect.Parameter.empty) for param in sph_signature.parameters.values()]
 
@@ -190,21 +200,25 @@ def patched_sphinx_autodoc_typehints_process_signature(app, what, name, obj, opt
     show_return_annotation = app.config.typehints_use_signature_return
     unqualified_typehints = not getattr(app.config, "typehints_fully_qualified", False)
     return (
-        sphinx_autodoc_typehints.stringify_signature(
+        sphinx_autodoc_typehints.stringify_signature(  # pyright: ignore[reportPrivateImportUsage]
             sph_signature,
             show_return_annotation=show_return_annotation,
             unqualified_typehints=unqualified_typehints,
         ).replace("\\", "\\\\"),
         None,
     )
+
+
 sphinx_autodoc_typehints.process_signature = patched_sphinx_autodoc_typehints_process_signature
 
 sphinx_autodoc_typehints_get_type_hint = sphinx_autodoc_typehints._get_type_hint
+
+
 @functools.wraps(sphinx_autodoc_typehints_get_type_hint)
 def patched_sphinx_autodoc_typehints_get_type_hint(autodoc_mock_imports, name, obj, localns):
     sphinx_autodoc_typehints._resolve_type_guarded_imports(autodoc_mock_imports, obj)
     try:
-        result = sphinx_autodoc_typehints.get_type_hints(obj, None, localns)
+        result = sphinx_autodoc_typehints.get_type_hints(obj, None, localns)  # pyright: ignore[reportPrivateImportUsage]
     except (AttributeError, TypeError, RecursionError) as exc:
         # TypeError - slot wrapper, PEP-563 when part of new syntax not supported
         # RecursionError - some recursive type definitions https://github.com/python/typing/issues/574
@@ -213,7 +227,9 @@ def patched_sphinx_autodoc_typehints_get_type_hint(autodoc_mock_imports, name, o
         else:
             result = {}
     except NameError as exc:
-        #sphinx_autodoc_typehints._LOGGER.warning('Cannot resolve forward reference in type annotations of "%s": %s', name, exc)
+        # sphinx_autodoc_typehints._LOGGER.warning('Cannot resolve forward reference in type annotations of "%s": %s', name, exc)
         result = annotationlib.get_annotations(obj, format=annotationlib.Format.STRING)
     return result
+
+
 sphinx_autodoc_typehints._get_type_hint = patched_sphinx_autodoc_typehints_get_type_hint

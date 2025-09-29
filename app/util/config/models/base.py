@@ -4,27 +4,28 @@
 import logging
 
 from reprlib import Repr
-from pydantic import Field
-from typing import override, Any, ClassVar
+from typing import ClassVar
 
+from pydantic import Field
+
+from ...logging.config import LoggingConfig
+from ...requests.config import RequestsConfig
 from .app_info import AppInfo
 from .base_model import BaseConfigModel
 
-from ...logging.config import LoggingConfig
-from ...mixins import LoggableMixin
-from ...requests.config import RequestsConfig
 
 class ConfigLoggingOnly(BaseConfigModel):
-    PROPAGATE_FROM_PARENT  : ClassVar[bool] = False
+    PROPAGATE_FROM_PARENT: ClassVar[bool] = False
 
     logging: LoggingConfig = Field(default=LoggingConfig(), description="Logging configuration")
 
+
 class ConfigBase(ConfigLoggingOnly):
-    PROPAGATE_FROM_PARENT  : ClassVar[bool] = True
+    PROPAGATE_FROM_PARENT: ClassVar[bool] = True
 
     app: AppInfo = Field(description="Application information, automatically gathered at startup")
 
-    requests : RequestsConfig = Field(default_factory=RequestsConfig, description="HTTP requests configuration, including rate limiting and caching")
+    requests: RequestsConfig = Field(default_factory=RequestsConfig, description="HTTP requests configuration, including rate limiting and caching")
 
     def debug(self) -> None:
         model_dump = None
@@ -33,13 +34,14 @@ class ConfigBase(ConfigLoggingOnly):
         if self.log.isEnabledForTty(logging.DEBUG):
             if self.logging.rich:
                 from rich import pretty
+
                 pretty.pprint(self, indent_guides=True, expand_all=True)
             else:
                 model_dump = self.model_dump()
-                self.log.debug(Repr(indent=4).repr(model_dump), extra={'handler': 'tty'})
+                self.log.debug(Repr(indent=4).repr(model_dump), extra={"handler": "tty"})
 
         # File
         if self.log.isEnabledForFile(logging.DEBUG):
             if model_dump is None:
                 model_dump = self.model_dump()
-            self.log.debug("Configuration: %s", Repr(indent=4).repr(model_dump), extra={'handler': 'file'})
+            self.log.debug("Configuration: %s", Repr(indent=4).repr(model_dump), extra={"handler": "file"})

@@ -3,3 +3,9 @@
 
 from .instrument import Instrument
 from .instrument_proxy import InstrumentProxy
+
+
+__all__ = [
+    "Instrument",
+    "InstrumentProxy",
+]

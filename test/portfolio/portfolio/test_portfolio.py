@@ -1,16 +1,7 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
-from iso4217 import Currency
-
-from app.portfolio.models.root.portfolio_root import PortfolioRoot
-from app.portfolio.models.portfolio import Portfolio
-from app.portfolio.models.instrument.instrument import Instrument
-from app.portfolio.models.ledger.ledger import Ledger
-from app.util.helpers.frozendict import frozendict
-
-import pydantic
 
 
 @pytest.mark.portfolio

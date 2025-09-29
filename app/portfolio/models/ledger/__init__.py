@@ -3,3 +3,9 @@
 
 from .ledger import Ledger
 from .ledger_proxy import LedgerProxy
+
+
+__all__ = [
+    "Ledger",
+    "LedgerProxy",
+]

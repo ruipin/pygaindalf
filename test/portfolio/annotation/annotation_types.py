@@ -1,18 +1,15 @@
-# SPDX-License-Identifier: GPLv3
-# Copyright © 2025 pygaindalf
+# SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
 
 from __future__ import annotations
 
-from typing import override
 from pydantic import Field
 
-from app.portfolio.journal.entity_journal import EntityJournal
-from app.portfolio.models.entity.incrementing_uid_entity import IncrementingUidEntity
 from app.portfolio.models.annotation import (
-    AnnotationJournal,
     IncrementingUidAnnotation,
     UniqueAnnotation,
 )
+from app.portfolio.models.entity.incrementing_uid_entity import IncrementingUidEntity
 
 
 class HostEntity(IncrementingUidEntity):

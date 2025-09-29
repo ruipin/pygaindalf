@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+
 import pytest
-from typing import override
 
 from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
 
@@ -48,11 +48,11 @@ class TestOrderedViewMutableSet:
         s = _MutableInts([1, 2])
         _ = s.sorted
         hits_before = s.sort.cache_info().hits  # type: ignore[attr-defined]
-        s.add(2)  # duplicate: should not change underlying container but still invalidates (conservative) or not – ensure consistent order
+        s.add(2)  # duplicate: should not change underlying container but still invalidates (conservative) or not - ensure consistent order
         assert list(s.sorted) == [1, 2]
         # Accept either invalidation or not; enforce invariants only
         hits_after = s.sort.cache_info().hits  # type: ignore[attr-defined]
-        assert hits_after == hits_before or hits_after == 0
+        assert hits_after in (hits_before, 0)
 
     def test_cannot_modify_if_frozen(self):
         # Ensure the immutable helper returns correct type (don't instantiate generic alias directly)
@@ -83,7 +83,7 @@ class TestOrderedViewMutableSet:
     def test_str_and_repr_sorted_output(self):
         s = _MutableInts([3, 2, 5])
         rep = repr(s)
-        assert '<_MutableInts:' in rep and '2' in rep and '5' in rep
+        assert "<_MutableInts:" in rep and "2" in rep and "5" in rep
         # str() uses underlying sorted sequence
         st = str(s)
-        assert '2' in st and '5' in st
+        assert "2" in st and "5" in st

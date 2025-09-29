@@ -4,12 +4,9 @@
 
 from pydantic import Field
 
-from .default import DefaultConfig
-
 from ..components.providers import BaseProviderConfig
-
 from ..util.config import ConfigBase
-
+from .default import DefaultConfig
 
 
 # MARK: Main Config

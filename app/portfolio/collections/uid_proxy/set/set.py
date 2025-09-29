@@ -1,29 +1,32 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from collections.abc import Set, MutableSet
+from collections.abc import MutableSet
+from collections.abc import Set as AbstractSet
 
-from ....util.uid import Uid
 from ....models.entity import Entity
-
-from ...proxy import ProxySet, ProxyMutableSet
-
-from .generic_set import GenericUidProxySet, GenericUidProxyMutableSet
+from ....util.uid import Uid
+from ...proxy import ProxyMutableSet, ProxySet
+from .generic_set import GenericUidProxyMutableSet, GenericUidProxySet
 
 
 class UidProxySet[
-    T : Entity
+    T: Entity,
 ](
-    GenericUidProxySet[T, Set[Uid]]
+    GenericUidProxySet[T, AbstractSet[Uid]],
 ):
     pass
+
+
 ProxySet.register(UidProxySet)
 
 
 class UidProxyMutableSet[
-    T : Entity
+    T: Entity,
 ](
-    GenericUidProxyMutableSet[T, Set[Uid], MutableSet[Uid]]
+    GenericUidProxyMutableSet[T, AbstractSet[Uid], MutableSet[Uid]],
 ):
     pass
+
+
 ProxyMutableSet.register(UidProxyMutableSet)

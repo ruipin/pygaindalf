@@ -1,8 +1,8 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-"""
-Unit tests for NamedMixin in pygaindalf.
+"""Unit tests for NamedMixin in pygaindalf.
+
 Tests instance naming and string representation for NamedMixin.
 """
 
@@ -33,4 +33,4 @@ class TestNamedMixin:
         a = Named(instance_name="some")
 
         assert a.instance_name == "some"  # Verify the instance name matches the provided name
-        assert str(a) == f"<N some>"  # Verify the string representation matches the expected format"
+        assert str(a) == "<N some>"  # Verify the string representation matches the expected format"

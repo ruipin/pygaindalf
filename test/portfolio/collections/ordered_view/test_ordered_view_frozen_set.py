@@ -3,7 +3,7 @@
 
 import pytest
 
-from app.portfolio.collections.ordered_view import OrderedViewSet, OrderedViewMutableSet
+from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
 
 
 class _FrozenInts(OrderedViewSet[int]):
@@ -54,7 +54,7 @@ class TestOrderedViewSet:
         h2 = hash(s)
         assert h1 == h2
         # String / repr expose sorted order
-        assert str(s) == str((1, 5, 9)) or str(s) == str([1,5,9])  # allow tuple or list str formatting
+        assert str(s) == str((1, 5, 9)) or str(s) == str([1, 5, 9])  # allow tuple or list str formatting
         r = repr(s)
         assert r.startswith("<_FrozenInts:") and "1" in r and "9" in r
 
@@ -70,4 +70,3 @@ class TestOrderedViewSet:
 
     def test_get_mutable_type_round_trip(self):
         assert _FrozenInts.get_mutable_type() == OrderedViewMutableSet[int]
-

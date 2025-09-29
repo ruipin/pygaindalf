@@ -3,6 +3,22 @@
 
 
 from .collection import UidProxyCollection, UidProxyMutableCollection
-from .sequence   import UidProxySequence, UidProxyMutableSequence
-from .mapping    import UidProxyMapping, UidProxyMutableMapping
-from .set        import *
+from .mapping import UidProxyMapping, UidProxyMutableMapping
+from .sequence import UidProxyMutableSequence, UidProxySequence
+from .set import GenericUidProxyMutableSet, GenericUidProxySet, UidProxyMutableSet, UidProxyOrderedViewMutableSet, UidProxyOrderedViewSet, UidProxySet
+
+
+__all__ = [
+    "GenericUidProxyMutableSet",
+    "GenericUidProxySet",
+    "UidProxyCollection",
+    "UidProxyMapping",
+    "UidProxyMutableCollection",
+    "UidProxyMutableMapping",
+    "UidProxyMutableSequence",
+    "UidProxyMutableSet",
+    "UidProxyOrderedViewMutableSet",
+    "UidProxyOrderedViewSet",
+    "UidProxySequence",
+    "UidProxySet",
+]

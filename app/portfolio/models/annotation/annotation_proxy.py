@@ -4,7 +4,6 @@
 from typing import TYPE_CHECKING
 
 from ....util.helpers.empty_class import EmptyClass
-
 from ..entity import EntityProxy
 from .annotation import Annotation
 

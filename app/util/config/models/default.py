@@ -3,10 +3,9 @@
 
 
 from pydantic import Field
-from typing import override
 
-from .base_model import BaseConfigModel
 from ...helpers.decimal import DecimalConfig
+from .base_model import BaseConfigModel
 
 
 # MARK: Default Configuration Model

@@ -5,7 +5,6 @@
 from ..util.config.models.default import BaseDefaultConfig
 
 
-
 # MARK: Main Config
 class DefaultConfig(BaseDefaultConfig):
     pass

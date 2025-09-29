@@ -1,2 +1,2 @@
-# SPDX-License-Identifier: GPLv3
-# Empty package init for annotation tests
+# SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro

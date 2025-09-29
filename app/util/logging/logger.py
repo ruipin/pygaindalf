@@ -10,37 +10,41 @@ from .loggable_protocol import LoggableProtocol
 
 class Logger(logging.Logger):
     @override
-    def isEnabledFor(self, level: int, *, handler : str|None = None) -> bool:
+    def isEnabledFor(self, level: int, *, handler: str | None = None) -> bool:
         if handler is not None:
-            if handler == 'tty':
+            if handler == "tty":
                 return self.isEnabledForTty(level)
-            elif handler == 'file':
+            elif handler == "file":
                 return self.isEnabledForFile(level)
             else:
-                raise ValueError(f"Unknown handler: {handler}. Expected 'tty' or 'file'.")
+                msg = f"Unknown handler: {handler}. Expected 'tty' or 'file'."
+                raise ValueError(msg)
         else:
             return super().isEnabledFor(level)
 
-    def isEnabledForTty(self, level: int) -> bool:
+    def isEnabledForTty(self, level: int) -> bool:  # noqa: N802 which matches isEnabledFor
         from .manager import LoggingManager
+
         ch = LoggingManager().ch
         if ch is None or ch.level > level:
             return False
         return super().isEnabledFor(level)
 
-    def isEnabledForFile(self, level: int) -> bool:
+    def isEnabledForFile(self, level: int) -> bool:  # noqa: N802 which matches isEnabledFor
         from .manager import LoggingManager
+
         fh = LoggingManager().fh
         if fh is None or fh.level > level:
             return False
         return super().isEnabledFor(level)
+
 
 logging.setLoggerClass(Logger)
 
 
 # Helper for class constructors to obtain a logger object
 # Returns a logger object
-def getLogger(obj, parent:Any=None, name:str|None=None) -> Logger:
+def getLogger(obj: object, parent: Any = None, name: str | None = None) -> Logger:
     if name is None:
         if isinstance(obj, str):
             name = obj
@@ -49,7 +53,8 @@ def getLogger(obj, parent:Any=None, name:str|None=None) -> Logger:
             if isinstance(cls_name, str):
                 name = cls_name
             else:
-                raise TypeError("Cannot determine logger name from object: {}".format(obj))
+                msg = f"Cannot determine logger name from object: {obj}"
+                raise TypeError(msg)
 
     logger = None
     if parent is None or not isinstance(parent, LoggableProtocol):
@@ -60,5 +65,6 @@ def getLogger(obj, parent:Any=None, name:str|None=None) -> Logger:
         logger = parent.log.getChild(name)
 
     if not isinstance(logger, Logger):
-        raise TypeError("Expected a Logger instance, got: {}".format(type(logger)))
+        msg = f"Expected a Logger instance, got: {type(logger)}"
+        raise TypeError(msg)
     return logger

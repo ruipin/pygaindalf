@@ -4,16 +4,11 @@
 from typing import TYPE_CHECKING
 
 from ....util.helpers.empty_class import EmptyClass
-
 from ..entity import EntityProxy
 from .instrument import Instrument
 
 
-class InstrumentProxy(
-    EntityProxy[Instrument],
-    Instrument if TYPE_CHECKING else EmptyClass,
-    init=False
-):
+class InstrumentProxy(EntityProxy[Instrument], Instrument if TYPE_CHECKING else EmptyClass, init=False):
     pass
 
 

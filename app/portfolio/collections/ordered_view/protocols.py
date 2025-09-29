@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import Protocol, runtime_checkable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
+
     from ..journalled.collection import JournalledCollection
 
 

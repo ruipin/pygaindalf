@@ -4,22 +4,24 @@
 
 from pydantic import DirectoryPath
 
-from .config_path import ConfigFilePath
 from . import BaseConfigModel
+from .config_path import ConfigFilePath
 
 
 class VersionInfo(BaseConfigModel):
-    version : str
-    revision : str | None
-    full : str
+    version: str
+    revision: str | None
+    full: str
+
 
 class PathsInfo(BaseConfigModel):
-    config : ConfigFilePath
-    home : DirectoryPath
+    config: ConfigFilePath
+    home: DirectoryPath
+
 
 class AppInfo(BaseConfigModel):
-    name : str
-    exe : str
-    version : VersionInfo
-    paths : PathsInfo
-    test : bool
+    name: str
+    exe: str
+    version: VersionInfo
+    paths: PathsInfo
+    test: bool

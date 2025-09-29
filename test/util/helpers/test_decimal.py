@@ -1,6 +1,12 @@
+# SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
+
 import decimal
+
 import pytest
-from app.util.helpers.decimal import DecimalFactory, DecimalConfig, DecimalRounding, DecimalSignals
+
+from app.util.helpers.decimal import DecimalConfig, DecimalFactory, DecimalRounding, DecimalSignals
+
 
 @pytest.mark.helpers
 @pytest.mark.decimal
@@ -8,15 +14,15 @@ class TestDecimalFactory:
     def test_default_config(self):
         factory = DecimalFactory()
 
-        assert factory.config.precision == DecimalConfig.model_fields['precision'].default_factory.default # pyright: ignore
-        assert factory.config.rounding  == DecimalConfig.model_fields['rounding' ].default_factory.default # pyright: ignore
+        assert factory.config.precision == DecimalConfig.model_fields["precision"].default_factory.default  # pyright: ignore[reportFunctionMemberAccess, reportOptionalMemberAccess]
+        assert factory.config.rounding == DecimalConfig.model_fields["rounding"].default_factory.default  # pyright: ignore[reportFunctionMemberAccess, reportOptionalMemberAccess]
         assert factory.config.traps is not None
 
         for trap in DecimalSignals:
             assert factory.config.traps[trap] is True
 
-        assert factory.context.prec     == DecimalConfig.model_fields['precision'].default_factory.default # pyright: ignore
-        assert factory.context.rounding == DecimalConfig.model_fields['rounding' ].default_factory.default.value # pyright: ignore
+        assert factory.context.prec == DecimalConfig.model_fields["precision"].default_factory.default  # pyright: ignore[reportFunctionMemberAccess, reportOptionalMemberAccess]
+        assert factory.context.rounding == DecimalConfig.model_fields["rounding"].default_factory.default.value  # pyright: ignore[reportFunctionMemberAccess, reportOptionalMemberAccess]
 
     def test_configure_with_kwargs(self):
         factory = DecimalFactory(precision=5, rounding=DecimalRounding.UP)
@@ -35,8 +41,8 @@ class TestDecimalFactory:
 
     def test_configure_raises_on_both(self):
         config = DecimalConfig(precision=3)
-        with pytest.raises(ValueError):
-            factory = DecimalFactory(config, precision=5)
+        with pytest.raises(ValueError, match=r"Either provide a decimal config or keyword arguments, not both."):
+            _ = DecimalFactory(config, precision=5)
 
     def test_apply_context(self):
         factory = DecimalFactory(precision=4)
@@ -52,6 +58,6 @@ class TestDecimalFactory:
 
     def test_call(self):
         factory = DecimalFactory(precision=3)
-        d = factory('1.23456')
+        d = factory("1.23456")
         assert isinstance(d, decimal.Decimal)
-        assert str(d) == '1.23456'
+        assert str(d) == "1.23456"

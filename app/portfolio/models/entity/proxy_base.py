@@ -1,41 +1,39 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from unittest import case
-import weakref
-import inspect
 import functools
+import inspect
+import weakref
 
-from typing import TYPE_CHECKING, override, Any, cast as typing_cast, TypedDict, NotRequired, Unpack, Callable, get_type_hints, Iterable
 from abc import ABCMeta
-import collections.abc as abc
+from collections import abc
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, Unpack, override
+from typing import cast as typing_cast
 
-from ....util.helpers import generics
 from ....util.callguard import callguard_class
+from ....util.helpers import abc_info, generics, type_hints
 from ....util.mixins import LoggableMixin
-from ....util.helpers import abc_info, type_hints, cached_classproperty
-
-from ...util.uid import Uid
-
 from . import Entity
 
+
 if TYPE_CHECKING:
-    from ...collections.entity_proxy import *
+    from ...util.uid import Uid
 
 
 class EntityProxyArgs(TypedDict, total=True):
-    propagate                     : NotRequired[bool]
-    propagate_untyped_collections : NotRequired[bool]
-    propagate_getattr             : NotRequired[bool]
-    propagate_setattr             : NotRequired[bool]
-    propagate_callable_args       : NotRequired[bool]
-    propagate_callable_return     : NotRequired[bool]
+    propagate: NotRequired[bool]
+    propagate_untyped_collections: NotRequired[bool]
+    propagate_getattr: NotRequired[bool]
+    propagate_setattr: NotRequired[bool]
+    propagate_callable_args: NotRequired[bool]
+    propagate_callable_return: NotRequired[bool]
 
 
 @callguard_class()
-class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
+class EntityProxyImpl[T: Entity](type_hints.CachedTypeHintsMixin, LoggableMixin, metaclass=ABCMeta):
     # MARK: Construction
-    def __new__(cls, entity_or_uid : T | Uid, *, create : bool = False, **options : Unpack[EntityProxyArgs]) -> EntityProxyImpl[T]:
+    def __new__(cls, entity_or_uid: T | Uid, *, create: bool = False, **options: Unpack[EntityProxyArgs]) -> EntityProxyImpl[T]:
         from .entity import Entity
 
         if create:
@@ -49,92 +47,92 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
         entity = Entity.narrow_to_entity(entity_or_uid)
         assert isinstance(entity, entity_type)
 
-        return typing_cast(EntityProxyImpl[T], entity.proxy)
+        return typing_cast("EntityProxyImpl[T]", entity.proxy)
 
-    def __init__(self, entity_or_uid : T | Uid, *, create : bool = False, **options : Unpack[EntityProxyArgs]) -> None:
+    def __init__(self, entity_or_uid: T | Uid, *, _create: bool = False, **_options: Unpack[EntityProxyArgs]) -> None:
         super().__init__()
         assert Entity.narrow_to_uid(entity_or_uid) == self._uid
 
-    def _init(self, entity_or_uid : T | Uid, **options : Unpack[EntityProxyArgs]) -> None:
+    def _init(self, entity_or_uid: T | Uid, **options: Unpack[EntityProxyArgs]) -> None:
         self._options = options
 
         from .entity import Entity
+
         uid = Entity.narrow_to_uid(entity_or_uid)
         self._uid = uid
         self._set_entity_or_uid(entity_or_uid)
 
     # NOTE: We swallow the init argument to avoid pyright issues with multiple inheritance and __init__ signatures.
-    def __init_subclass__(cls, init : bool = False) -> None:
+    def __init_subclass__(cls, *, init: bool = False) -> None:
         super().__init_subclass__()
 
         entity_type = cls.get_entity_type(origin=True)
-        for name, value in inspect.getmembers_static(entity_type, predicate=inspect.isfunction):
+        for name, _ in inspect.getmembers_static(entity_type, predicate=inspect.isfunction):
             if (
-                name.startswith('__') and
-                name.endswith('__') and
-                not hasattr(cls, name) and
-                name not in ('__name__', '__qualname__', '__class__', '__init_subclass__', '__del__', '__getattribute__', '__setattr__', '__getattr__', '__dir__')
+                name.startswith("__")
+                and name.endswith("__")
+                and not hasattr(cls, name)
+                and name
+                not in ("__name__", "__qualname__", "__class__", "__init_subclass__", "__del__", "__getattribute__", "__setattr__", "__getattr__", "__dir__")
             ):
                 setattr(cls, name, functools.partialmethod(cls.call_entity_method, name))
 
-
-
     # MARK: Options
-    _options : EntityProxyArgs
+    _options: EntityProxyArgs
 
     @property
     def _options_propagate(self) -> bool:
-        return self._options.get('propagate', True)
+        return self._options.get("propagate", True)
 
     @property
     def _options_propagate_getattr(self) -> bool:
-        return self._options.get('propagate_getattr', self._options_propagate)
+        return self._options.get("propagate_getattr", self._options_propagate)
 
     @property
     def _options_propagate_setattr(self) -> bool:
-        return self._options.get('propagate_setattr', self._options_propagate)
+        return self._options.get("propagate_setattr", self._options_propagate)
 
     @property
     def _options_propagate_untyped_collections(self) -> bool:
-        return self._options.get('propagate_untyped_collections', self._options_propagate)
+        return self._options.get("propagate_untyped_collections", self._options_propagate)
 
     @property
     def _options_propagate_callable_args(self) -> bool:
-        return self._options.get('propagate_callable_args', self._options_propagate)
+        return self._options.get("propagate_callable_args", self._options_propagate)
 
     @property
     def _options_propagate_callable_return(self) -> bool:
-        return self._options.get('propagate_callable_return', self._options_propagate)
+        return self._options.get("propagate_callable_return", self._options_propagate)
 
     @property
     def _options_propagate_callables(self) -> bool:
         return self._options_propagate_callable_args or self._options_propagate_callable_return
 
-
-
     # MARK: Entity
-    _uid : Uid
-    _entity : weakref.ref[T]
+    _uid: Uid
+    _entity: weakref.ref[T]
 
     if TYPE_CHECKING:
-        uid : Uid
+        uid: Uid
     else:
+
         @property
         def uid(self) -> Uid:
             return self._uid
 
     get_entity_type = generics.GenericIntrospectionMethod[T]()
 
-    def _set_entity_or_uid(self, entity_or_uid : T | Uid) -> T | None:
+    def _set_entity_or_uid(self, entity_or_uid: T | Uid) -> T | None:
         entity_type = self.get_entity_type()
         entity = entity_type.narrow_to_entity_or_none(entity_or_uid)
         if entity is None:
             return None
         return self._set_entity(entity)
 
-    def _set_entity(self, entity : T) -> T:
+    def _set_entity(self, entity: T) -> T:
         if entity.uid != self.uid:
-            raise ValueError(f"Cannot change entity proxy UID from {self.uid} to {entity.uid}.")
+            msg = f"Cannot change entity proxy UID from {self.uid} to {entity.uid}."
+            raise ValueError(msg)
 
         entity_type = self.get_entity_type()
         entity = entity_type.by_uid(self.uid)
@@ -161,10 +159,12 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
     @property
     def entity(self) -> T:
         if (entity := self.entity_or_none) is None:
-            raise RuntimeError(f"Could not find entity with UID {self.uid}. It may have been deleted.")
+            msg = f"Could not find entity with UID {self.uid}. It may have been deleted."
+            raise RuntimeError(msg)
         return entity
 
     if not TYPE_CHECKING:
+
         @property
         def proxy(self) -> EntityProxyImpl[T]:
             return self
@@ -179,17 +179,14 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
         entity = self.entity_or_none
         return entity is None or entity.marked_for_deletion
 
-
-
     # MARK: Conversion - Entity to Proxy
-    def _convert_abc_to_proxy(self, value : abc_info.ABCType, *, attr : str | None = None) -> abc_info.ABCType:
+    def _convert_abc_to_proxy(self, value: abc_info.ABCType, *, attr: str | None = None) -> abc_info.ABCType:
         kwargs = {}
         if attr is not None:
-            kwargs['namespace'] = self.get_entity_type()
-            kwargs['attr'] = attr
+            kwargs["namespace"] = self.get_entity_type()
+            kwargs["attr"] = attr
 
         info = abc_info.get_abc_info(value, **kwargs)
-        print("convert_to_proxy:", attr, value, info)
         if info.str_or_bytes:
             return value
 
@@ -214,37 +211,43 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
         # Get the corresponding EntityProxyCollection class, if any, based on the primary ABC class
         klass = None
         from ...collections.entity_proxy import EntityProxyIterable, EntityProxyIterator
+
         if info.iterator:
             klass = EntityProxyIterator[e, p, abc.Iterator[p]]
         elif info.abc is abc.Iterable:
             klass = EntityProxyIterable[e, p, p]
         elif info.abc is abc.Mapping:
             from ...collections.entity_proxy import EntityProxyMapping
+
             klass = EntityProxyMapping[e, p]
         elif info.abc is abc.MutableMapping:
             from ...collections.entity_proxy import EntityProxyMutableMapping
+
             klass = EntityProxyMutableMapping[e, p]
         elif info.abc is abc.Set:
             from ...collections.entity_proxy import EntityProxySet
+
             klass = EntityProxySet[e, p]
         elif info.abc is abc.MutableSet:
             from ...collections.entity_proxy import EntityProxyMutableSet
+
             klass = EntityProxyMutableSet[e, p]
         elif info.abc is abc.Sequence:
             from ...collections.entity_proxy import EntityProxySequence
+
             klass = EntityProxySequence[e, p]
         elif info.abc is abc.MutableSequence:
             from ...collections.entity_proxy import EntityProxyMutableSequence
+
             klass = EntityProxyMutableSequence[e, p]
 
         if klass is None:
-            raise TypeError(f"Cannot convert collection of type {type(value)} ({info.abc.__name__}) to proxy collection.")
+            msg = f"Cannot convert collection of type {type(value)} ({info.abc.__name__}) to proxy collection."
+            raise TypeError(msg)
 
-        value = klass(instance=value, weakref=False, allow_any=allow_any) # pyright: ignore[reportArgumentType] as we know this is allowed
+        return klass(instance=value, weakref=False, allow_any=allow_any)  # pyright: ignore[reportArgumentType] as we know this is allowed
 
-        return value
-
-    def _convert_to_proxy(self, value : Any, *, attr : str | None = None) -> Any:
+    def _convert_to_proxy(self, value: Any, *, attr: str | None = None) -> Any:
         if isinstance(value, EntityProxyImpl):
             return value
 
@@ -264,10 +267,8 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
 
         return value
 
-
-
     # MARK: Conversion - Proxy to Entity
-    def _convert_to_entity(self, value : Any) -> Any:
+    def _convert_to_entity(self, value: Any) -> Any:
         if isinstance(value, Entity):
             return value
 
@@ -275,28 +276,24 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
             return value.entity
 
         if isinstance(value, abc.Collection):
-            raise NotImplementedError("Conversion of collections from proxy to entity is not implemented.")
+            msg = "Conversion of collections from proxy to entity is not implemented."
+            raise NotImplementedError(msg)
 
         return value
 
-
-
     # MARK: Fields
-    @cached_classproperty
-    def __cached_type_hints__(cls) -> dict[str, Any]:
-        return get_type_hints(cls)
-
     @classmethod
-    def _is_proxy_class_field(cls, field : str) -> bool:
+    def _is_proxy_class_field(cls, field: str) -> bool:
         return hasattr(cls, field) or cls.__cached_type_hints__.get(field, None) is not None
 
     if not TYPE_CHECKING:
+
         @override
         def __getattribute__(self, name: str) -> Any:
-            if (
-                name in ('__class__', '_is_proxy_class_field',) or
-                type(self)._is_proxy_class_field(name)
-            ):
+            if name in (
+                "__class__",
+                "_is_proxy_class_field",
+            ) or self._is_proxy_class_field(name):
                 return super().__getattribute__(name)
 
             value = self.entity.__getattribute__(name)
@@ -306,7 +303,7 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
 
         @override
         def __setattr__(self, name: str, value: object) -> None:
-            if type(self)._is_proxy_class_field(name):
+            if self._is_proxy_class_field(name):
                 return super().__setattr__(name, value)
 
             # Convert proxies back to entities before setting them on the entity
@@ -329,34 +326,26 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
             if name not in values:
                 yield name
 
-
-
     # MARK: Callables
-    def _call_method_with_propagation[**P, R](self, method : Callable[P,R], /, *args : P.args, **kwargs : P.kwargs) -> R:
+    def _call_method_with_propagation[**P, R](self, method: Callable[P, R], /, *args: P.args, **kwargs: P.kwargs) -> R:
         if self._options_propagate_callable_args:
-            args = (self._convert_to_entity(arg) for arg in args) # pyright: ignore[reportAssignmentType]
-            kwargs = {k: self._convert_to_entity(v) for k, v in kwargs.items()} # pyright: ignore[reportAssignmentType]
+            args = (self._convert_to_entity(arg) for arg in args)  # pyright: ignore[reportAssignmentType]
+            kwargs = {k: self._convert_to_entity(v) for k, v in kwargs.items()}  # pyright: ignore[reportAssignmentType]
 
         result = method(*args, **kwargs)
 
         if self._options_propagate_callable_return:
-            print("before:", result)
             result = self._convert_to_proxy(result)
-            print("result:", result)
 
         return result
 
-    def call_entity_method(self, name : str, *args, **kwargs) -> Any:
-        print(f"Calling entity method {name} with args={args}, kwargs={kwargs}")
+    def call_entity_method(self, name: str, *args, **kwargs) -> Any:
         method = getattr(self.entity, name)
 
         if self._options_propagate_callables:
-            print("PROPAGATE")
             return self._call_method_with_propagation(method, *args, **kwargs)
         else:
             return method(*args, **kwargs)
-
-
 
     # MARK: Utilities
     @override
@@ -373,4 +362,4 @@ class EntityProxyImpl[T : Entity](LoggableMixin, metaclass=ABCMeta):
         if entity is None:
             return f"{type(self).__name__}({self.uid}, deleted=True)"
 
-        return f"{type(self).__name__}({repr(entity)})"
+        return f"{type(self).__name__}({entity!r})"

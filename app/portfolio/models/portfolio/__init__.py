@@ -3,3 +3,9 @@
 
 from .portfolio import Portfolio
 from .portfolio_proxy import PortfolioProxy
+
+
+__all__ = [
+    "Portfolio",
+    "PortfolioProxy",
+]

@@ -1,90 +1,93 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import datetime
 import weakref
-import itertools
+
+from collections.abc import Callable, Iterable, MutableMapping, MutableSet
+from typing import TYPE_CHECKING, Any, ClassVar, TypedDict, override
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
-from typing import ClassVar, Any, override, TypedDict, Literal, Iterable, Callable
-from datetime import datetime
-from collections.abc import MutableSet, MutableMapping
 
-from ...util.models import LoggableHierarchicalModel
 from ...util.callguard import CallguardClassOptions
-
-from ..util.uid import Uid, IncrementingUidFactory, UID_SEPARATOR
+from ...util.models import LoggableHierarchicalModel
 from ..models.entity.entity import Entity
 from ..models.entity.entity_audit_log import EntityAuditType
-from ..util.superseded import superseded_check, SupersededError
-
+from ..util.superseded import SupersededError, superseded_check
+from ..util.uid import UID_SEPARATOR, IncrementingUidFactory, Uid
 from .entity_journal import EntityJournal
-from .protocols import SessionManagerHookLiteral
+
+
+if TYPE_CHECKING:
+    from .protocols import SessionManagerHookLiteral
 
 
 class SessionParams(TypedDict):
-    actor  : str
-    reason : str
+    actor: str
+    reason: str
 
 
 class Session(LoggableHierarchicalModel):
-    __callguard_class_options__ = CallguardClassOptions['Session'](
+    __callguard_class_options__ = CallguardClassOptions["Session"](
         decorator=superseded_check,
         decorate_public_methods=True,
-        decorate_ignore_patterns=('superseded','ended'),
+        decorate_ignore_patterns=("superseded", "ended"),
         allow_same_module=True,
-        ignore_patterns=('_commit_notify_travel_hierarchy_condition', '_commit_apply_travel_hierarchy_condition'),
+        ignore_patterns=("_commit_notify_travel_hierarchy_condition", "_commit_apply_travel_hierarchy_condition"),
     )
 
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
         frozen=True,
         validate_assignment=True,
     )
 
     # MARK: Instance Parent
-    @field_validator('instance_parent_weakref', mode='before')
+    @field_validator("instance_parent_weakref", mode="before")
     def _validate_instance_parent_is_session_manager(cls, v: Any) -> Any:
         from .session_manager import SessionManager
+
         obj = v() if isinstance(v, weakref.ref) else v
         if obj is None or not isinstance(obj, SessionManager):
-            raise TypeError("Session parent must be a SessionManager object")
+            msg = "Session parent must be a SessionManager object"
+            raise TypeError(msg)
         return v
 
     def _call_parent_hook(self, hook_name: SessionManagerHookLiteral, *args: Any, **kwargs: Any) -> None:
         from .session_manager import SessionManager
+
         parent = self.instance_parent
         if not isinstance(parent, SessionManager):
-            raise RuntimeError("Instance parent is not a SessionManager.")
+            msg = "Instance parent is not a SessionManager."
+            raise TypeError(msg)
         parent.call_owner_hook(hook_name, self, *args, **kwargs)
 
-
     # MARK: Uid
-    _UID_FACTORY : ClassVar[IncrementingUidFactory] = IncrementingUidFactory()
-    uid : Uid = Field(default_factory=lambda data: Session._UID_FACTORY.next('Session'), validate_default=True, description="Unique identifier for this session.")
+    _UID_FACTORY: ClassVar[IncrementingUidFactory] = IncrementingUidFactory()
+    uid: Uid = Field(default_factory=lambda: Session._UID_FACTORY.next("Session"), validate_default=True, description="Unique identifier for this session.")
 
     @computed_field(description="A human-readable name for this session, derived from its UID.")
     @property
     def instance_name(self) -> str:
         try:
             return str(self.uid)
-        except:
+        except Exception:  # noqa: BLE001 as we want to ensure we can use this in exception messages
             return f"{type(self).__name__}{UID_SEPARATOR}<invalid-uid>"
 
-
     # MARK: Metadata
-    actor  : str = Field(description="Identifier or name of the actor responsible for this session.")
-    reason : str = Field(description="Reason for starting this session.")
-    start_time : datetime = Field(default_factory=datetime.now, init=False, description="Timestamp when the session started.")
-
+    actor: str = Field(description="Identifier or name of the actor responsible for this session.")
+    reason: str = Field(description="Reason for starting this session.")
+    start_time: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC), init=False, description="Timestamp when the session started."
+    )
 
     # MARK: State
     @property
     def superseded(self) -> bool:
         return self.ended
 
-
     # MARK: Entities created in this session
-    _entities_created : MutableSet[Uid] = PrivateAttr(default_factory=set)
+    _entities_created: MutableSet[Uid] = PrivateAttr(default_factory=set)
 
     def on_entity_created(self, entity_or_uid: Entity | Uid) -> None:
         uid = Entity.narrow_to_uid(entity_or_uid)
@@ -92,26 +95,25 @@ class Session(LoggableHierarchicalModel):
 
         log = entity.entity_log.most_recent
         if log.what != EntityAuditType.CREATED:
-            raise ValueError("Entity was not created, cannot notify session.")
+            msg = "Entity was not created, cannot notify session."
+            raise ValueError(msg)
         if log.when < self.start_time:
-            raise ValueError("Entity was created before this session started.")
+            msg = "Entity was created before this session started."
+            raise ValueError(msg)
 
         self._entities_created.add(uid)
 
-
     # MARK: Entity Journals
-    _entity_journals : MutableMapping[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
+    _entity_journals: MutableMapping[Uid, EntityJournal] = PrivateAttr(default_factory=dict)
 
     @property
     def dirty(self) -> bool:
-        return (
-            any(j.dirty for j in self._entity_journals.values()) or
-            bool(self._entities_created)
-        )
+        return any(j.dirty for j in self._entity_journals.values()) or bool(self._entities_created)
 
     def _add_entity_journal(self, entity: Entity) -> EntityJournal | None:
         if self.ended:
-            raise RuntimeError("Cannot add an entity journal to an ended session.")
+            msg = "Cannot add an entity journal to an ended session."
+            raise RuntimeError(msg)
 
         if self._after_commit_notify:
             self.log.warning("Cannot add an entity journal after notification phase.")
@@ -119,7 +121,8 @@ class Session(LoggableHierarchicalModel):
 
         journal_cls = entity.get_journal_class()
         if not issubclass(journal_cls, EntityJournal):
-            raise TypeError(f"{type(entity).__name__} journal class {journal_cls} is not a subclass of EntityJournal.")
+            msg = f"{type(entity).__name__} journal class {journal_cls} is not a subclass of EntityJournal."
+            raise TypeError(msg)
         journal = journal_cls(instance_parent=weakref.ref(self), entity=entity)
         self._entity_journals[entity.uid] = journal
 
@@ -127,19 +130,21 @@ class Session(LoggableHierarchicalModel):
 
         return journal
 
-    def get_entity_journal(self, entity: Entity, *, create : bool = True) -> EntityJournal | None:
+    def get_entity_journal(self, entity: Entity, *, create: bool = True) -> EntityJournal | None:
         if self.ended:
-            raise SupersededError("Cannot get an entity journal from an ended session.")
+            msg = "Cannot get an entity journal from an ended session."
+            raise SupersededError(msg)
 
         if entity.superseded:
-            self.log.warning(f"Entity {entity.instance_name} is superseded; cannot create or retrieve journal.")
+            self.log.warning(t"Entity {entity.instance_name} is superseded; cannot create or retrieve journal.")
             return None
 
         journal = self._entity_journals.get(entity.uid, None)
         if journal is not None:
             if journal.entity is not entity:
                 if not journal.entity.superseded:
-                    raise RuntimeError("Entity journal already exists for a different version of this entity. Use the latest version instead.")
+                    msg = "Entity journal already exists for a different version of this entity. Use the latest version instead."
+                    raise RuntimeError(msg)
                 if create:
                     del self._entity_journals[entity.uid]
             else:
@@ -161,18 +166,14 @@ class Session(LoggableHierarchicalModel):
         self._entities_created.clear()
 
     def contains(self, uid: Uid) -> bool:
-        return (
-            (uid in self._entity_journals) or
-            (uid in self._entities_created)
-        )
+        return (uid in self._entity_journals) or (uid in self._entities_created)
 
     def __len__(self) -> int:
         return len(self._entity_journals) + len(self._entities_created)
 
-
     # MARK: Start
     @override
-    def model_post_init(self, context : Any):
+    def model_post_init(self, context: Any) -> None:
         super().model_post_init(context)
 
         self._start()
@@ -180,21 +181,22 @@ class Session(LoggableHierarchicalModel):
     def _start(self) -> None:
         # TODO: Log start
         self.log.info("Starting session.")
-        self._call_parent_hook('start')
-
+        self._call_parent_hook("start")
 
     # MARK: Abort
-    _in_abort : bool = PrivateAttr(default=False)
+    _in_abort: bool = PrivateAttr(default=False)
+
     @property
     def in_abort(self) -> bool:
         try:
-            return getattr(self, '_in_abort', False)
-        except:
+            return getattr(self, "_in_abort", False)
+        except (TypeError, AttributeError, KeyError):
             return False
 
     def abort(self) -> None:
         if self.ended:
-            raise RuntimeError("Cannot abort an ended session.")
+            msg = "Cannot abort an ended session."
+            raise RuntimeError(msg)
 
         # No need to do anything if there are no edits to commit
         if not self.dirty:
@@ -208,7 +210,7 @@ class Session(LoggableHierarchicalModel):
             # Forcefully delete any entities created in this session
             if self._entities_created:
                 self._clear_journals()
-                entities : set[Entity] = set()
+                entities: set[Entity] = set()
 
                 for uid in self._entities_created:
                     entity = Entity.by_uid_or_none(uid)
@@ -223,23 +225,24 @@ class Session(LoggableHierarchicalModel):
 
             self._clear()
             self.log.warning("Session aborted.")
-            self._call_parent_hook('abort')
+            self._call_parent_hook("abort")
         finally:
             self._in_abort = False
 
-
     # MARK: End
-    _ended : bool = PrivateAttr(default=False)
+    _ended: bool = PrivateAttr(default=False)
+
     @property
     def ended(self) -> bool:
         try:
-            return getattr(self, '_ended', False)
-        except:
+            return getattr(self, "_ended", False)
+        except (TypeError, AttributeError, KeyError):
             return False
 
     def end(self) -> None:
         if self.ended:
-            raise RuntimeError("Cannot end an already ended session.")
+            msg = "Cannot end an already ended session."
+            raise RuntimeError(msg)
 
         if self.dirty:
             self.commit()
@@ -248,23 +251,23 @@ class Session(LoggableHierarchicalModel):
 
         self._ended = True
         self.log.debug("Session ended.")
-        self._call_parent_hook('end')
-
-
+        self._call_parent_hook("end")
 
     # MARK: Commit
-    _in_commit : bool = PrivateAttr(default=False)
-    _after_commit_notify : bool = PrivateAttr(default=False)
+    _in_commit: bool = PrivateAttr(default=False)
+    _after_commit_notify: bool = PrivateAttr(default=False)
+
     @property
     def in_commit(self) -> bool:
         try:
-            return getattr(self, '_in_commit', False)
-        except:
+            return getattr(self, "_in_commit", False)
+        except (TypeError, AttributeError, KeyError):
             return False
 
     def commit(self) -> None:
         if self.ended:
-            raise SupersededError("Cannot commit an ended session.")
+            msg = "Cannot commit an ended session."
+            raise SupersededError(msg)
 
         # No need to do anything if there are no edits to commit
         if not self.dirty:
@@ -277,7 +280,7 @@ class Session(LoggableHierarchicalModel):
         try:
             self._commit()
             self._clear()
-            self._call_parent_hook('commit')
+            self._call_parent_hook("commit")
         finally:
             self._in_commit = False
             self._after_commit_notify = False
@@ -288,7 +291,7 @@ class Session(LoggableHierarchicalModel):
         self._commit_notify()
         self._commit_apply()
 
-    def _commit_travel_hierarchy(self, iterable : Iterable[Uid], *, condition : Callable[[Entity], bool] | None = None, copy : bool = False) -> Iterable[Entity]:
+    def _commit_travel_hierarchy(self, iterable: Iterable[Uid], *, condition: Callable[[Entity], bool] | None = None, copy: bool = False) -> Iterable[Entity]:
         if copy:
             iterable = list(iterable)
         for uid in iterable:
@@ -297,15 +300,16 @@ class Session(LoggableHierarchicalModel):
                 continue
             yield from entity.iter_hierarchy(condition=condition, use_journal=True)
 
-
     # MARK: Commit - Notify
-    _restart_commit_notify : bool = PrivateAttr(default=False)
+    _restart_commit_notify: bool = PrivateAttr(default=False)
 
-    def on_journal_reset_notified_dependents(self, journal : EntityJournal) -> None:
+    def on_journal_reset_notified_dependents(self, journal: EntityJournal) -> None:  # noqa: ARG002 as this is for overriding
         if not self._in_commit:
-            raise RuntimeError("Can only reset notified dependents during commit.")
+            msg = "Can only reset notified dependents during commit."
+            raise RuntimeError(msg)
         if self._after_commit_notify:
-            raise RuntimeError("Cannot reset notified dependents after notification phase.")
+            msg = "Cannot reset notified dependents after notification phase."
+            raise RuntimeError(msg)
 
         self._restart_commit_notify = True
 
@@ -313,10 +317,8 @@ class Session(LoggableHierarchicalModel):
         j = self._entity_journals.get(e.uid, None)
         return (not j.notified_dependents) if j is not None else False
 
-    def _commit_notify(self):
-        """
-        Invalidate all computed fields in all journals.
-        """
+    def _commit_notify(self) -> None:
+        """Invalidate all computed fields in all journals."""
         self.log.debug("Invalidating all entities with a journal or that have been deleted...")
 
         pass_count = 0
@@ -326,11 +328,7 @@ class Session(LoggableHierarchicalModel):
 
             self._restart_commit_notify = False
 
-            for e in self._commit_travel_hierarchy(
-                self._entity_journals.keys(),
-                condition=self._commit_notify_travel_hierarchy_condition,
-                copy=True
-            ):
+            for e in self._commit_travel_hierarchy(self._entity_journals.keys(), condition=self._commit_notify_travel_hierarchy_condition, copy=True):
                 j = self._entity_journals[e.uid]
                 j.notify_dependents()
 
@@ -339,7 +337,7 @@ class Session(LoggableHierarchicalModel):
             if self._restart_commit_notify:
                 continue
 
-            self._call_parent_hook('notify')
+            self._call_parent_hook("notify")
             if not self._restart_commit_notify:
                 break
 
@@ -352,24 +350,17 @@ class Session(LoggableHierarchicalModel):
 
         self._after_commit_notify = True
 
-
     # MARK: Commit - Apply
     def _commit_apply_travel_hierarchy_condition(self, e: Entity) -> bool:
         j = self._entity_journals.get(e.uid, None)
         return j is not None and not j.superseded
 
     def _commit_apply(self) -> None:
-        """
-        Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions, or deleting them as requested).
-        """
+        """Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions, or deleting them as requested)."""
         self.log.debug("Committing journals...")
 
-        for e in self._commit_travel_hierarchy(
-            self._entity_journals.keys(),
-            condition=self._commit_apply_travel_hierarchy_condition,
-            copy=False
-        ):
+        for e in self._commit_travel_hierarchy(self._entity_journals.keys(), condition=self._commit_apply_travel_hierarchy_condition, copy=False):
             j = self._entity_journals[e.uid]
             j.commit()
 
-        self._call_parent_hook('apply')
+        self._call_parent_hook("apply")

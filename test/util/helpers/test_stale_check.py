@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPLv3-or-later
-# Copyright © 2025 pygaindalf
+# Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
 
 from app.portfolio.util.superseded import superseded_check
-from app.util.callguard import callguard_class, CALLGUARD_ENABLED
+from app.util.callguard import CALLGUARD_ENABLED, callguard_class
 
 
 @pytest.mark.helpers
@@ -25,15 +25,12 @@ class TestSupersededCheckStandalone:
                 return "ok"
 
         s = Sample()
-        # Pass (superseded == False)
+        # Pass since superseded == False
         assert s.do() == "ok"
         # Force superseded and confirm failure
         s._superseded = True
-        with pytest.raises(ValueError) as ei:
+        with pytest.raises(ValueError, match=r"Superseded check failed when calling Sample.do"):
             s.do()
-        msg = str(ei.value)
-        assert "Superseded check failed" in msg
-        assert "Sample.do" in msg  # method context included
 
     def test_superseded_check_on_property_access(self):
         class WithProp:
@@ -52,11 +49,8 @@ class TestSupersededCheckStandalone:
         w = WithProp()
         assert w.value == 42  # passes when not superseded
         w._superseded = True
-        with pytest.raises(ValueError) as ei:
+        with pytest.raises(ValueError, match=r"Superseded check failed when calling WithProp.value"):
             _ = w.value
-        msg = str(ei.value)
-        assert "Superseded check failed" in msg
-        assert "WithProp.value" in msg
 
 
 @pytest.mark.helpers
@@ -66,7 +60,7 @@ class TestSupersededCheckStandalone:
 @pytest.mark.skipif(not CALLGUARD_ENABLED, reason="callguard not enabled")
 class TestSupersededCheckWithCallguard:
     def test_superseded_check_decorates_public_methods_via_callguard(self):
-        @callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_ignore_patterns='superseded')
+        @callguard_class(decorator=superseded_check, decorate_public_methods=True, decorate_ignore_patterns="superseded")
         class Guarded:
             def __init__(self):
                 self._superseded = False
@@ -83,10 +77,8 @@ class TestSupersededCheckWithCallguard:
         assert g.action() == "done"
         # Mark superseded and verify failure now that the method is decorated
         g._superseded = True
-        with pytest.raises(ValueError) as ei:
+        with pytest.raises(ValueError, match=r"Superseded check failed when calling Guarded.action"):
             g.action()
-        msg = str(ei.value)
-        assert "Superseded check failed" in msg
-        assert "Guarded.action" in msg
+
         # Accessing the superseded attribute itself should still work (not decorated)
         assert g.superseded is True

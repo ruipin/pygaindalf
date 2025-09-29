@@ -4,7 +4,6 @@
 from typing import TYPE_CHECKING
 
 from ....util.helpers.empty_class import EmptyClass
-
 from ..entity import EntityProxy
 from .ledger import Ledger
 
@@ -12,7 +11,7 @@ from .ledger import Ledger
 class LedgerProxy(
     EntityProxy[Ledger],
     Ledger if TYPE_CHECKING else EmptyClass,
-    init=False
+    init=False,
 ):
     pass
 

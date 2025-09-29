@@ -2,70 +2,70 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import sys
-import os
+
 from io import TextIOBase
 from pathlib import Path
-
 from typing import Any, override
+
+from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from pydantic import BaseModel, field_validator, Field, TypeAdapter, GetCoreSchemaHandler
 
 
 class ConfigFilePath:
-    def __init__(self, input : Any):
-        if not isinstance(input, str):
-            raise TypeError(f"Expected a string, got {type(input).__name__}")
+    def __init__(self, stdin: Any) -> None:
+        if not isinstance(stdin, str):
+            msg = f"Expected a string, got {type(input).__name__}"
+            raise TypeError(msg)
 
         # Standard input
-        if input != '-' and not os.path.isfile(input):
-            raise FileNotFoundError(f"Configuration file not found: {input}")
-        self.file_path = Path(input) if input != '-' else '-'
+        if stdin != "-" and not Path(stdin).is_file():
+            msg = f"Configuration file not found: {stdin}"
+            raise FileNotFoundError(msg)
+        self.file_path = Path(stdin) if stdin != "-" else "-"
 
-    def open(self, mode: str = 'r', encoding: str = 'UTF-8') -> TextIOBase:
+    def open(self, encoding: str = "UTF-8") -> TextIOBase:
         if self.is_stdin:
             if not isinstance(sys.stdin, TextIOBase):
-                raise TypeError("Standard input is not a text stream")
+                msg = "Standard input is not a text stream"
+                raise TypeError(msg)
             return sys.stdin
         else:
-            return open(self.file_path, mode='r', encoding='UTF-8')
-
+            return Path(self.file_path).open(mode="r", encoding=encoding)
 
     @property
     def is_stdin(self) -> bool:
-        return self.file_path == '-'
+        return self.file_path == "-"
 
     @property
-    def dirname(self) -> str:
+    def dirname(self) -> Path:
         if self.is_stdin:
-            return os.getcwd()
-        return os.path.dirname(os.path.abspath(self.file_path))
-
-
+            return Path.cwd()
+        return Path(Path(self.file_path).resolve()).parent
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
         assert source is cls
-        return core_schema.with_info_after_validator_function(
-            function= cls._pydantic_validate,
-            schema= core_schema.union_schema([core_schema.str_schema(), core_schema.is_instance_schema(cls)]),
+        return core_schema.no_info_after_validator_function(
+            function=cls._pydantic_validate,
+            schema=core_schema.union_schema([core_schema.str_schema(), core_schema.is_instance_schema(cls)]),
             serialization=core_schema.plain_serializer_function_ser_schema(cls._pydantic_serialize, info_arg=True),
         )
 
     @classmethod
-    def _pydantic_validate(cls, value : Any, info : core_schema.ValidationInfo) -> ConfigFilePath:
+    def _pydantic_validate(cls, value: Any) -> ConfigFilePath:
         if isinstance(value, cls):
             return value
         return cls(value)
 
     @classmethod
-    def _pydantic_serialize(cls, value: Any, info: core_schema.SerializationInfo) -> str:
+    def _pydantic_serialize(cls, value: Any) -> str:
         if isinstance(value, cls):
             return str(value)
         elif isinstance(value, str):
             return value
         else:
-            raise TypeError(f"Expected a ConfigFilePath or string, got {type(value).__name__}")
-
+            msg = f"Expected a ConfigFilePath or string, got {type(value).__name__}"
+            raise TypeError(msg)
 
     @override
     def __str__(self) -> str:
@@ -76,4 +76,4 @@ class ConfigFilePath:
 
     @override
     def __repr__(self) -> str:
-        return f"{type(self).__name__}('{str(self)}')"
+        return f"{type(self).__name__}('{self!s}')"

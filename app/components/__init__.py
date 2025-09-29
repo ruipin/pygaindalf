@@ -3,4 +3,11 @@
 
 
 # Base provider
-from .component import *
+from .component import BaseComponentConfig, ComponentBase, component_entrypoint
+
+
+__all__ = [
+    "BaseComponentConfig",
+    "ComponentBase",
+    "component_entrypoint",
+]

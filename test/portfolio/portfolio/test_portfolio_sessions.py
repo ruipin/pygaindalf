@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
+
 """Tests exercising portfolio session code paths via PortfolioRoot.
 
 These tests intentionally avoid using any bespoke session fixtures and instead
@@ -9,25 +12,27 @@ and aborts.
 """
 
 import datetime
+
+from collections.abc import MutableSet
+from collections.abc import Set as AbstractSet
 from decimal import Decimal
 
 import pytest
-from iso4217 import Currency
-from collections.abc import MutableSet, Set
 
-from app.portfolio.models.root.portfolio_root import PortfolioRoot
+from iso4217 import Currency
+
+from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
+from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
-from app.portfolio.models.transaction.transaction import Transaction, TransactionType
-from app.portfolio.models.portfolio import Portfolio
-from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
-from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
+from app.portfolio.models.root.portfolio_root import PortfolioRoot
+from app.portfolio.models.transaction import Transaction, TransactionType
 
 
 @pytest.mark.portfolio
 @pytest.mark.session
 class TestPortfolioSessions:
-    def test_add_ledgers_commit(self, portfolio_root : PortfolioRoot, session_manager):
+    def test_add_ledgers_commit(self, portfolio_root: PortfolioRoot, session_manager):
         p1 = portfolio_root.portfolio
         assert p1.ledgers == set()
         assert len(p1.ledgers) == 0
@@ -40,6 +45,7 @@ class TestPortfolioSessions:
             ledg2 = Ledger(instrument_uid=inst2.uid)
 
             from app.portfolio.models.portfolio.portfolio_journal import PortfolioJournal
+
             assert type(p1.journal) is PortfolioJournal
             ledgers_set = p1.journal.ledgers
             ledgers_set.add(ledg1)
@@ -57,7 +63,7 @@ class TestPortfolioSessions:
         assert p_new[inst1] is ledg1
         assert p_new[inst2] is ledg2
 
-    def test_add_and_remove_ledger_abort(self, portfolio_root : PortfolioRoot, session_manager):
+    def test_add_and_remove_ledger_abort(self, portfolio_root: PortfolioRoot, session_manager):
         p1 = portfolio_root.portfolio
         with session_manager(actor="tester", reason="setup-ledger") as s:
             inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
@@ -76,7 +82,7 @@ class TestPortfolioSessions:
         # After context, portfolio unchanged
         assert ledg not in portfolio_root.portfolio.ledgers
 
-    def test_remove_existing_ledger_commit(self, portfolio_root : PortfolioRoot, session_manager):
+    def test_remove_existing_ledger_commit(self, portfolio_root: PortfolioRoot, session_manager):
         # Seed a ledger through update (no session needed for initial construction)
         p1 = portfolio_root.portfolio
         with session_manager(actor="tester", reason="setup-ledger"):
@@ -100,7 +106,7 @@ class TestPortfolioSessions:
         assert ledg not in p3.ledgers
         assert p3 is not None and ledg not in p3.ledgers
 
-    def test_add_transactions_commit_and_ordering(self, portfolio_root : PortfolioRoot, session_manager):
+    def test_add_transactions_commit_and_ordering(self, portfolio_root: PortfolioRoot, session_manager):
         p1 = portfolio_root.portfolio
         with session_manager(actor="tester", reason="setup-ledger"):
             inst = Instrument(ticker="TSLA", currency=Currency("USD"))
@@ -113,26 +119,26 @@ class TestPortfolioSessions:
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 1),
-                quantity=Decimal("10"),
-                consideration=Decimal("1000"),
+                quantity=Decimal(10),
+                consideration=Decimal(1000),
             )
             t2 = Transaction(
                 type=TransactionType.SELL,
                 date=datetime.date(2025, 1, 2),
-                quantity=Decimal("4"),
-                consideration=Decimal("420"),
+                quantity=Decimal(4),
+                consideration=Decimal(420),
             )
             t3 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 3),
-                quantity=Decimal("6"),
-                consideration=Decimal("630"),
+                quantity=Decimal(6),
+                consideration=Decimal(630),
             )
 
             # Access ledger transactions via the journal (mutable ordered set view)
             assert ledg.in_session
             # Entities expose frozen sets; journal exposes mutable proxies
-            assert isinstance(ledg.transaction_uids, Set) and not isinstance(ledg.transaction_uids, MutableSet)
+            assert isinstance(ledg.transaction_uids, AbstractSet) and not isinstance(ledg.transaction_uids, MutableSet)
             tx_set = ledg.journal.transactions
             assert len(tx_set) == 0
             # Add transactions (order determined by date automatically)
@@ -154,21 +160,21 @@ class TestPortfolioSessions:
         # Persisted ordering by date
         assert list(new_ledger.transactions) == [t1, t2, t3]
 
-    def test_remove_transaction_abort(self, portfolio_root : PortfolioRoot, session_manager):
+    def test_remove_transaction_abort(self, portfolio_root: PortfolioRoot, session_manager):
         p_setup = portfolio_root.portfolio
         with session_manager(actor="tester", reason="setup-ledger"):
             inst = Instrument(ticker="NVDA", currency=Currency("USD"))
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 2, 1),
-                quantity=Decimal("5"),
-                consideration=Decimal("2500"),
+                quantity=Decimal(5),
+                consideration=Decimal(2500),
             )
             t2 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 2, 2),
-                quantity=Decimal("3"),
-                consideration=Decimal("1500"),
+                quantity=Decimal(3),
+                consideration=Decimal(1500),
             )
             ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
             p_setup.journal.ledgers.add(ledg)
@@ -192,26 +198,26 @@ class TestPortfolioSessions:
         # Retrieve original ledger via indexing
         assert list(p2[ledg.uid].transactions) == [t1, t2]
 
-    def test_reorder_transactions_commit(self, portfolio_root : PortfolioRoot, session_manager):
+    def test_reorder_transactions_commit(self, portfolio_root: PortfolioRoot, session_manager):
         with session_manager(actor="tester", reason="setup-ledger"):
             inst = Instrument(ticker="IBM", currency=Currency("USD"))
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 1),
-                quantity=Decimal("1"),
-                consideration=Decimal("100"),
+                quantity=Decimal(1),
+                consideration=Decimal(100),
             )
             t2 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 2),
-                quantity=Decimal("2"),
-                consideration=Decimal("210"),
+                quantity=Decimal(2),
+                consideration=Decimal(210),
             )
             t3 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 3),
-                quantity=Decimal("3"),
-                consideration=Decimal("330"),
+                quantity=Decimal(3),
+                consideration=Decimal(330),
             )
             ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid, t3.uid})
             p_setup = portfolio_root.portfolio
@@ -234,4 +240,3 @@ class TestPortfolioSessions:
         p3 = p2.superseding
         new_ledger = p3[ledg.uid]
         assert list(new_ledger.transactions) == [t1, t2, t3]
-

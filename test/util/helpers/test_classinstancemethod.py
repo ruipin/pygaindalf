@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-"""
-Unit tests for the @classinstancemethod decorator.
+"""Unit tests for the @classinstancemethod decorator.
+
 Validates instance-level and class-level invocation, argument forwarding,
 subclass behavior, and metadata preservation via functools.wraps.
 """
 
 import inspect
+
 import pytest
+
 from app.util.helpers.classinstancemethod import classinstancemethod
 
 
@@ -19,12 +21,12 @@ class Sample:
         self.value = 20
 
     @classinstancemethod
-    def get_value(first):
+    def get_value(first):  # noqa: N805
         """Return `value` from either the class or the instance depending on how it's called."""
         return first.value
 
     @classinstancemethod
-    def add(first, x: int, y: int = 0) -> int:
+    def add(first, x: int, y: int = 0) -> int:  # noqa: N805
         """Return value + x + y, where value comes from class or instance."""
         return first.value + x + y
 

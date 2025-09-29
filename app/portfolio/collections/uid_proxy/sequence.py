@@ -1,19 +1,16 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from collections.abc import Sequence, MutableSequence
+from collections.abc import MutableSequence, Sequence
 
 from ...models.entity import Entity
 from ...util.uid import Uid
-
-from ..proxy import ProxySequence, ProxyMutableSequence
-
+from ..proxy import ProxyMutableSequence, ProxySequence
 from .collection import UidProxyCollection, UidProxyMutableCollection
 
 
-
 class UidProxySequence[
-    T : Entity
+    T: Entity,
 ](
     UidProxyCollection[T, Sequence[Uid]],
     ProxySequence[Uid, T],
@@ -21,9 +18,8 @@ class UidProxySequence[
     pass
 
 
-
 class UidProxyMutableSequence[
-    T : Entity
+    T: Entity,
 ](
     UidProxyMutableCollection[T, Sequence[Uid], MutableSequence[Uid]],
     ProxyMutableSequence[Uid, T],

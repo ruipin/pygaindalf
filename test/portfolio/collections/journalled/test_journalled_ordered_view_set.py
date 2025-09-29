@@ -3,8 +3,8 @@
 
 import pytest
 
-from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
 from app.portfolio.collections.journalled.set import JournalledOrderedViewSet
+from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
 
 
 class _MutableInts(OrderedViewMutableSet[int]):

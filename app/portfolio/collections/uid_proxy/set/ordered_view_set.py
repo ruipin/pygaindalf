@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from ....util.uid import Uid
 from ....models.entity import Entity
-from ...ordered_view import OrderedViewSet, OrderedViewMutableSet
-from ...proxy import ProxyOrderedViewSet, ProxyOrderedViewMutableSet
+from ....util.uid import Uid
+from ...ordered_view import OrderedViewMutableSet, OrderedViewSet
+from ...proxy import ProxyOrderedViewMutableSet, ProxyOrderedViewSet
 from ..sequence import UidProxySequence
-from .generic_set import GenericUidProxySet, GenericUidProxyMutableSet
-
+from .generic_set import GenericUidProxyMutableSet, GenericUidProxySet
 
 
 class UidProxyOrderedViewSet[
-    T : Entity
+    T: Entity,
 ](
     GenericUidProxySet[T, OrderedViewSet[Uid]],
     ProxyOrderedViewSet[Uid, T, UidProxySequence[T]],
@@ -20,10 +19,12 @@ class UidProxyOrderedViewSet[
 
 
 class UidProxyOrderedViewMutableSet[
-    T : Entity
+    T: Entity,
 ](
     GenericUidProxyMutableSet[T, OrderedViewSet[Uid], OrderedViewMutableSet[Uid]],
     ProxyOrderedViewMutableSet[Uid, T, UidProxySequence[T]],
 ):
     pass
+
+
 UidProxyOrderedViewSet.register(UidProxyOrderedViewSet)

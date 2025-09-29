@@ -2,63 +2,61 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from typing import Any, Generator
-from dataclasses import dataclass
-
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
+from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel
-
 
 
 @dataclass
 class ContextStack:
     type CurrentType = dict[str, Any] | BaseModel
 
-    name : str | None = None
-    parent : ContextStack | None = None
-    current : CurrentType | None = None
-    token : Token | None = None
+    name: str | None = None
+    parent: ContextStack | None = None
+    current: CurrentType | None = None
+    token: Token | None = None
 
     @classmethod
-    def push(cls, current: CurrentType, name : str | None = None) -> ContextStack:
-        """
-        Push a new context onto the stack.
-        """
+    def push(cls, current: CurrentType, name: str | None = None) -> ContextStack:
+        """Push a new context onto the stack."""
         parent = CONFIG_CONTEXT.get(None)
         new_context = cls(name=name, parent=parent, current=current)
         new_context.token = CONFIG_CONTEXT.set(new_context)
         return new_context
 
     @classmethod
-    def pop(cls, token : Token | None = None) -> None:
-        """
-        Pop the current context from the stack and return it.
+    def pop(cls, token: Token | None = None) -> None:
+        """Pop the current context from the stack and return it.
+
         If the stack is empty, return None.
         """
         current = CONFIG_CONTEXT.get()
         if current is None:
-            raise RuntimeError("No context to pop from the stack")
+            msg = "No context to pop from the stack"
+            raise RuntimeError(msg)
         if current.token is None:
-            raise RuntimeError("Current context does not have a valid token")
+            msg = "Current context does not have a valid token"
+            raise RuntimeError(msg)
         if token is not None and current.token != token:
-            raise RuntimeError("Provided token does not match the current context token")
+            msg = "Provided token does not match the current context token"
+            raise RuntimeError(msg)
         CONFIG_CONTEXT.reset(current.token)
 
     @classmethod
     def get(cls) -> ContextStack | None:
-        """
-        Get the current context from the stack.
+        """Get the current context from the stack.
+
         If the stack is empty, return None.
         """
         return CONFIG_CONTEXT.get(None)
 
     @classmethod
-    def iterate(cls, skip : int = 0) -> Generator[ContextStack]:
-        """
-        Iterate over the current context and all parent contexts.
-        """
+    def iterate(cls, skip: int = 0) -> Generator[ContextStack]:
+        """Iterate over the current context and all parent contexts."""
         context = cls.get()
         while context is not None:
             if skip > 0:
@@ -68,18 +66,16 @@ class ContextStack:
             context = context.parent
 
     @classmethod
-    def find_inheritance(cls, name : str, skip : int = 0) -> dict[str, Any] | BaseModel | None:
-        """
-        Find a context by name in the stack.
-        """
+    def find_inheritance(cls, name: str, skip: int = 0) -> dict[str, Any] | BaseModel | None:
+        """Find a context by name in the stack."""
         scope = [name]
 
         for context in cls.iterate(skip=skip):
             # Search for the name in the current context
-            _scope = scope + ['default']
+            _scope = [*scope, "default"]
             for i in range(len(_scope)):
                 found = True
-                obj : dict[str, Any] | BaseModel | None = context.current
+                obj: dict[str, Any] | BaseModel | None = context.current
                 for s in _scope[i::-1]:
                     if isinstance(obj, dict):
                         if s not in obj:
@@ -104,21 +100,14 @@ class ContextStack:
         return None
 
     @classmethod
-    def find_name(cls, name : str, skip : int = 0) -> bool:
-        """
-        Check if a context with the given name exists in the stack.
-        """
-        for context in cls.iterate(skip=skip):
-            if context.name == name:
-                return True
-        return False
+    def find_name(cls, name: str, skip: int = 0) -> bool:
+        """Check if a context with the given name exists in the stack."""
+        return any(context.name == name for context in cls.iterate(skip=skip))
 
     @classmethod
     @contextmanager
-    def with_context(cls, current : CurrentType, name : str | None = None) -> Any:
-        """
-        Context manager to push a new context onto the stack.
-        """
+    def with_context(cls, current: CurrentType, name: str | None = None) -> Any:
+        """Context manager to push a new context onto the stack."""
         context = cls.push(current, name=name)
         try:
             yield context
@@ -127,10 +116,11 @@ class ContextStack:
 
     @classmethod
     @contextmanager
-    def with_updated_name(cls, name : str) -> Any:
+    def with_updated_name(cls, name: str) -> Any:
         context = cls.get()
         if context is None:
-            raise RuntimeError("No context to update the name")
+            msg = "No context to update the name"
+            raise RuntimeError(msg)
         old_name = context.name
         context.name = name
         try:
@@ -138,4 +128,5 @@ class ContextStack:
         finally:
             context.name = old_name
 
-CONFIG_CONTEXT = ContextVar[ContextStack]('config_context')
+
+CONFIG_CONTEXT = ContextVar[ContextStack]("config_context")

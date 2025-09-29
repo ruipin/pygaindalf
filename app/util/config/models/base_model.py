@@ -1,31 +1,27 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import rich.repr
+from typing import TYPE_CHECKING, Any, override
 
-from pydantic import ConfigDict, ModelWrapValidatorHandler, ValidationInfo, model_validator, Field, field_validator
-from typing import override, Any
+from pydantic import ConfigDict, Field, ModelWrapValidatorHandler, ValidationInfo, field_validator, model_validator
 
 from ...models import LoggableHierarchicalNamedModel
-
-from ...helpers.classproperty import ClassPropertyDescriptor
-from ..inherit import InheritFactory, Inherit, Default
-
 from ..context_stack import ContextStack
+from ..inherit import Default, Inherit, InheritFactory
 
 
+if TYPE_CHECKING:
+    import rich.repr
 
 
 class BaseConfigModel(LoggableHierarchicalNamedModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
         frozen=True,
     )
 
-
-    inherited : Inherit | None = Field(default=None, repr=False)
-    defaulted : Default | None = Field(default=None, repr=False)
-
+    inherited: Inherit | None = Field(default=None, repr=False)
+    defaulted: Default | None = Field(default=None, repr=False)
 
     @override
     def __rich_repr__(self) -> rich.repr.Result:
@@ -51,12 +47,11 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
         if self.defaulted is not None:
             yield self.defaulted
 
-
-    @model_validator(mode='wrap')
+    @model_validator(mode="wrap")
     @classmethod
-    def _validator_model_propagate_context(cls, value: Any, handler: ModelWrapValidatorHandler, info : ValidationInfo) -> Any:
-        """
-        Propagate the context from the model to the field values.
+    def _validator_model_propagate_context(cls, value: Any, handler: ModelWrapValidatorHandler) -> Any:
+        """Propagate the context from the model to the field values.
+
         This allows fields to access the context when they are validated.
         """
         # If the value is not a dictionary, we cannot propagate context
@@ -67,11 +62,11 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
         with ContextStack.with_context(value):
             return handler(value)
 
-    @field_validator('*', mode='wrap')
+    @field_validator("*", mode="wrap")
     @classmethod
-    def _validator_field_propagate_context(cls, value: Any, handler: ModelWrapValidatorHandler, info : ValidationInfo) -> Any:
-        """
-        Propagate the context from the model to the field values.
+    def _validator_field_propagate_context(cls, value: Any, handler: ModelWrapValidatorHandler, info: ValidationInfo) -> Any:
+        """Propagate the context from the model to the field values.
+
         This allows fields to access the context when they are validated.
         """
         # If the value is not a dictionary, we cannot propagate context
@@ -80,17 +75,16 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
 
         name = info.field_name
         if name is None:
-            #cls.log.warning("Field name is None, cannot propagate context") # TODO: This seems to have broken in pydantic 2.12.0a1
+            # cls.log.warning("Field name is None, cannot propagate context") # noqa: ERA001 # TODO: This seems to have broken in pydantic 2.12.0a1
             return handler(value)
 
         # Create a new context with the current value
         with ContextStack.with_updated_name(name):
             return handler(value)
 
-
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
-    def _validator_inherit(cls, value: Any, info : ValidationInfo) -> Any:
+    def _validator_inherit(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
 
@@ -112,9 +106,9 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
                 inherited.append(fld)
 
         if inherited:
-            value['inherited'] = Inherit(inherited)
+            value["inherited"] = Inherit(inherited)
 
-        if not ContextStack.find_name('default') and defaulted:
-            value['defaulted'] = Default(defaulted)
+        if not ContextStack.find_name("default") and defaulted:
+            value["defaulted"] = Default(defaulted)
 
         return value

@@ -4,29 +4,30 @@
 import contextlib
 import weakref
 
+from collections.abc import Iterator
+from typing import Any, Protocol, Unpack, runtime_checkable
+
 from pydantic import ConfigDict, PrivateAttr, computed_field, field_validator
-from typing import Iterator, TypedDict, Unpack, Any, Protocol, runtime_checkable, Literal
 
 from ...util.models import LoggableHierarchicalModel
-
+from .protocols import SessionManagerHookLiteral, SessionManagerHooksProtocol
 from .session import Session, SessionParams
-from .protocols import SessionManagerHooksProtocol, SessionManagerHookLiteral
 
 
 class SessionManager(LoggableHierarchicalModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
         frozen=False,
         validate_assignment=True,
     )
 
-    _session : Session | None = PrivateAttr(default=None)
-
+    _session: Session | None = PrivateAttr(default=None)
 
     # MARK: Global instance behaviour
     @staticmethod
     def get_global_manager_or_none() -> SessionManager | None:
         from ..models.root import EntityRoot
+
         if (global_root := EntityRoot.get_global_root_or_none()) is None:
             return None
         return global_root.session_manager
@@ -34,16 +35,18 @@ class SessionManager(LoggableHierarchicalModel):
     @staticmethod
     def get_global_manager() -> SessionManager:
         from ..models.root import EntityRoot
+
         return EntityRoot.get_global_root().session_manager
 
-
     # MARK: Instance Parent
-    @field_validator('instance_parent_weakref', mode='before')
+    @field_validator("instance_parent_weakref", mode="before")
     def _validate_instance_parent_is_session_manager(cls, v: Any) -> Any:
         from ..models.entity.entity import Entity
+
         obj = v() if isinstance(v, weakref.ref) else v
         if obj is None or not isinstance(obj, Entity):
-            raise TypeError("Session parent must be a Entity object")
+            msg = "Session parent must be a Entity object"
+            raise TypeError(msg)
         return v
 
     def _get_owner(self) -> SessionManagerHooksProtocol | None:
@@ -55,11 +58,11 @@ class SessionManager(LoggableHierarchicalModel):
         if (owner := self._get_owner()) is not None:
             getattr(owner, f"on_session_{hook_name}")(*args, **kwargs)
 
-
     # MARK: Session
-    def _start(self, **kwargs : Unpack[SessionParams]) -> Session:
+    def _start(self, **kwargs: Unpack[SessionParams]) -> Session:
         if self.in_session:
-            raise RuntimeError("A session is already active.")
+            msg = "A session is already active."
+            raise RuntimeError(msg)
 
         session = self._session = Session(instance_parent=weakref.ref(self), **kwargs)
         return session
@@ -80,7 +83,7 @@ class SessionManager(LoggableHierarchicalModel):
         self._session = None
 
     @contextlib.contextmanager
-    def __call__(self, *, reuse : bool = False, **kwargs : Unpack[SessionParams]) -> Iterator[Session]:
+    def __call__(self, *, reuse: bool = False, **kwargs: Unpack[SessionParams]) -> Iterator[Session]:
         if reuse and (session := self._session) is not None and not session.ended:
             yield session
             return
@@ -88,25 +91,27 @@ class SessionManager(LoggableHierarchicalModel):
         session = self._start(**kwargs)
         try:
             if self._session is not session:
-                raise RuntimeError("Session failed to start.")
+                msg = "Session failed to start."
+                raise RuntimeError(msg)  # noqa: TRY301
 
             yield session
 
             if self._session is not session:
-                raise RuntimeError("Session is no longer valid.")
+                msg = "Session is no longer valid."
+                raise RuntimeError(msg)  # noqa: TRY301
 
             self._commit()
-        except Exception as e:
+        except Exception as err:
             if self._session is not session:
-                raise RuntimeError("Session is no longer valid.")
+                msg = "Session is no longer valid."
+                raise RuntimeError(msg) from err
 
             self._abort()
 
-            raise e
+            raise
         finally:
             if not session.ended:
                 self._end()
-
 
     # MARK: Active
     @computed_field(description="Indicates if there is a currently active session.")
@@ -117,7 +122,6 @@ class SessionManager(LoggableHierarchicalModel):
     @property
     def session(self) -> Session | None:
         return self._session if self.in_session else None
-
 
 
 @runtime_checkable

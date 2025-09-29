@@ -1,14 +1,15 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import pytest
-
 from typing import Any
+
+import pytest
 
 
 class ConfigFixture:
     def __init__(self):
         from app.config import CFG
+
         self.config = CFG
         self.config.load({})
 
@@ -17,12 +18,12 @@ class ConfigFixture:
 
     def __getattr__(self, name) -> Any:
         if self.config is None:
-            raise RuntimeError("Configuration not initialized. Call 'initialize()' first.")
+            msg = "Configuration not initialized. Call 'initialize()' first."
+            raise RuntimeError(msg)
         return getattr(self.config, name)
 
 
-
-@pytest.fixture(scope='function')
+@pytest.fixture
 def config():
     fixture = ConfigFixture()
     yield fixture

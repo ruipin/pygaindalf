@@ -4,15 +4,14 @@
 from typing import TYPE_CHECKING
 
 from ....util.helpers.empty_class import EmptyClass
-
-from .proxy_base import EntityProxyImpl
 from .entity import Entity
+from .proxy_base import EntityProxyImpl
 
 
-class EntityProxy[T : Entity](
+class EntityProxy[T: Entity](
     EntityProxyImpl[T],
     Entity if TYPE_CHECKING else EmptyClass,
-    init=False
+    init=False,
 ):
     pass
 

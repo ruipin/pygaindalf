@@ -1,10 +1,10 @@
-"""Tests for JournalledSet copy-on-write and journaling
+# SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
+
+"""Tests for JournalledSet copy-on-write and journaling.
 
 Follows the style of existing JournalledSequence and JournalledMapping tests.
 """
-
-# SPDX-License-Identifier: GPLv3-or-later
-# Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
 

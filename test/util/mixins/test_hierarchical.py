@@ -1,8 +1,8 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-"""
-Unit tests for HierarchicalMixin and related mixins in pygaindalf.
+"""Unit tests for HierarchicalMixin and related mixins in pygaindalf.
+
 Tests hierarchy and naming behaviors for custom mixin classes.
 """
 
@@ -15,6 +15,7 @@ from app.util.mixins import HierarchicalMixin, NamedMixin
 class Hier(HierarchicalMixin):
     ALLOW_CHANGING_INSTANCE_PARENT = True
 
+
 class HierNamed(HierarchicalMixin, NamedMixin):
     ALLOW_CHANGING_INSTANCE_PARENT = True
 
@@ -25,9 +26,9 @@ class TestHierarchicalMixins:
     def test_fails_wrong_mro_order(self):
         # Creating NamedHier should fail due to incorrect MRO
         with pytest.raises(TypeError):
+
             class NamedHier(NamedMixin, HierarchicalMixin):
                 pass
-            NamedHier()
 
     def test_construct_no_name(self):
         # Construct a root Hier instance
@@ -48,7 +49,7 @@ class TestHierarchicalMixins:
 
         # Changing parent to a non-hierarchichal object should fail
         with pytest.raises(TypeError):
-            b.instance_parent = 5 # pyright: ignore as we know this will fail type checking
+            b.instance_parent = 5  # pyright: ignore as we know this will fail type checking
 
         # Change c's parent to a
         Hier.ALLOW_CHANGING_INSTANCE_PARENT = False
@@ -79,7 +80,7 @@ class TestHierarchicalMixins:
 
         # Changing parent to a non-hierarchic object should fail
         with pytest.raises(TypeError):
-            b.instance_parent = 5 # pyright: ignore as we know this will fail type checking
+            b.instance_parent = 5  # pyright: ignore as we know this will fail type checking
 
         # Change c's parent to a
         HierNamed.ALLOW_CHANGING_INSTANCE_PARENT = False

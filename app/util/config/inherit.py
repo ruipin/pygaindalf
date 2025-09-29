@@ -1,22 +1,22 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import rich.repr
-
-from typing import Iterable, override, Any, overload, Callable
-from pydantic import BaseModel, Field
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from typing import Any, overload, override
+
+from pydantic import BaseModel, Field
 
 from .context_stack import ContextStack
 
 
 # MARK : Inherit Factory
 class InheritFactory[T]:
-    def __init__(self, default : T | None = None, default_factory : Callable[..., T] | None = None) -> None:
+    def __init__(self, default: T | None = None, default_factory: Callable[..., T] | None = None) -> None:
         self.default = default
         self.default_factory = default_factory
 
-    def search(self, name : str) -> dict[str, Any] | BaseModel | None:
+    def search(self, name: str) -> dict[str, Any] | BaseModel | None:
         return ContextStack.find_inheritance(name)
 
     def __call__(self) -> T:
@@ -25,11 +25,11 @@ class InheritFactory[T]:
         elif self.default is not None:
             return self.default
         else:
-            return None # pyright: ignore[reportReturnType]
+            return None  # pyright: ignore[reportReturnType]
 
     @override
     def __repr__(self) -> str:
-        return f'InheritFactory(default={self.default})'
+        return f"InheritFactory(default={self.default})"
 
 
 @overload
@@ -37,16 +37,17 @@ def FieldInherit[T](default: T, *args, **kwargs) -> T: ...
 @overload
 def FieldInherit[T](default_factory: Callable[..., T], *args, **kwargs) -> T: ...
 
-def FieldInherit[T](default: T | None = None, default_factory: Callable[..., T] | None = None, *args, **kwargs) -> T: # pyright: ignore[reportInconsistentOverload]
-    return Field(default_factory=InheritFactory(default=default, default_factory=default_factory), validate_default=True, *args, **kwargs)
+
+def FieldInherit[T](default: T | None = None, default_factory: Callable[..., T] | None = None, *args, **kwargs) -> T:  # pyright: ignore[reportInconsistentOverload] # noqa: N802
+    return Field(default_factory=InheritFactory(*args, default=default, default_factory=default_factory), validate_default=True, **kwargs)
 
 
 # MARK : Diffing
 @dataclass
 class AttributeSet:
-    attrs : frozenset[str] | None = None
+    attrs: frozenset[str] | None = None
 
-    def __init__(self, attrs : Iterable[str] | None = None):
+    def __init__(self, attrs: Iterable[str] | None = None) -> None:
         self.attrs = frozenset(attrs) if attrs is not None else None
 
     def __contains__(self, item: str) -> bool:
@@ -54,7 +55,7 @@ class AttributeSet:
             return False
         return item in self.attrs
 
-    def __iter__(self) -> Iterable[str]:
+    def __iter__(self) -> Iterator[str]:
         if self.attrs is None:
             return iter(())
         return iter(self.attrs)
@@ -62,12 +63,13 @@ class AttributeSet:
     @override
     def __repr__(self) -> str:
         if self.attrs is None:
-            return f'{type(self).__name__}()'
-        return f'{type(self).__name__}({", ".join(self.attrs)})'
+            return f"{type(self).__name__}()"
+        return f"{type(self).__name__}({', '.join(self.attrs)})"
 
 
 class Inherit(AttributeSet):
     pass
+
 
 class Default(AttributeSet):
     pass

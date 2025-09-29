@@ -4,7 +4,6 @@
 from typing import TYPE_CHECKING
 
 from ....util.helpers.empty_class import EmptyClass
-
 from ..entity import EntityProxy
 from .portfolio import Portfolio
 
@@ -12,7 +11,7 @@ from .portfolio import Portfolio
 class PortfolioProxy(
     EntityProxy[Portfolio],
     Portfolio if TYPE_CHECKING else EmptyClass,
-    init=False
+    init=False,
 ):
     pass
 

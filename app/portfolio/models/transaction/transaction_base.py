@@ -5,9 +5,7 @@ from abc import ABCMeta
 from typing import TYPE_CHECKING
 
 from ....util.helpers.empty_class import EmptyClass
-
 from ..entity import EntityBase
-
 from .transaction_fields import TransactionFields
 
 

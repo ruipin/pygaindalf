@@ -2,10 +2,11 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import logging
-from pydantic_core import CoreSchema, core_schema
-from pydantic import  GetCoreSchemaHandler
-from pydantic_core import PydanticUseDefault
-from typing import override, Any
+
+from typing import Any, override
+
+from pydantic import GetCoreSchemaHandler
+from pydantic_core import CoreSchema, PydanticUseDefault, core_schema
 
 
 LEVELS : dict[str, int] = {
@@ -16,12 +17,13 @@ LEVELS : dict[str, int] = {
     "DEBUG"   : logging.DEBUG   ,
     "NOTSET"  : logging.NOTSET  ,
     "OFF"     : -1,
-}
+}  # fmt: skip
 
-REVERSE_LEVELS : dict[int, str] = {v: k for k, v in LEVELS.items()}
+REVERSE_LEVELS: dict[int, str] = {v: k for k, v in LEVELS.items()}
 
 
 class LoggingLevel:
+    # fmt: off
     CRITICAL : LoggingLevel
     ERROR    : LoggingLevel
     WARNING  : LoggingLevel
@@ -30,14 +32,15 @@ class LoggingLevel:
     INFO     : LoggingLevel
     NOTSET   : LoggingLevel
     OFF      : LoggingLevel
+    # fmt: on
 
-    def __init__(self, value: int):
+    def __init__(self, value: int) -> None:
         if not isinstance(value, int):
             value = type(self).coerce(value)
         self.value = value
 
     @classmethod
-    def coerce(cls, value : Any) -> int:
+    def coerce(cls, value: Any) -> int:
         level = -1
 
         # Handle instance of cls as special case - simply return it
@@ -50,60 +53,57 @@ class LoggingLevel:
             upper = value.upper()
             if upper in LEVELS:
                 level = LEVELS[upper]
-            elif upper == 'FALSE':
+            elif upper == "FALSE":
                 level = -1
             else:
                 # Try to parse as integer
                 try:
                     level = int(value)
-                except ValueError:
-                    raise ValueError(f"Unknown logging level string: {value}")
+                except ValueError as err:
+                    msg = f"Unknown logging level string: {value}"
+                    raise ValueError(msg) from err
 
         elif isinstance(value, bool):
-            if value:
-                level = logging.INFO
-            else:
-                level = -1
+            level = logging.INFO if value else -1
 
         elif not isinstance(value, int):
-            raise TypeError(f"Invalid type for logging level: {type(value)}")
+            msg = f"Invalid type for logging level: {type(value)}"
+            raise TypeError(msg)
 
         if level < -1:
-            raise ValueError(f"Invalid value for logging level: {level}")
+            msg = f"Invalid value for logging level: {level}"
+            raise ValueError(msg)
 
         return level
 
     @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source: Any, handler: GetCoreSchemaHandler
-    ) -> CoreSchema:
-        return core_schema.with_info_after_validator_function(
-            function= cls.validate,
-            schema= core_schema.union_schema([core_schema.int_schema(), core_schema.str_schema(), core_schema.bool_schema(), core_schema.none_schema()]),
+    def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+        return core_schema.no_info_after_validator_function(
+            function=cls.validate,
+            schema=core_schema.union_schema([core_schema.int_schema(), core_schema.str_schema(), core_schema.bool_schema(), core_schema.none_schema()]),
             serialization=core_schema.plain_serializer_function_ser_schema(cls.serialize, info_arg=True),
         )
 
     @classmethod
-    def validate(cls, value : Any, info : core_schema.ValidationInfo) -> LoggingLevel:
+    def validate(cls, value: Any) -> LoggingLevel:
         # Handle 'None' value as a special case - rely on field default value
         if value is None:
-            raise PydanticUseDefault()
+            raise PydanticUseDefault
 
         # Return instance of class
         level = cls.coerce(value)
         return cls(level)
 
     @classmethod
-    def serialize(cls, value: Any, info: core_schema.SerializationInfo) -> str:
+    def serialize(cls, value: Any) -> str:
         return str(value)
-
 
     @property
     def name(self) -> str:
         return REVERSE_LEVELS.get(self.value, str(self.value))
 
     @override
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, LoggingLevel):
             return self.value == other.value
         elif isinstance(other, int):
@@ -113,7 +113,7 @@ class LoggingLevel:
         return False
 
     @override
-    def __ne__(self, other: Any) -> bool:
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
 
     @override
@@ -122,7 +122,7 @@ class LoggingLevel:
 
     @override
     def __repr__(self) -> str:
-        name = REVERSE_LEVELS.get(self.value, None)
+        name = REVERSE_LEVELS.get(self.value)
         if name is not None:
             return f"LoggingLevel.{name}"
         else:
@@ -130,7 +130,7 @@ class LoggingLevel:
 
     @override
     def __str__(self) -> str:
-        name = REVERSE_LEVELS.get(self.value, None)
+        name = REVERSE_LEVELS.get(self.value)
         if name is not None:
             return f"{name}"
         else:

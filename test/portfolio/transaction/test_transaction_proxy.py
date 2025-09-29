@@ -1,12 +1,13 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import datetime
+
 from decimal import Decimal
 
 import pytest
 
-from app.portfolio.models.transaction.transaction import Transaction, TransactionType
+from app.portfolio.models.transaction import Transaction, TransactionType
 from app.portfolio.models.transaction.transaction_proxy import TransactionProxy
 
 
@@ -18,8 +19,8 @@ class TestTransactionProxy:
         transaction = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 10),
-            quantity=Decimal("10"),
-            consideration=Decimal("1500"),
+            quantity=Decimal(10),
+            consideration=Decimal(1500),
         )
 
         proxy_from_entity = transaction.proxy
@@ -31,8 +32,8 @@ class TestTransactionProxy:
         transaction = Transaction(
             type=TransactionType.SELL,
             date=datetime.date(2025, 1, 12),
-            quantity=Decimal("5"),
-            consideration=Decimal("800"),
+            quantity=Decimal(5),
+            consideration=Decimal(800),
         )
 
         proxy_from_uid = TransactionProxy(transaction.uid)
@@ -43,9 +44,9 @@ class TestTransactionProxy:
         transaction = Transaction(
             type=TransactionType.DIVIDEND,
             date=datetime.date(2025, 2, 1),
-            quantity=Decimal("0"),
-            consideration=Decimal("50"),
-            fees=Decimal("2"),
+            quantity=Decimal(0),
+            consideration=Decimal(50),
+            fees=Decimal(2),
         )
 
         proxy = transaction.proxy
@@ -54,21 +55,21 @@ class TestTransactionProxy:
         assert proxy.uid is transaction.uid
         assert proxy.type is TransactionType.DIVIDEND
         assert proxy.date == datetime.date(2025, 2, 1)
-        assert proxy.consideration == Decimal("50")
-        assert proxy.fees == Decimal("2")
+        assert proxy.consideration == Decimal(50)
+        assert proxy.fees == Decimal(2)
 
     def test_proxy_tracks_superseding_entity_versions(self):
         transaction = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 3, 5),
-            quantity=Decimal("3"),
-            consideration=Decimal("450"),
+            quantity=Decimal(3),
+            consideration=Decimal(450),
         )
 
         proxy = transaction.proxy
         assert proxy.entity is transaction
 
-        updated = transaction.update(quantity=Decimal("4"))
+        updated = transaction.update(quantity=Decimal(4))
 
         assert proxy.entity is updated
-        assert proxy.quantity == Decimal("4")
+        assert proxy.quantity == Decimal(4)

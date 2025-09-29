@@ -1,20 +1,19 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
 
 from iso4217 import Currency
 
-from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.journal.session import Session
-
-from app.portfolio.models.root import EntityRoot
+from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.instrument.instrument_journal import InstrumentJournal
+from app.portfolio.models.root import EntityRoot
 
 
 # --- Fixtures --------------------------------------------------------------------
-@pytest.fixture(scope='function')
+@pytest.fixture
 def instrument(entity_root: EntityRoot) -> Instrument:
     with entity_root.session_manager(actor="instrument fixture", reason="fixture setup"):
         instrument = entity_root.root = Instrument(ticker="AAPL", currency=Currency("USD"))
@@ -22,6 +21,7 @@ def instrument(entity_root: EntityRoot) -> Instrument:
 
 
 # --- Tests -----------------------------------------------------------------------
+
 
 @pytest.mark.portfolio
 @pytest.mark.instrument
@@ -37,8 +37,6 @@ class TestInstrumentJournalWithSessions:
             assert isinstance(s, Session)
 
             # Acquire journal and stage updates via API methods
-            from app.util.helpers import generics
-            from app.portfolio.models.entity import Entity
             j: InstrumentJournal = instrument.journal
             assert isinstance(j, InstrumentJournal)
 
@@ -83,15 +81,14 @@ class TestInstrumentJournalWithSessions:
             s.abort()
 
     def test_attribute_forbids_name_changes(self, instrument: Instrument, session_manager: SessionManager):
-        with pytest.raises(ValueError, match='Updating the entity cannot change its instance name'):
-            with session_manager(actor="tester", reason="attr-style"):
-                j = instrument.journal
+        with pytest.raises(ValueError, match="Updating the entity cannot change its instance name"), session_manager(actor="tester", reason="attr-style"):
+            j = instrument.journal
 
-                # Expected new behavior: write via journal attributes instead of entity
-                j.ticker = "TSLA"
-                j.currency = Currency("GBP")
+            # Expected new behavior: write via journal attributes instead of entity
+            j.ticker = "TSLA"
+            j.currency = Currency("GBP")
 
-                assert j.get_field("ticker") == "TSLA"
-                assert j.get_field("currency") == Currency("GBP")
-                assert instrument.ticker == "AAPL"  # unchanged until commit
-                assert instrument.currency == Currency("USD")
+            assert j.get_field("ticker") == "TSLA"
+            assert j.get_field("currency") == Currency("GBP")
+            assert instrument.ticker == "AAPL"  # unchanged until commit
+            assert instrument.currency == Currency("USD")

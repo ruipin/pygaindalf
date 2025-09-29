@@ -1,27 +1,24 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import weakref
 
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 from collections.abc import Container
-from typing import override, cast as typing_cast, overload
+from typing import override
 
-from ....util.helpers import generics
 from ....util.callguard import callguard_class
-
 from .base import ProxyBase
 
 
 @callguard_class()
 class ProxyContainer[
-    T_Item : object,
-    T_Proxy : object,
-    T_Container : Container,
+    T_Item: object,
+    T_Proxy: object,
+    T_Container: Container,
 ](
     ProxyBase[T_Item, T_Proxy, T_Container],
     Container,
-    metaclass=ABCMeta
+    metaclass=ABCMeta,
 ):
     @override
     def __contains__(self, item: object) -> bool:

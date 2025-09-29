@@ -7,7 +7,7 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 license = "GPL-3.0-or-later"
-license-files = "LICENSE"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
     "frozendict>=2.4.6",
@@ -32,4 +32,5 @@ dev = [
     "linkify-it-py>=2.0.3",
     "pytest-cov>=6.2.1",
     "sybil[pytest]>=9.2.0",
+    "ruff>=0.13.2",
 ]

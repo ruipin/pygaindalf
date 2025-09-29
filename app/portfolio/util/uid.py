@@ -2,25 +2,22 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import random
-import sys
 import re
+import sys
 
+from collections.abc import Hashable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, ClassVar, Protocol, Self, override, runtime_checkable
 
-from typing import Protocol, override, Hashable, runtime_checkable, ClassVar, Self, Any, TYPE_CHECKING
-from pydantic import BaseModel, Field, model_validator, ModelWrapValidatorHandler
-from abc import ABCMeta, abstractmethod
-
-from ...util.helpers import classproperty
-from ...util.mixins import NamedMixinMinimal, NamedProtocol, NamedMutableProtocol
 from ...util.helpers import script_info
+
 
 if TYPE_CHECKING:
     from ..models.entity import Entity
 
 
-UID_SEPARATOR = '#'
-UID_ID_REGEX = re.compile(r'^[a-zA-Z0-9@_#-]+$')
+UID_SEPARATOR = "#"
+UID_ID_REGEX = re.compile(r"^[a-zA-Z0-9@_#-]+$")
 
 
 # MARK: Uid Class
@@ -29,58 +26,62 @@ class Uid:
     namespace: str = "DEFAULT"
     id: Hashable = field(default_factory=lambda: random.getrandbits(sys.hash_info.width))
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.namespace or not isinstance(self.namespace, str):
-            raise ValueError("Namespace must be a non-empty string.")
+            msg = "Namespace must be a non-empty string."
+            raise ValueError(msg)
         if re.search(UID_ID_REGEX, self.namespace) is None:
-            raise ValueError(f"ID '{self.namespace}' is not valid. It must match the pattern '{UID_ID_REGEX.pattern}'.")
+            msg = f"ID '{self.namespace}' is not valid. It must match the pattern '{UID_ID_REGEX.pattern}'."
+            raise ValueError(msg)
 
         if self.id is None:
-            raise ValueError("ID must be an integer or string.")
+            msg = "ID must be an integer or string."
+            raise ValueError(msg)
         if re.search(UID_ID_REGEX, self.id_as_str) is None:
-            raise ValueError(f"ID '{self.id}' is not valid. When converted to string, it must match the pattern '{UID_ID_REGEX.pattern}'.")
+            msg = f"ID '{self.id}' is not valid. When converted to string, it must match the pattern '{UID_ID_REGEX.pattern}'."
+            raise ValueError(msg)
 
-    def as_tuple(self):
+    def as_tuple(self) -> tuple[str, Hashable]:
         return (self.namespace, self.id)
 
     @property
     def id_as_str(self) -> str:
         """Returns the ID as a string, suitable for display."""
         if isinstance(self.id, int):
-            return format(self.id, 'x')
+            return format(self.id, "x")
         else:
             return str(self.id)
 
     @override
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.as_tuple())
 
     @override
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Uid):
             return False
         return self.as_tuple() == other.as_tuple()
 
     @override
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
 
-    def __lt__(self, other) -> bool:
+    def __lt__(self, other: object) -> bool:
         if not isinstance(other, Uid):
             return NotImplemented
         return self.as_tuple() < other.as_tuple()
 
-    def __le__(self, other) -> bool:
+    def __le__(self, other: object) -> bool:
         if not isinstance(other, Uid):
             return NotImplemented
         return self.as_tuple() <= other.as_tuple()
 
-    def __gt__(self, other) -> bool:
+    def __gt__(self, other: object) -> bool:
         if not isinstance(other, Uid):
             return NotImplemented
         return self.as_tuple() > other.as_tuple()
 
-    def __ge__(self, other) -> bool:
+    def __ge__(self, other: object) -> bool:
         if not isinstance(other, Uid):
             return NotImplemented
         return self.as_tuple() >= other.as_tuple()
@@ -88,40 +89,41 @@ class Uid:
     @property
     def entity_or_none(self) -> Entity | None:
         from ..models.entity import Entity
+
         return Entity.by_uid_or_none(self)
 
     @property
     def entity(self) -> Entity:
         from ..models.entity import Entity
+
         return Entity.by_uid(self)
 
     @override
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.namespace}{UID_SEPARATOR}{self.id_as_str}"
 
     @override
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Uid: {self!s}>"
-
 
 
 # MARK: Incrementing Uid Factory
 class IncrementingUidFactory:
-    _instance : ClassVar[IncrementingUidFactory]
-    counters : dict[str, int]
+    _instance: ClassVar[IncrementingUidFactory]
+    counters: dict[str, int]
 
-    def __new__(cls):
-        instance = getattr(cls, '_instance', None)
+    def __new__(cls) -> Self:
+        instance = getattr(cls, "_instance", None)
         if not instance:
-            instance = cls._instance = super(IncrementingUidFactory, cls).__new__(cls)
+            instance = cls._instance = super().__new__(cls)
         return instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Ensure singleton behavior for each namespace
-        if not hasattr(self, 'namespace'):
-            self.counters = dict()
+        if not hasattr(self, "namespace"):
+            self.counters = {}
 
-    def next(self, namespace: str, /, *, increment : bool = True) -> Uid:
+    def next(self, namespace: str, /, *, increment: bool = True) -> Uid:
         # Warning: This method is not thread-safe.
         counter = self.counters.get(namespace, 1)
         uid = Uid(namespace=namespace, id=counter)
@@ -130,6 +132,7 @@ class IncrementingUidFactory:
         return uid
 
     if script_info.is_unit_test():
+
         def reset(self) -> None:
             self.counters.clear()
 

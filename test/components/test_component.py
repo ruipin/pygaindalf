@@ -1,10 +1,10 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import pytest
 from decimal import Decimal
-
 from typing import override
+
+import pytest
 
 from app.components.component import (
     BaseComponentConfig,
@@ -51,31 +51,31 @@ class DummyComponent(ComponentBase[DummyComponentConfig]):
     # Non-entrypoint helper
     def helper(self) -> Decimal:
         # Uses the component's Decimal context
-        return self.decimal('1') / self.decimal('3')
+        return self.decimal("1") / self.decimal("3")
 
     @component_entrypoint
     def compute(self) -> Decimal:
         return self.helper()
 
 
-@pytest.fixture(scope='function')
-def dummy_component():
+@pytest.fixture
+def dummy_component() -> DummyComponent:
     # Configure precision and relax traps to avoid Inexact exceptions
     cfg = DummyComponentConfig.model_validate(
         {
-            'package': 'dummy',
-            'decimal': {
-                'precision': 4,
-                'rounding': 'HALF_UP',
-                'traps': {
-                    'INEXACT': False,
-                    'ROUNDED': False,
+            "package": "dummy",
+            "decimal": {
+                "precision": 4,
+                "rounding": "HALF_UP",
+                "traps": {
+                    "INEXACT": False,
+                    "ROUNDED": False,
                 },
             },
         },
-        context={'concrete_class': DummyComponentConfig},
+        context={"concrete_class": DummyComponentConfig},
     )
-    yield DummyComponent(cfg)
+    return DummyComponent(cfg)
 
 
 @pytest.mark.components
@@ -89,14 +89,14 @@ class TestComponentEntrypoint:
         # Compute inside entrypoint; with precision=4 we expect "0.3333"
         result = dummy_component.compute()
         assert isinstance(result, Decimal)
-        assert str(result) == '0.3333'
+        assert str(result) == "0.3333"
 
         # Hooks should have been called in order while inside_entrypoint
         assert dummy_component.events == [
-            'before:compute',
-            'wrap:compute:before',
-            'wrap:compute:after',
-            'after:compute',
+            "before:compute",
+            "wrap:compute:before",
+            "wrap:compute:after",
+            "after:compute",
         ]
 
         # After the entrypoint completes, we're no longer inside an entrypoint

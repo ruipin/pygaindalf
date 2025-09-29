@@ -1,13 +1,13 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import pytest
 
 from app.util.helpers.wrappers import (
-    wrapper,
-    before,
     after,
+    before,
     before_attribute_check,
+    wrapper,
 )
 
 
@@ -42,7 +42,7 @@ class TestWrapperDecorator:
     def test_wrapper_passes_kwargs(self):
         trace: list[str] = []
 
-        def wrap(original, self, *args, **kwargs):  # noqa: ANN001
+        def wrap(original, self, *args, **kwargs):
             trace.append(f"wrap:{kwargs['b']}")
             return original(self, *args, **kwargs) * 10
 
@@ -63,7 +63,7 @@ class TestBeforeDecorator:
     def test_before_runs_prior_to_method_body(self):
         order: list[str] = []
 
-        def before_fn(original, self, *args, **kwargs):  # noqa: ANN001
+        def before_fn(_original, self, *args, **kwargs):
             assert not self.toggled
             order.append("before")
 
@@ -107,14 +107,14 @@ class TestBeforeAttributeCheckDecorator:
 
         # Fail default message
         c.state = "blocked"
-        with pytest.raises(ValueError) as ei:
+        with pytest.raises(ValueError, match=r"Attribute 'state' must be ready when calling C.go") as ei:
             c.go()
         msg = str(ei.value)
         assert "Attribute 'state' must be ready" in msg
         assert "go" in msg  # method name context
 
         # Fail custom message
-        with pytest.raises(ValueError) as ei2:
+        with pytest.raises(ValueError, match=r"State not ready when calling C.go_custom") as ei2:
             c.go_custom()
         assert str(ei2.value).startswith("State not ready")
 
@@ -126,7 +126,7 @@ class TestAfterDecorator:
     def test_after_runs_and_can_transform_result(self):
         events: list[tuple[str, int, tuple[object, ...], dict[str, object]]] = []
 
-        def after_fn(original, result, self, *args, **kwargs):  # noqa: ANN001
+        def after_fn(_original, result, self, *args, **kwargs):
             events.append(("after", result, args, kwargs))
             self.after_called = True
             return result + 5
@@ -149,7 +149,7 @@ class TestAfterDecorator:
     def test_after_receives_kwargs(self):
         captured: dict[str, object] = {}
 
-        def after_fn(original, result, self, *args, **kwargs):  # noqa: ANN001
+        def after_fn(original, result, self, *args, **kwargs):  # noqa: ARG001
             captured["result"] = result
             captured["args"] = args
             captured["kwargs"] = kwargs

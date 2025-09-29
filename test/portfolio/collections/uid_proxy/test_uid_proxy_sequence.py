@@ -1,24 +1,27 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import pytest
-from pydantic import Field
-from functools import cached_property
-from decimal import Decimal
 import datetime as dt
+
+from decimal import Decimal
+from functools import cached_property
+
+import pytest
+
+from pydantic import Field
 
 from app.portfolio.collections.uid_proxy import UidProxyMutableSequence
 from app.portfolio.collections.uid_proxy.sequence import UidProxySequence
 from app.portfolio.models.entity import IncrementingUidEntity
-from app.portfolio.models.transaction.transaction import Transaction, TransactionType
-from app.portfolio.models.instrument.instrument import Instrument
+from app.portfolio.models.transaction import Transaction, TransactionType
 from app.portfolio.util.uid import Uid
-from iso4217 import Currency
 
 
 # Proxy specialization ------------------------------------------------------
 class _UidProxyTransactionSequence(UidProxyMutableSequence[Transaction]):
     pass
+
+
 class _UidProxyFrozenTransactionSequence(UidProxySequence[Transaction]):
     pass
 
@@ -28,29 +31,28 @@ class Holder(IncrementingUidEntity):
 
     @cached_property
     def transactions(self):
-        return _UidProxyTransactionSequence(instance=self, field='transaction_uids')
+        return _UidProxyTransactionSequence(instance=self, field="transaction_uids")
 
     @cached_property
     def transactions_frozen(self):
-        return _UidProxyFrozenTransactionSequence(instance=self, field='transaction_uids')
+        return _UidProxyFrozenTransactionSequence(instance=self, field="transaction_uids")
 
 
 @pytest.mark.portfolio_collections
 @pytest.mark.uid_proxy_collections
 class TestUidProxyMutableSequence:
-    def _make_tx(self, instr, qty=1, cons=1, ttype=TransactionType.BUY):
+    def _make_tx(self, qty=1, cons=1, ttype=TransactionType.BUY):
         return Transaction(
             type=ttype,
-            date=dt.date.today(),
+            date=dt.datetime.now(tz=dt.UTC).date(),
             quantity=Decimal(qty),
             consideration=Decimal(cons),
         )
 
     def test_insert_and_indexing(self):
-        instr = Instrument(ticker='AAPL', currency=Currency('USD'))
         h = Holder()
-        t1 = self._make_tx(instr, qty=10)
-        t2 = self._make_tx(instr, qty=20)
+        t1 = self._make_tx(qty=10)
+        t2 = self._make_tx(qty=20)
 
         seq = h.transactions
         assert len(seq) == 0
@@ -61,19 +63,17 @@ class TestUidProxyMutableSequence:
         assert h.transaction_uids == [t1.uid, t2.uid]
 
     def test_setitem_single(self):
-        instr = Instrument(ticker='MSFT', currency=Currency('USD'))
         h = Holder()
-        t1 = self._make_tx(instr, qty=1)
-        t2 = self._make_tx(instr, qty=2)
+        t1 = self._make_tx(qty=1)
+        t2 = self._make_tx(qty=2)
         h.transactions.insert(0, t1)
         h.transactions[0] = t2
         assert h.transactions[0] is t2
         assert h.transaction_uids == [t2.uid]
 
     def test_frozen_get_and_len(self):
-        instr = Instrument(ticker='META', currency=Currency('USD'))
         h = Holder()
-        t1 = self._make_tx(instr, qty=4)
+        t1 = self._make_tx(qty=4)
         h.transactions.insert(0, t1)
         f = h.transactions_frozen
         assert len(f) == 1
@@ -82,9 +82,8 @@ class TestUidProxyMutableSequence:
             _ = f[0:1]
 
     def test_frozen_is_read_only(self):
-        instr = Instrument(ticker='ADBE', currency=Currency('USD'))
         h = Holder()
-        t1 = self._make_tx(instr, qty=1)
+        t1 = self._make_tx(qty=1)
         h.transactions.insert(0, t1)
         f = h.transactions_frozen
         with pytest.raises(TypeError):
@@ -94,35 +93,31 @@ class TestUidProxyMutableSequence:
 
     @pytest.mark.xfail(raises=NotImplementedError, reason="Sliced read access not implemented yet")
     def test_slice_get(self):
-        instr = Instrument(ticker='TSLA', currency=Currency('USD'))
         h = Holder()
-        t1 = self._make_tx(instr, qty=5)
+        t1 = self._make_tx(qty=5)
         h.transactions.insert(0, t1)
         _ = h.transactions[0:1]
 
     @pytest.mark.xfail(raises=NotImplementedError, reason="Sliced write access not implemented yet")
     def test_slice_set(self):
-        instr = Instrument(ticker='NVDA', currency=Currency('USD'))
         h = Holder()
-        t1 = self._make_tx(instr, qty=3)
+        t1 = self._make_tx(qty=3)
         h.transactions.insert(0, t1)
         h.transactions[0:1] = [t1]
 
     def test_setitem_wrong_type(self):
-        instr = Instrument(ticker='ORCL', currency=Currency('USD'))
         h = Holder()
-        t1 = self._make_tx(instr, qty=1)
+        t1 = self._make_tx(qty=1)
         h.transactions.insert(0, t1)
         with pytest.raises(TypeError, match="Expected Transaction, got int"):
             h.transactions[0] = 123  # type: ignore[arg-type]
 
     def test_repr_and_str(self):
-        instr = Instrument(ticker='IBM', currency=Currency('USD'))
         h = Holder()
-        t = self._make_tx(instr, qty=7)
+        t = self._make_tx(qty=7)
         h.transactions.insert(0, t)
 
         assert any(t.uid == s.uid for s in h.transactions)
-        assert type(h.transactions) == _UidProxyTransactionSequence
+        assert type(h.transactions) is _UidProxyTransactionSequence
         assert any(t.uid == s.uid for s in h.transactions_frozen)
-        assert type(h.transactions_frozen) == _UidProxyFrozenTransactionSequence
+        assert type(h.transactions_frozen) is _UidProxyFrozenTransactionSequence

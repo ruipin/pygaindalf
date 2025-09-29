@@ -3,12 +3,14 @@
 
 import dataclasses
 
-from pydantic_core import CoreSchema, core_schema
-from typing import (override, overload, Iterable,
-    cast as typing_cast,
-)
+from collections.abc import Iterable, MutableSequence, Sequence
 from enum import Enum
-from collections.abc import MutableSequence, Sequence
+from typing import (
+    overload,
+    override,
+)
+
+from pydantic_core import CoreSchema, core_schema
 
 from .collection import JournalledCollection
 
@@ -16,7 +18,7 @@ from .collection import JournalledCollection
 class JournalledSequenceEditType(Enum):
     SETITEM = "setitem"
     DELITEM = "delitem"
-    INSERT  = "insert"
+    INSERT = "insert"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -34,20 +36,15 @@ class JournalledSequenceEdit[T]:
         return self.__str__()
 
 
-class JournalledSequence[T](JournalledCollection[T, Sequence[T], list[T], tuple[T,...], JournalledSequenceEdit[T]], MutableSequence[T]):
+class JournalledSequence[T](JournalledCollection[T, Sequence[T], list[T], tuple[T, ...], JournalledSequenceEdit[T]], MutableSequence[T]):
     # MARK: JournalledCollection ABC
     @override
     @classmethod
-    def get_core_schema(cls, source, handler) -> CoreSchema:
-        return core_schema.tuple_variable_schema(
-            core_schema.is_instance_schema(
-                cls.get_concrete_value_type(source)
-            )
-        )
-
+    def get_core_schema(cls, source, handler) -> CoreSchema:  # noqa: ANN001
+        return core_schema.tuple_variable_schema(core_schema.is_instance_schema(cls.get_concrete_value_type(source)))
 
     # MARK : Functionality
-    def _append_journal(self, type : JournalledSequenceEditType, index: int | slice, value: T | Iterable[T] | None) -> None:
+    def _append_journal(self, type: JournalledSequenceEditType, index: int | slice, value: T | Iterable[T] | None) -> None:  # NOQA: A002
         self._journal.append(JournalledSequenceEdit(type=type, index=index, value=value))
         self._on_edit()
 
@@ -58,7 +55,8 @@ class JournalledSequence[T](JournalledCollection[T, Sequence[T], list[T], tuple[
     @override
     def __getitem__(self, index: int | slice) -> T | MutableSequence[T]:
         if isinstance(index, slice):
-            raise NotImplementedError("Sliced read access not implemented yet")
+            msg = "Sliced read access not implemented yet"
+            raise NotImplementedError(msg)
 
         return self._get_container()[index]
 
@@ -68,7 +66,7 @@ class JournalledSequence[T](JournalledCollection[T, Sequence[T], list[T], tuple[
     def __setitem__(self, index: slice, value: Iterable[T]) -> None: ...
     @override
     def __setitem__(self, index: int | slice, value: T | Iterable[T]) -> None:
-        self._get_mut_container()[index] = value # pyright: ignore[reportArgumentType, reportCallIssue] as the overloads are enough to ensure type safety
+        self._get_mut_container()[index] = value  # pyright: ignore[reportArgumentType, reportCallIssue] as the overloads are enough to ensure type safety
         self._append_journal(JournalledSequenceEditType.SETITEM, index, value)
 
     @overload

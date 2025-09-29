@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
+
 # Tests for JournalledMapping copy-on-write and journaling
 
 import pytest
@@ -10,7 +12,7 @@ from app.portfolio.collections.journalled.mapping import JournalledMapping, Jour
 @pytest.mark.journalled_collections
 class TestJournalledMapping:
     def test_no_edit_pass_through(self):
-        original = {"a":1, "b":2}
+        original = {"a": 1, "b": 2}
         jm = JournalledMapping(original)
         assert jm.edited is False
         assert jm["a"] == 1
@@ -19,7 +21,7 @@ class TestJournalledMapping:
         assert jm.journal == ()
 
     def test_setitem_triggers_copy_and_journal(self):
-        original = {"a":1}
+        original = {"a": 1}
         jm = JournalledMapping(original)
         jm["a"] = 10
         assert jm.edited is True
@@ -31,7 +33,7 @@ class TestJournalledMapping:
         assert e.key == "a" and e.value == 10
 
     def test_delitem(self):
-        original = {"a":1, "b":2}
+        original = {"a": 1, "b": 2}
         jm = JournalledMapping(original)
         del jm["a"]
         assert jm.edited is True
@@ -42,7 +44,7 @@ class TestJournalledMapping:
         assert e.key == "a"
 
     def test_multiple_edits_order(self):
-        original = {"x":1, "y":2}
+        original = {"x": 1, "y": 2}
         jm = JournalledMapping(original)
         jm["z"] = 3
         jm["x"] = 5
@@ -56,7 +58,7 @@ class TestJournalledMapping:
 
     def test_extended_multiple_edits(self):
         """More comprehensive multi-edit scenario covering multiple sets and a delete."""
-        original = {"a":1, "b":2, "c":3}
+        original = {"a": 1, "b": 2, "c": 3}
         jm = JournalledMapping(original)
 
         # 1. add new key
@@ -77,7 +79,6 @@ class TestJournalledMapping:
         assert (j3.type, j3.key, j3.value) == (JournalledMappingEditType.SETITEM, "c", 30)
 
         # Final mapping state
-        assert dict(jm) == {"b":20, "c":30, "d":4}
+        assert dict(jm) == {"b": 20, "c": 30, "d": 4}
         # Original must remain unchanged
-        assert original == {"a":1, "b":2, "c":3}
-
+        assert original == {"a": 1, "b": 2, "c": 3}

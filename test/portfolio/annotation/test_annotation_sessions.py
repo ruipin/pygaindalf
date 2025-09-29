@@ -1,4 +1,7 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
+
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -7,8 +10,11 @@ from .annotation_types import (
     SampleIncrementingAnnotation,
     SampleUniqueAnnotation,
 )
-from app.portfolio.models.root import EntityRoot
-from app.portfolio.journal.session_manager import SessionManager
+
+
+if TYPE_CHECKING:
+    from app.portfolio.journal.session_manager import SessionManager
+    from app.portfolio.models.root import EntityRoot
 
 
 @pytest.mark.portfolio
@@ -64,9 +70,8 @@ class TestAnnotationSessions:
         host = host.superseding
 
         # Creating another unique annotation for same parent should fail
-        with session_manager(actor="tester", reason="unique-dup"):
-            with pytest.raises(ValueError):
-                SampleUniqueAnnotation.create(host, payload=6)
+        with session_manager(actor="tester", reason="unique-dup"), pytest.raises(ValueError, match=r"Entity with UID .* already exists."):
+            SampleUniqueAnnotation.create(host, payload=6)
 
         # Delete and recreate succeeds
         with session_manager(actor="tester", reason="unique-recreate") as s:

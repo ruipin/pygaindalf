@@ -1,35 +1,29 @@
-# SPDX-License-Identifier: GPLv3
+# SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-"""Session-backed tests that validate propagation of child sort-key changes
-from Transaction -> Ledger via the JournalledOrderedViewSet mechanism.
+"""Session-backed tests that validate propagation of child sort-key changes from Transaction -> Ledger via the JournalledOrderedViewSet mechanism.
 
-These mirror the requested behavior: when a Transaction's sort key (date)
-changes inside a session, the parent Ledger's transaction_uids journal should
-record an ITEM_UPDATED edit for that transaction UID, but only if the UID is
-in the set.
+These mirror the requested behavior: when a Transaction's sort key (date) changes inside a session, the parent Ledger's transaction_uids journal should record
+an ITEM_UPDATED edit for that transaction UID, but only if the UID is in the set.
 
-We set up a minimal root that exposes a SessionManager (like test_instrument_journal_session.py)
-so the Ledger is inside a session-managed hierarchy.
+We set up a minimal root that exposes a SessionManager (like test_instrument_journal_session.py) so the Ledger is inside a session-managed hierarchy.
 """
 
 import datetime
+
 from decimal import Decimal
 
 import pytest
+
 from iso4217 import Currency
 
-from pydantic import Field, ConfigDict, InstanceOf
-
-from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.journal.session import Session
 from app.portfolio.collections.journalled.set import JournalledSetEdit, JournalledSetEditType
-
+from app.portfolio.journal.session import Session
+from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.models.instrument.instrument import Instrument
 from app.portfolio.models.ledger.ledger import Ledger
 from app.portfolio.models.root import EntityRoot
-from app.portfolio.models.transaction.transaction import Transaction, TransactionType
-from app.portfolio.models.transaction.transaction_journal import TransactionJournal
+from app.portfolio.models.transaction import Transaction, TransactionType
 
 
 # --- Tests -----------------------------------------------------------------------
@@ -44,14 +38,14 @@ class TestLedgerJournalPropagationSessions:
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 1),
-                quantity=Decimal("1"),
-                consideration=Decimal("1"),
+                quantity=Decimal(1),
+                consideration=Decimal(1),
             )
             t2 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 3),
-                quantity=Decimal("2"),
-                consideration=Decimal("2"),
+                quantity=Decimal(2),
+                consideration=Decimal(2),
             )
             ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
 
@@ -90,14 +84,14 @@ class TestLedgerJournalPropagationSessions:
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 2, 1),
-                quantity=Decimal("1"),
-                consideration=Decimal("1"),
+                quantity=Decimal(1),
+                consideration=Decimal(1),
             )
             t2 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 2, 2),
-                quantity=Decimal("2"),
-                consideration=Decimal("2"),
+                quantity=Decimal(2),
+                consideration=Decimal(2),
             )
             ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
             entity_root.root = ledg
@@ -108,7 +102,7 @@ class TestLedgerJournalPropagationSessions:
 
             tj = t1.journal
             # Change a field that does NOT affect sort key (fees)
-            tj.fees = Decimal("999")
+            tj.fees = Decimal(999)
 
             # No diff since sort key didn't change
             assert lj.get_diff() == {}
@@ -121,14 +115,14 @@ class TestLedgerJournalPropagationSessions:
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 1),
-                quantity=Decimal("1"),
-                consideration=Decimal("1"),
+                quantity=Decimal(1),
+                consideration=Decimal(1),
             )
             t2 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 2),
-                quantity=Decimal("1"),
-                consideration=Decimal("1"),
+                quantity=Decimal(1),
+                consideration=Decimal(1),
             )
             ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
             entity_root.root = ledg
@@ -145,5 +139,5 @@ class TestLedgerJournalPropagationSessions:
             tj.date = datetime.date(2025, 3, 5)
 
             # Still no diff because child isn't in the parent's OrderedViewMutableSet
-            assert lj.get_diff() == {'transaction_uids': (JournalledSetEdit(type=JournalledSetEditType.DISCARD, value=t1.uid),)}
+            assert lj.get_diff() == {"transaction_uids": (JournalledSetEdit(type=JournalledSetEditType.DISCARD, value=t1.uid),)}
             s.abort()

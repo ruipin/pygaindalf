@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-"""
-Unit tests for the @classproperty decorator in pygaindalf.
+"""Unit tests for the @classproperty decorator in pygaindalf.
+
 Tests class-level and instance-level access, and dynamic changes.
 """
 
 from abc import ABCMeta, abstractmethod
+
 import pytest
-from app.util.helpers.classproperty import classproperty, cached_classproperty
+
+from app.util.helpers.classproperty import cached_classproperty, classproperty
+
 
 class MyClass:
     _value = 42
@@ -31,6 +34,7 @@ class MyAbstractClass(metaclass=ABCMeta):
     @abstractmethod
     def abstract_property(cls):
         raise NotImplementedError("This is an abstract property.")
+
 
 class MyConcreteClass(MyAbstractClass):
     @classproperty
@@ -60,7 +64,7 @@ class TestClassProperty:
 
     def test_abstract_class_property(self):
         with pytest.raises(NotImplementedError):
-            MyAbstractClass.abstract_property
+            _ = MyAbstractClass.abstract_property
         assert MyConcreteClass.abstract_property == "Implemented abstract property"
         concrete_instance = MyConcreteClass()
         assert concrete_instance.abstract_property == "Implemented abstract property"

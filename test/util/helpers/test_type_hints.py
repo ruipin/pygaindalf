@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
 
 import typing
+
 from typing import get_type_hints
 
 import pytest
+
 from frozendict import frozendict
 
 from app.util.helpers.type_hints import (
@@ -95,17 +98,17 @@ class TestTypeHints:
         assert list(iterate_type_hints(alias)) == [alias]
 
     def test_iterate_type_hints_flattens_union(self) -> None:
-        hint = typing.Union[int, str]
+        hint = int | str
 
         assert list(iterate_type_hints(hint)) == [int, str]
 
     def test_iterate_type_hints_flattens_nested_union(self) -> None:
-        hint = typing.Union[int, typing.Union[str, float]]
+        hint = int | str | float
 
         assert list(iterate_type_hints(hint)) == [int, str, float]
 
     def test_iterate_type_hints_preserves_forward_refs(self) -> None:
         ref = typing.ForwardRef("Foo")
-        hint = typing.Union[int, ref]
+        hint = int | ref
 
         assert list(iterate_type_hints(hint)) == [int, ref]

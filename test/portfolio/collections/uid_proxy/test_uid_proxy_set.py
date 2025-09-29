@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import pytest
-from pydantic import Field
 from functools import cached_property
 
-from app.portfolio.collections.uid_proxy import UidProxySet, UidProxyMutableSet
+import pytest
+
+from app.portfolio.collections.uid_proxy import UidProxyMutableSet, UidProxySet
 from app.portfolio.models.entity import IncrementingUidEntity
 from app.portfolio.util.uid import Uid
 
@@ -14,10 +14,14 @@ from app.portfolio.util.uid import Uid
 class Child(IncrementingUidEntity):
     pass
 
+
 class _UidProxyChildSet(UidProxySet[Child]):
     pass
+
+
 class _UidProxyMutableChildSet(UidProxyMutableSet[Child]):
     pass
+
 
 class Parent:
     child_uids: set[Uid]
@@ -27,11 +31,11 @@ class Parent:
 
     @cached_property
     def children(self):  # Returns a proxy set of Child entities
-        return _UidProxyMutableChildSet(instance=self, field='child_uids')
+        return _UidProxyMutableChildSet(instance=self, field="child_uids")
 
     @cached_property
     def children_frozen(self):
-        return _UidProxyChildSet(instance=self, field='child_uids')
+        return _UidProxyChildSet(instance=self, field="child_uids")
 
 
 @pytest.mark.portfolio_collections
@@ -73,14 +77,14 @@ class TestUidProxyMutableSet:
         assert c1 in f and c2 in f
         assert {x.uid for x in f} == {c1.uid, c2.uid}
         with pytest.raises(AttributeError):
-            f.add(c1) # pyright: ignore[reportAttributeAccessIssue]
+            f.add(c1)  # pyright: ignore[reportAttributeAccessIssue]
         with pytest.raises(AttributeError):
-            f.discard(c1) # pyright: ignore[reportAttributeAccessIssue]
+            f.discard(c1)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_iter_yields_entities(self):
         p = Parent()
 
-        children = set(Child() for _ in range(3))
+        children = {Child() for _ in range(3)}  # pyright: ignore[reportUnhashable] as it actually is hashable...
         for ch in children:
             p.children.add(ch)
 
@@ -95,9 +99,9 @@ class TestUidProxyMutableSet:
         p.children.add(c)
 
         assert any(c.uid == s.uid for s in p.children)
-        assert type(p.children) == _UidProxyMutableChildSet
+        assert type(p.children) is _UidProxyMutableChildSet
         assert any(c.uid == s.uid for s in p.children_frozen)
-        assert type(p.children_frozen) == _UidProxyChildSet
+        assert type(p.children_frozen) is _UidProxyChildSet
 
     def test_missing_entity_uid_raises_key_error(self):
         p = Parent()
@@ -109,4 +113,3 @@ class TestUidProxyMutableSet:
             list(p.children)  # iter should raise when resolving fake uid
         with pytest.raises(KeyError):
             list(p.children_frozen)
-

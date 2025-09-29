@@ -3,27 +3,31 @@
 
 import dataclasses
 
-from pydantic_core import CoreSchema
-from typing import (override, Iterator,
-    cast as typing_cast,
-)
+from collections.abc import Iterator, Mapping, MutableMapping
 from enum import Enum
-from collections.abc import MutableMapping, Mapping
+from typing import (
+    TYPE_CHECKING,
+    override,
+)
 
-from ....util.helpers.frozendict import frozendict, PydanticFrozenDictAnnotation
-
+from ....util.helpers.frozendict import PydanticFrozenDictAnnotation, frozendict
 from .collection import JournalledCollection
+
+
+if TYPE_CHECKING:
+    from pydantic_core import CoreSchema
 
 
 class JournalledMappingEditType(Enum):
     SETITEM = "setitem"
     DELITEM = "delitem"
 
+
 @dataclasses.dataclass(frozen=True, slots=True)
-class JournalledMappingEdit[K,V]:
+class JournalledMappingEdit[K, V]:
     type: JournalledMappingEditType
-    key : K
-    value : V | None
+    key: K
+    value: V | None
 
     @override
     def __str__(self) -> str:
@@ -33,16 +37,16 @@ class JournalledMappingEdit[K,V]:
     def __repr__(self) -> str:
         return self.__str__()
 
-class JournalledMapping[K,V](JournalledCollection[V, Mapping[K,V], dict[K,V], frozendict[K,V], JournalledMappingEdit[K,V]], MutableMapping[K,V]):
+
+class JournalledMapping[K, V](JournalledCollection[V, Mapping[K, V], dict[K, V], frozendict[K, V], JournalledMappingEdit[K, V]], MutableMapping[K, V]):
     # MARK: JournalledCollection ABC
     @override
     @classmethod
-    def get_core_schema(cls, source, handler) -> CoreSchema:
+    def get_core_schema(cls, source, handler) -> CoreSchema:  # noqa: ANN001
         return PydanticFrozenDictAnnotation.__get_pydantic_core_schema__(source, handler)
 
-
     # MARK: Functionality
-    def _append_journal(self, type : JournalledMappingEditType, key: K, value: V | None) -> None:
+    def _append_journal(self, type: JournalledMappingEditType, key: K, value: V | None) -> None:  # NOQA: A002
         self._journal.append(JournalledMappingEdit(type=type, key=key, value=value))
         self._on_edit()
 

@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from .generic_set import GenericProxySet, GenericProxyMutableSet
-from .set import ProxySet, ProxyMutableSet
-from .ordered_view_set import ProxyOrderedViewSet, ProxyOrderedViewMutableSet
+from .generic_set import GenericProxyMutableSet, GenericProxySet
+from .ordered_view_set import ProxyOrderedViewMutableSet, ProxyOrderedViewSet
+from .set import ProxyMutableSet, ProxySet
+
 
 __all__ = [
-    "GenericProxySet"    , "GenericProxyMutableSet"    ,
-    "ProxySet"           , "ProxyMutableSet"           ,
-    "ProxyOrderedViewSet", "ProxyOrderedViewMutableSet",
+    "GenericProxyMutableSet",
+    "GenericProxySet",
+    "ProxyMutableSet",
+    "ProxyOrderedViewMutableSet",
+    "ProxyOrderedViewSet",
+    "ProxySet",
 ]
