@@ -89,9 +89,9 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
         if propagate_name:
             self._seed_name_to_object(obj=obj, name=name)
 
-    def _seed_parent_and_name_to_field(self, fldnm: str, fldinfo: FieldInfo | None = None) -> None:
+    def _should_seed_parent_and_name_to_field(self, fldnm: str, fldinfo: FieldInfo | None = None) -> tuple[bool, bool]:
         if fldnm == "instance_parent":
-            return
+            return (False, False)
 
         if fldinfo is None:
             fldinfo = type(self).model_fields[fldnm]
@@ -106,7 +106,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             propagate = getattr(type(self), "PROPAGATE_TO_CHILDREN", True)
         propagate = bool(propagate)
         if not propagate:
-            return
+            return (False, False)
 
         # Instance name propagation - class config
         propagate_name = None
@@ -124,6 +124,10 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             propagate_parent = getattr(type(self), "PROPAGATE_INSTANCE_PARENT_TO_CHILDREN", True)
         propagate_parent = bool(propagate_parent)
 
+        return (propagate_name, propagate_parent)
+
+    def _seed_parent_and_name_to_field(self, fldnm: str, fldinfo: FieldInfo | None = None) -> None:
+        (propagate_name, propagate_parent) = self._should_seed_parent_and_name_to_field(fldnm, fldinfo)
         if not propagate_name and not propagate_parent:
             return
 
