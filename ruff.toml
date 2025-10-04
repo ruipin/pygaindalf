@@ -219,7 +219,12 @@ runtime-evaluated-base-classes = [
     "app.util.models.combined.LoggableHierarchicalNamedModel"    , "app.util.models.LoggableHierarchicalNamedModel"    ,
 
     # Portfolio
-    "app.portfolio.models.entity.EntityFieldsBase", "app.portfolio.models.EntityFieldsBase" ,
+    "app.portfolio.models.entity.entity_schema.EntitySchemaBase"     , "app.portfolio.models.entity.EntitySchemaBase", "app.portfolio.models.EntitySchemaBase",
+    "app.portfolio.models.entity.entity_schema.EntitySchema"         , "app.portfolio.models.entity.EntitySchema"    , "app.portfolio.models.EntitySchema"    ,
+    "app.portfolio.models.entity.entity_record_base.EntityRecordBase", "app.portfolio.models.entity.EntityRecordBase", "app.portfolio.models.EntityRecordBase",
+    "app.portfolio.models.entity.entity_record.EntityRecord"         , "app.portfolio.models.entity.EntityRecord"    , "app.portfolio.models.EntityRecord"    ,
+    "app.portfolio.models.entity.entity_base.EntityBase"             , "app.portfolio.models.entity.EntityBase"      , "app.portfolio.models.EntityBase"      ,
+    "app.portfolio.models.entity.entity.Entity"                      , "app.portfolio.models.entity.Entity"          , "app.portfolio.models.Entity"          ,
 
     # Component pydantic models
     "app.components.component.BaseComponentConfig"               , "app.components.BaseComponentConfig"                   ,
@@ -230,7 +235,10 @@ runtime-evaluated-base-classes = [
 # Decorators that require their argument/return type hints to be available at runtime
 runtime-evaluated-decorators = [
     # See https://docs.astral.sh/ruff/settings/#lint_flake8-type-checking_runtime-evaluated-decorators
-    "pydantic.validate_call", "attrs.define"
+    "pydantic.validate_call", "attrs.define",
+
+    # Pydantic
+    "pydantic.model_validator", "pydantic.field_validator", "pydantic.computed_field",
 
     # Custom decorators
     #...

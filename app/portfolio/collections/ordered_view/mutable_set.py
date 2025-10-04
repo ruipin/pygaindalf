@@ -8,9 +8,6 @@ from typing import get_origin as typing_get_origin
 
 from pydantic_core import CoreSchema, core_schema
 
-from ...models.entity import Entity
-from ...util.uid import Uid
-from .collection import OrderedViewUidCollection
 from .frozen_set import OrderedViewSet
 
 
@@ -76,13 +73,3 @@ class OrderedViewMutableSet[T: Hashable](OrderedViewSet[T], MutableSet[T]):
         from ..journalled.set.ordered_view_set import JournalledOrderedViewSet
 
         return bool(issubclass(subclass, JournalledOrderedViewSet))
-
-
-class OrderedViewUidMutableSet[T: Entity](OrderedViewMutableSet[Uid], OrderedViewUidCollection[T]):
-    @classmethod
-    @override
-    def get_immutable_type(cls, source: type[Self] | None = None) -> type[AbstractSet[Uid]]:  # pyright: ignore[reportIncompatibleMethodOverride]
-        from .frozen_set import OrderedViewUidSet
-
-        klass = source or cls
-        return OrderedViewUidSet[klass.get_entity_type()]

@@ -2,9 +2,13 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from ...journal.entity_journal import EntityJournal
-from .instrument_base import InstrumentBase
+from ...journal.journal import Journal
+from .instrument_impl import InstrumentImpl
 
 
-class InstrumentJournal(InstrumentBase, EntityJournal, init=False):
+class InstrumentJournal(
+    InstrumentImpl,
+    Journal,
+    init=False,
+):
     pass

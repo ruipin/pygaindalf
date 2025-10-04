@@ -1,29 +1,25 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import TYPE_CHECKING, Any, override
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Self, override
 
-from pydantic import model_validator
-from pydantic_core import PydanticUseDefault
-
-from ....util.helpers.empty_class import EmptyClass
-from ..entity import Entity
-from ..entity.instance_store import InstanceStoreEntityMixin
-from .instrument_base import InstrumentBase
-from .instrument_fields import InstrumentFields
+from ....util.helpers.empty_class import empty_class
+from ..entity import Entity, InstanceStoreMixin
+from .instrument_impl import InstrumentImpl
 from .instrument_journal import InstrumentJournal
+from .instrument_record import InstrumentRecord
 
 
 if TYPE_CHECKING:
     from ..store import StringUidMapping
-    from .instrument_proxy import InstrumentProxy  # noqa: F401
 
 
 class Instrument(
-    InstrumentBase,
-    InstrumentFields if not TYPE_CHECKING else EmptyClass,
-    InstanceStoreEntityMixin,
-    Entity[InstrumentJournal, "InstrumentProxy"],
+    InstrumentImpl if TYPE_CHECKING else empty_class(),
+    InstanceStoreMixin,
+    Entity[InstrumentRecord, InstrumentJournal],
+    init=False,
 ):
     # MARK: Instance Store Behaviour
     @classmethod
@@ -35,7 +31,7 @@ class Instrument(
         return cls._get_entity_store().get_string_uid_mapping(f"{cls.__name__}_BY_TICKER")
 
     @classmethod
-    def instance(cls, isin: str | None = None, ticker: str | None = None) -> Instrument | None:
+    def instance(cls, isin: str | None = None, ticker: str | None = None) -> Self | None:
         if not isinstance(isin, (str, type(None))) or not isinstance(ticker, (str, type(None))):
             msg = f"Expected 'isin' and 'ticker' to be str or None, got {type(isin).__name__} and {type(ticker).__name__}."
             raise TypeError(msg)
@@ -78,14 +74,14 @@ class Instrument(
 
     @classmethod
     @override
-    def _instance_store_search(cls, **kwargs) -> Instrument | None:
+    def _instance_store_search(cls, **kwargs) -> Self | None:
         isin = kwargs.get("isin")
         ticker = kwargs.get("ticker")
         return cls.instance(isin=isin, ticker=ticker)
 
     @classmethod
     @override
-    def _instance_store_add(cls, instance: Entity) -> None:
+    def _instance_store_add(cls, instance: Self) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Add an instance to the store.
 
         This method is called when a new instance is created.
@@ -99,47 +95,14 @@ class Instrument(
         if instance.ticker:
             cls._get_ticket_store()[instance.ticker] = instance.uid
 
-    # MARK: Model Validation
-    @model_validator(mode="before")
-    @classmethod
-    def _validate_model_before(cls, values: Any) -> Any:
-        """Validate the identifiers of the instrument.
-
-        Ensures that at least one identifier (ISIN or ticker) is provided.
-        """
-        if values is None:
-            raise PydanticUseDefault
-
-        if isinstance(values, Instrument):
-            return values
-
-        if not isinstance(values, dict):
-            msg = f"Expected a dict or Instrument instance, got {type(values).__name__}."
-            raise TypeError(msg)
-
-        # Identifiers
-        cls._validate_identifiers(values)
-
-        return values
-
-    @classmethod
-    def _validate_identifiers(cls, values: dict[str, Any]) -> None:
-        isin = values.get("isin")
-        ticker = values.get("ticker")
-        if not isin and not ticker:
-            msg = "At least one identifier (ISIN or ticker) must be provided."
-            raise ValueError(msg)
-
     # MARK: Instance Name
     @classmethod
     @override
-    def calculate_instance_name_from_dict(cls, data: dict[str, Any]) -> str:
+    def calculate_instance_name_from_dict(cls, data: Mapping[str, Any]) -> str:
         if (identifier := data.get("isin")) is None and (identifier := data.get("ticker")) is None:
             msg = f"{cls.__name__} must have either 'isin' or 'ticker' field in the data to generate a name for the instance."
             raise ValueError(msg)
         return identifier
 
-    @property
-    @override
-    def instance_name(self) -> str:
-        return type(self).calculate_instance_name_from_dict(self.__dict__)
+
+InstrumentRecord.register_entity_class(Instrument)

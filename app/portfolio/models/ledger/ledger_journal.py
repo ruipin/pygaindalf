@@ -4,10 +4,10 @@
 from collections.abc import MutableSet
 from typing import TYPE_CHECKING, override
 
-from ...collections import OrderedViewUidMutableSet, UidProxyOrderedViewMutableSet
-from ...journal.entity_journal import EntityJournal
-from ..transaction import Transaction
-from .ledger_base import LedgerBase
+from ...collections import OrderedViewMutableSet
+from ...journal.journal import Journal
+from ..transaction import Transaction, TransactionRecord
+from .ledger_impl import LedgerImpl
 
 
 if TYPE_CHECKING:
@@ -15,16 +15,16 @@ if TYPE_CHECKING:
 
 
 class LedgerJournal(
-    LedgerBase[OrderedViewUidMutableSet[Transaction], UidProxyOrderedViewMutableSet[Transaction]],
-    EntityJournal,
+    LedgerImpl[OrderedViewMutableSet[Transaction]],
+    Journal,
     MutableSet[Transaction],
     init=False,
 ):
     # MARK: MutableSet ABC
     @override
-    def add(self, value: Transaction | Uid) -> None:
-        self.transaction_uids.add(Transaction.narrow_to_uid(value))
+    def add(self, value: Transaction | TransactionRecord | Uid) -> None:
+        self.transactions.add(Transaction.narrow_to_instance(value))
 
     @override
-    def discard(self, value: Transaction | Uid) -> None:
-        self.transaction_uids.discard(Transaction.narrow_to_uid(value))
+    def discard(self, value: Transaction | TransactionRecord | Uid) -> None:
+        self.transactions.discard(Transaction.narrow_to_instance(value))

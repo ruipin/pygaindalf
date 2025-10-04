@@ -5,10 +5,11 @@ from typing import Any, Self, final, override
 
 from pydantic import BaseModel, PrivateAttr
 
-from ..callguard.pydantic_model import CallguardedModelMixin
+from ..callguard import callguard_class
 
 
-class SingleInitializationModel(CallguardedModelMixin, BaseModel):
+@callguard_class(ignore_patterns=("_SingleInitializationModel__initialized"))
+class SingleInitializationModel(BaseModel):
     __initialized: bool = PrivateAttr(default=False)
 
     def __new__(cls, *args, **kwargs) -> Self:

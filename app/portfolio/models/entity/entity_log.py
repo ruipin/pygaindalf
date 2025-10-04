@@ -21,10 +21,11 @@ from ....util.models import SingleInitializationModel
 if TYPE_CHECKING:
     from ...util.uid import Uid
     from .entity import Entity
+    from .entity_record import EntityRecord
 
 
-# MARK: Entity Audit Type enum
-class EntityAuditType(Enum):
+# MARK: EntityRecord Modification Type enum
+class EntityModificationType(Enum):
     CREATED = "created"
     UPDATED = "updated"
     DELETED = "deleted"
@@ -38,14 +39,14 @@ class EntityAuditType(Enum):
         return f"{type(self).__name__}.{self.name}"
 
 
-# MARK: Entity Audit class
-class EntityAudit(SingleInitializationModel):
+# MARK: EntityRecord Change class
+class EntityModification(SingleInitializationModel):
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,
     )
 
-    what: EntityAuditType = Field(description="The type of action that was performed on the entity.")
+    what: EntityModificationType = Field(description="The type of modification that was performed on the entity.")
     when: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(tz=datetime.UTC), description="The date and time when this entity log entry was created."
     )
@@ -60,20 +61,20 @@ class EntityAudit(SingleInitializationModel):
     @model_validator(mode="after")
     def _validate_consistency(self) -> Self:
         if self.version == 1:
-            if self.what != EntityAuditType.CREATED:
+            if self.what != EntityModificationType.CREATED:
                 msg = "The first audit entry must be of type 'CREATED'."
                 raise ValueError(msg)
         return self
 
 
-# MARK: Entity Audit Log class
+# MARK: EntityRecord Audit Log class
 @callguard_class()
-class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinimal):
+class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinimal):
     TRACK_ENTITY_DIFF = True
 
-    # MARK: Entity
+    # MARK: EntityRecord
     _entity_uid: Uid
-    _entries: list[EntityAudit]
+    _entries: list[EntityModification]
 
     @classmethod
     def _get_audit_log(cls, uid: Uid) -> Self | None:
@@ -82,7 +83,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         if (store := EntityStore.get_global_store()) is None:
             msg = f"Could not get entity store for {cls.__name__}. The global EntityStore is not set."
             raise ValueError(msg)
-        return typing_cast("Self | None", store.get_audit_log(uid))
+        return typing_cast("Self | None", store.get_entity_log(uid))
 
     def __new__(cls, uid: Uid) -> Self:
         if (instance := cls._get_audit_log(uid)) is None:
@@ -90,7 +91,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             instance._post_init(uid)
         return instance
 
-    def __init__(self, _uid: Uid) -> None:
+    def __init__(self, uid: Uid) -> None:  # noqa: ARG002
         super().__init__()
 
     def _post_init(self, uid: Uid) -> None:
@@ -98,11 +99,11 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         self._entries = []
 
     @classmethod
-    def by_entity(cls, entity: Entity) -> EntityAuditLog | None:
+    def by_entity(cls, entity: Entity | EntityRecord) -> EntityLog | None:
         return cls._get_audit_log(entity.uid)
 
     @classmethod
-    def by_uid(cls, uid: Uid) -> EntityAuditLog | None:
+    def by_uid(cls, uid: Uid) -> EntityLog | None:
         return cls._get_audit_log(uid)
 
     @property
@@ -120,6 +121,18 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         from .entity import Entity
 
         return Entity.by_uid(self.entity_uid)
+
+    @property
+    def record_or_none(self) -> EntityRecord | None:
+        from .entity_record import EntityRecord
+
+        return EntityRecord.by_uid_or_none(self.entity_uid)
+
+    @property
+    def record(self) -> EntityRecord:
+        from .entity_record import EntityRecord
+
+        return EntityRecord.by_uid(self.entity_uid)
 
     # MARK: Instance name/parent
     PROPAGATE_INSTANCE_NAME_FROM_PARENT: ClassVar[bool] = False
@@ -139,12 +152,12 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
     # MARK: Pydantic schema
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
-        assert source is cls
+        assert source is cls, f"Expected source to be {cls.__name__}, got {source.__name__} instead."
         return core_schema.is_instance_schema(cls)
 
     # MARK: List-like interface
     @override
-    def __getitem__(self, index) -> list[EntityAudit]:  # noqa: ANN001 to avoid a complex type hint
+    def __getitem__(self, index) -> list[EntityModification]:  # noqa: ANN001 to avoid a complex type hint
         return self._entries[index]
 
     @override
@@ -152,33 +165,43 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         return len(self._entries)
 
     @override
-    def __iter__(self) -> Iterator[EntityAudit]:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def __iter__(self) -> Iterator[EntityModification]:  # pyright: ignore[reportIncompatibleMethodOverride]
         return iter(self._entries)
 
-    # MARK: Entity Diffing
+    # MARK: EntityRecord Diffing
     def _is_diffable_field(self, field_name: str) -> bool:
-        return not field_name.startswith("_") and field_name not in ("uid", "version", "entity_log", "entity_dependents", "instance_parent_weakref")
+        return not field_name.startswith("_") and field_name not in ("uid", "version", "instance_parent_weakref")
 
-    def _diff(self, old_entity: Entity | None, new_entity: Entity | None) -> frozendict[str, Any] | None:
+    def _diff(self, old_record: EntityRecord | None, new_record: EntityRecord | None) -> frozendict[str, Any] | None:
         """Return a dictionary containing the differences between the old and new entities.
 
-        This is used to track changes made to the entity during an update action.
+        This is used to track changes made to the entity record during an update action.
         """
         if not self.TRACK_ENTITY_DIFF:
             return None
 
+        # Sanity check types
+        from .entity_record import EntityRecord
+
+        if old_record is not None and not isinstance(old_record, EntityRecord):
+            msg = f"Old record must be an EntityRecord or None, got {type(old_record).__name__} instead."
+            raise TypeError(msg)
+        if new_record is not None and not isinstance(new_record, EntityRecord):
+            msg = f"New record must be an EntityRecord or None, got {type(new_record).__name__} instead."
+            raise TypeError(msg)
+
         # If both entities are None, something went wrong
-        if old_entity is None and new_entity is None:
+        if old_record is None and new_record is None:
             msg = "Both old and new entities are None. Cannot compute diff."
             raise ValueError(msg)
 
-        # If there is no old entity, then all model fields in the entity are new
-        if old_entity is None and new_entity is not None:
+        # If there is no old record, then all model fields in the record are new
+        if old_record is None and new_record is not None:
             diff = {}
-            for fldnm in type(new_entity).model_fields:
+            for fldnm in type(new_record).model_fields:
                 if not self._is_diffable_field(fldnm):
                     continue
-                v = getattr(new_entity, fldnm, None)
+                v = getattr(new_record, fldnm, None)
                 if v is None:
                     continue
                 if isinstance(v, Collection) and len(v) == 0:
@@ -186,13 +209,13 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
                 diff[fldnm] = v
             return frozendict(diff)
 
-        # If there is no new entity, then all model fields in the old entity are removed
-        elif new_entity is None and old_entity is not None:
+        # If there is no new record, then all model fields in the old record are removed
+        elif new_record is None and old_record is not None:
             diff = {}
-            for fldnm in type(old_entity).model_fields:
+            for fldnm in type(old_record).model_fields:
                 if not self._is_diffable_field(fldnm):
                     continue
-                v = getattr(old_entity, fldnm, None)
+                v = getattr(old_record, fldnm, None)
                 if v is None:
                     continue
                 if isinstance(v, Collection) and len(v) == 0:
@@ -202,30 +225,30 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
         # Otherwise, both entities exist, and we take the journal diff
         else:
-            assert new_entity is not None
-            assert old_entity is not None
-            journal = old_entity.get_journal(create=False, fail=False)
-            return journal.get_diff() if journal is not None else self._diff_manual(old_entity, new_entity)
+            assert new_record is not None, "New record must not be None"
+            assert old_record is not None, "Old record must not be None"
+            journal = old_record.get_journal(create=False, fail=False)
+            return journal.get_diff() if journal is not None else self._diff_manual(old_record, new_record)
 
-    def _diff_manual(self, old_entity: Entity, new_entity: Entity) -> frozendict[str, Any] | None:
+    def _diff_manual(self, old_record: EntityRecord, new_record: EntityRecord) -> frozendict[str, Any] | None:
         diff = {}
 
-        keys = set(old_entity.__dict__.keys())
-        keys.update(set(new_entity.__dict__.keys()))
+        keys = set(old_record.__dict__.keys())
+        keys.update(set(new_record.__dict__.keys()))
 
         for key in keys:
             if not self._is_diffable_field(key):
                 continue
 
-            old_value = getattr(old_entity, key, None)
-            new_value = getattr(new_entity, key, None)
+            old_value = getattr(old_record, key, None)
+            new_value = getattr(new_record, key, None)
 
-            from .entity import Entity
+            from .entity_record import EntityRecord
 
             mismatch = False
             if not isinstance(new_value, type(old_value)):
                 mismatch = True
-            elif isinstance(old_value, Entity) or (eq := getattr(old_value, "__eq__", None)) is None or (eq_res := eq(new_value)) is NotImplemented:
+            elif isinstance(old_value, EntityRecord) or (eq := getattr(old_value, "__eq__", None)) is None or (eq_res := eq(new_value)) is NotImplemented:
                 mismatch = old_value is not new_value
             else:
                 mismatch = not eq_res
@@ -235,36 +258,42 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
 
         return frozendict(diff)
 
-    # MARK: Entity Registration
-    def _add_entry(self, entry: EntityAudit | None = None, /, **kwargs) -> None:
+    # MARK: EntityRecord Registration
+    def _add_entry(self, entry: EntityModification | None = None, /, **kwargs) -> None:
         if entry is None:
-            entry = EntityAudit(**kwargs)
+            entry = EntityModification(**kwargs)
 
         if entry.version != self.next_version:
             msg = f"Entry version {entry.version} does not match the expected next version {self.next_version}. The version should be incremented when the entity is cloned as part of an update action."
             raise ValueError(msg)
-        if entry.what == EntityAuditType.DELETED and not self.exists:
+        if entry.what == EntityModificationType.DELETED and not self.exists:
             msg = "Cannot add a DELETED entry to an entity that does not exist. The entity must be created first."
             raise ValueError(msg)
         self._entries.append(entry)
 
-    def on_init(self, entity: Entity) -> None:
-        if entity.uid != self.entity_uid:
-            msg = f"Entity UID {entity.uid} does not match the audit log's entity UID {self.entity_uid}."
+    def on_init_record(self, record: EntityRecord) -> None:
+        from .entity_record import EntityRecord
+
+        if not isinstance(record, EntityRecord):
+            msg = f"Expected an EntityRecord instance, got {type(record).__name__} instead."
+            raise TypeError(msg)
+
+        if record.uid != self.entity_uid:
+            msg = f"EntityRecord UID {record.uid} does not match the audit log's entity UID {self.entity_uid}."
             raise ValueError(msg)
 
-        if entity.version != self.next_version:
-            msg = f"Entity version {entity.version} does not match the expected version {self.next_version}. The version should be incremented when the entity is cloned as part of an update action."
+        if record.version != self.next_version:
+            msg = f"EntityRecord version {record.version} does not match the expected version {self.next_version}. The version should be incremented when the entity is cloned as part of an update action."
             raise ValueError(msg)
 
-        what = EntityAuditType.CREATED if not self.exists else EntityAuditType.UPDATED
+        what = EntityModificationType.CREATED if not self.exists else EntityModificationType.UPDATED
 
-        session = entity.session_or_none
+        session = record.session_or_none
 
         diff = None
-        if (self_entity := self.entity_or_none) is None or entity is not self_entity:
-            old_entity = self.instance_parent
-            diff = self._diff(old_entity, entity)
+        if (self_record := self.record_or_none) is None or record is not self_record:
+            old_record = None if (entity := self.entity_or_none) is None else entity.record_or_none
+            diff = self._diff(old_record, record)
             self._reset_log_cache()
 
         self._add_entry(
@@ -273,42 +302,48 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
             who=session.actor if session is not None else None,
             why=session.reason if session is not None else None,
             diff=diff,
-            version=entity.version,
+            version=record.version,
         )
 
-    def on_delete(self, entity: Entity, who: str | None = None, why: str | None = None) -> None:
-        if entity.uid != self.entity_uid:
-            msg = f"Entity UID {entity.uid} does not match the audit log's entity UID {self.entity_uid}."
+    def on_delete_record(self, record: EntityRecord, who: str | None = None, why: str | None = None) -> None:
+        from .entity_record import EntityRecord
+
+        if not isinstance(record, EntityRecord):
+            msg = f"Expected an EntityRecord instance, got {type(record).__name__} instead."
+            raise TypeError(msg)
+
+        if record.uid != self.entity_uid:
+            msg = f"EntityRecord UID {record.uid} does not match the audit log's entity UID {self.entity_uid}."
             raise ValueError(msg)
-        if entity.version < self.version:
+        if record.version < self.version:
             self.log.warning(
-                t"Entity version {entity.version} is less than the audit log's version {self.version}. This indicates that the entity has been modified since the last audit entry, which is not allowed."
+                t"EntityRecord version {record.version} is less than the audit log's version {self.version}. This indicates that the entity has been modified since the last audit entry, which is not allowed."
             )
             return
-        if entity.version > self.version:
-            msg = f"Entity version {entity.version} is greater than the audit log's version {self.version} which is not allowed."
+        if record.version > self.version:
+            msg = f"EntityRecord version {record.version} is greater than the audit log's version {self.version} which is not allowed."
             raise ValueError(msg)
         if not self.exists:
             msg = "Cannot delete an entity that does not exist. The entity must be created first."
             raise ValueError(msg)
 
-        if (parent := self.instance_parent) is None or parent is not entity:
+        if (parent := self.instance_parent) is None or parent.record_or_none is not record:
             self.log.warning(
-                t"Entity {entity.uid} does not match the audit log's parent entity {parent}. This indicates that the entity has been modified since the last audit entry, which is not allowed."
+                t"EntityRecord {record} does not match the audit log's parent entity {parent}. This indicates that the entity has been modified since the last audit entry, which is not allowed."
             )
 
-        old_entity = self.instance_parent
-        if old_entity is None:
-            msg = "Cannot delete entity because the entity is not available."
+        old_record = self.record_or_none
+        if old_record is None:
+            msg = "Cannot delete entity record because the entity record is not available."
             raise ValueError(msg)
 
-        session = entity.session_or_none
-        diff = self._diff(old_entity, None)
+        session = record.session_or_none
+        diff = self._diff(old_record, None)
 
         self._reset_log_cache()
 
         self._add_entry(
-            what=EntityAuditType.DELETED,
+            what=EntityModificationType.DELETED,
             when=datetime.datetime.now(tz=datetime.UTC),
             who=who or (session.actor if session is not None else None),
             why=why or (session.reason if session is not None else None),
@@ -337,7 +372,7 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
         return self.version + 1
 
     @property
-    def most_recent(self) -> EntityAudit:
+    def most_recent(self) -> EntityModification:
         """Returns the most recent audit entry for the entity, or None if there are no entries."""
         if not self._entries:
             msg = "No audit entries available."
@@ -348,9 +383,9 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
     def exists(self) -> bool:
         if not self._entries:
             return False
-        return self.most_recent.what != EntityAuditType.DELETED
+        return self.most_recent.what != EntityModificationType.DELETED
 
-    def get_entry_by_version(self, version: PositiveInt) -> EntityAudit | None:
+    def get_entry_by_version(self, version: PositiveInt) -> EntityModification | None:
         """Return the audit entry for the given version, or None if no such entry exists."""
         if (entry := self._entries[version - 1]) is None:
             return None
@@ -362,13 +397,13 @@ class EntityAuditLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMix
     # MARK: Printing
     @override
     def __str__(self) -> str:
-        return f"EntityAuditLog(uid={self.entity_uid}, entries={len(self._entries)})"
+        return f"EntityLog({self.entity_uid}, entries={len(self._entries)})"
 
     @override
     def __repr__(self) -> str:
-        return f"<EntityAuditLog {self.instance_name} at {hex(id(self))} with {len(self._entries)} entries, exists={self.exists}>"
+        return f"<{self.instance_name} at {hex(id(self))} with {len(self._entries)} entries, exists={self.exists}>"
 
-    def as_tuple(self) -> tuple[EntityAudit, ...]:
+    def as_tuple(self) -> tuple[EntityModification, ...]:
         """Return the audit log entries as a list.
 
         This is useful for iterating over the entries.

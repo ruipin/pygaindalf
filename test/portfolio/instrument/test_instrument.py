@@ -5,161 +5,123 @@ import pytest
 
 from iso4217 import Currency
 
-from app.portfolio.models.entity.entity_audit_log import EntityAuditLog, EntityAuditType
-from app.portfolio.models.instrument.instrument import Instrument
+from app.portfolio.models.entity.entity_log import EntityLog, EntityModificationType
+from app.portfolio.models.instrument import Instrument
 
 
 @pytest.mark.portfolio
 @pytest.mark.instrument
-class TestInstrument:
-    def test_initialization_sets_identifiers_uid_and_audit(self):
-        i = Instrument(
+class TestInstrumentEntity:
+    def test_entity_wraps_record_and_reuses_instance(self):
+        inst = Instrument(
             ticker="AAPL",
             currency=Currency("USD"),
         )
 
-        # Instance naming and UID
-        assert i.instance_name == "AAPL"
-        assert i.uid.namespace == "Instrument"
-        assert i.uid.id == "AAPL"
-        assert i.version == 1
+        assert inst.uid == inst.record.uid
+        assert inst.ticker == "AAPL"
+        assert inst.currency == Currency("USD")
 
-        # Audit log basics
-        assert i.entity_log.entity_uid == i.uid
-        assert len(i.entity_log) == 1
-        assert i.entity_log.exists is True
-        assert i.entity_log.next_version == 2
+        by_uid = Instrument.by_uid(inst.uid)
+        assert inst is by_uid
 
-    def test_singleton_lookup_via_classmethod_instance(self):
-        i1 = Instrument(
+    def test_entity_initialization_sets_identifiers_and_audit(self):
+        inst = Instrument(
+            ticker="AAPL",
+            currency=Currency("USD"),
+        )
+
+        record = inst.record
+
+        assert inst.instance_name == "AAPL"
+        assert inst.uid.namespace == "Instrument"
+        assert inst.uid.id == "AAPL"
+        assert record.version == 1
+
+        assert record.entity_log.entity_uid == inst.uid
+        assert len(record.entity_log) == 1
+        assert record.entity_log.exists is True
+        assert record.entity_log.next_version == 2
+
+    def test_entity_instance_lookup_preserves_singleton(self):
+        inst = Instrument(
             isin="US0378331005",
             ticker="AAPL",
             currency=Currency("USD"),
         )
 
-        # Lookup by ticker
-        i2 = Instrument.instance(ticker="AAPL")
-        assert i2 is i1
+        by_ticker = Instrument.instance(ticker="AAPL")
+        by_isin = Instrument.instance(isin="US0378331005")
 
-        # Lookup by ISIN
-        i3 = Instrument.instance(isin="US0378331005")
-        assert i3 is i1
+        assert by_ticker is inst
+        assert by_isin is inst
 
-    def test_reinitialization(self):
-        i = Instrument.model_validate(
-            {
-                "ticker": "AAPL",
-                "currency": Currency("USD"),
-            }
-        )
+        # Re-instantiating with conflicting data should not mutate the existing entity
+        inst_again = Instrument(ticker="AAPL", currency=Currency("EUR"))
+        assert inst_again is inst
+        assert inst.currency == Currency("USD")
 
-        # Re-initializing same identifier with different attributes should error
-        with pytest.raises(TypeError, match=r"Field 'currency' cannot be set during reinitialization of Instrument"):
-            Instrument.model_validate(
-                {
-                    "ticker": "AAPL",
-                    "currency": Currency("EUR"),
-                }
-            )
-
-        # Re-initializing with same attributes should not error
-        i2 = Instrument.model_validate(
-            {
-                "ticker": "AAPL",
-                "currency": Currency("USD"),
-            }
-        )
-
-        assert i is i2
-
-    def test_updates_and_audit_log(self):
-        i1 = Instrument(
+    def test_entity_updates_and_audit_log(self):
+        inst = Instrument(
             ticker="AAPL",
             currency=Currency("USD"),
         )
 
-        assert i1.currency == Currency("USD")
-        assert i1.version == 1
+        log = inst.record.entity_log
+        assert log.version == 1
 
-        # Update the instrument
-        i2 = Instrument(
+        inst.update(currency=Currency("GBP"))
+        assert inst.currency == Currency("GBP")
+        assert inst.record.version == 2
+
+        inst.update(currency=Currency("EUR"))
+        assert inst.currency == Currency("EUR")
+        assert inst.record.version == 3
+
+        entry_v1 = log.get_entry_by_version(1)
+        assert entry_v1 is not None and entry_v1.what == EntityModificationType.CREATED
+        if EntityLog.TRACK_ENTITY_DIFF:
+            assert entry_v1.diff == {"ticker": "AAPL", "currency": Currency("USD")}
+
+        entry_v2 = log.get_entry_by_version(2)
+        assert entry_v2 is not None and entry_v2.what == EntityModificationType.UPDATED
+        if EntityLog.TRACK_ENTITY_DIFF:
+            assert entry_v2.diff == {"currency": Currency("GBP")}
+
+        entry_v3 = log.get_entry_by_version(3)
+        assert entry_v3 is not None and entry_v3.what == EntityModificationType.UPDATED
+        if EntityLog.TRACK_ENTITY_DIFF:
+            assert entry_v3.diff == {"currency": Currency("EUR")}
+
+        # Simulate deletion via the entity log utilities
+        log.on_delete_record(inst.record)  # TODO: Should be done via inst.delete() once fixed
+        assert log.exists is False
+        assert log.version == 4
+        entry_v4 = log.get_entry_by_version(4)
+        assert entry_v4 is not None and entry_v4.what == EntityModificationType.DELETED
+        if EntityLog.TRACK_ENTITY_DIFF:
+            assert entry_v4.diff == {"ticker": None, "currency": None}
+
+    def test_entity_tracks_superseding_record(self):
+        inst = Instrument(
             ticker="AAPL",
-            currency=Currency("GBP"),
-            version=i1.entity_log.next_version,  # Increment version
+            currency=Currency("USD"),
+        )
+        record = inst.record
+
+        Instrument(
+            ticker="MSFT",
+            currency=Currency("USD"),
         )
 
-        assert i2 is not i1
-        assert i1.version == 1
-        assert i2.version == 2
-        assert i1.entity_log is i2.entity_log
-        assert i1.superseded
-        assert not i2.superseded
-        assert i2.entity_log.exists is True
-        assert len(i2.entity_log) == 2
-        assert i2.entity_log.next_version == 3
-        assert i2.currency == Currency("GBP")
-
-        # Update the instrument using the 'update' method
-        i3 = i2.update(
+        inst2 = inst.update(
+            ticker="AAPL",
             currency=Currency("EUR"),
         )
+        record2 = inst2.record
 
-        assert i3 is not i1
-        assert i3 is not i2
-        assert i1.version == 1
-        assert i2.version == 2
-        assert i3.version == 3
-        assert i1.entity_log is i3.entity_log
-        assert i2.entity_log is i3.entity_log
-        assert i1.superseded
-        assert i2.superseded
-        assert not i3.superseded
-        assert i3.entity_log.exists is True
-        assert len(i3.entity_log) == 3
-        assert i3.entity_log.next_version == 4
-        assert i3.currency == Currency("EUR")
-
-        # Check the audit log entries
-        entry_v1 = i2.entity_log.get_entry_by_version(1)
-        assert entry_v1 is not None
-        assert entry_v1.what == EntityAuditType.CREATED
-        assert entry_v1.version == 1
-        if EntityAuditLog.TRACK_ENTITY_DIFF:
-            assert entry_v1.diff == {
-                "ticker": "AAPL",
-                "currency": Currency("USD"),
-            }
-
-        entry_v2 = i2.entity_log.get_entry_by_version(2)
-        assert entry_v2 is not None
-        assert entry_v2.what == EntityAuditType.UPDATED
-        assert entry_v2.version == 2
-        if EntityAuditLog.TRACK_ENTITY_DIFF:
-            assert entry_v2.diff == {
-                "currency": Currency("GBP"),
-            }
-
-        entry_v3 = i2.entity_log.get_entry_by_version(3)
-        assert entry_v3 is not None
-        assert entry_v3.what == EntityAuditType.UPDATED
-        assert entry_v3.version == 3
-        if EntityAuditLog.TRACK_ENTITY_DIFF:
-            assert entry_v3.diff == {
-                "currency": Currency("EUR"),
-            }
-
-        # 'Delete' the instrument
-        entity_log = i3.entity_log
-        entity_log.on_delete(i3)
-
-        assert entity_log.exists is False
-        assert entity_log.version == 4
-        entry_v4 = entity_log.get_entry_by_version(4)
-        assert entry_v4 is not None
-        assert entry_v4.what == EntityAuditType.DELETED
-        assert entry_v4.version == 4
-        if EntityAuditLog.TRACK_ENTITY_DIFF:
-            assert entry_v4.diff == {
-                "ticker": None,
-                "currency": None,
-            }
+        assert inst is inst2
+        assert record2 is not record
+        assert record.superseded
+        assert record2 is record.superseding
+        assert inst2.currency == Currency("EUR")

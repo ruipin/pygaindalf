@@ -2,10 +2,10 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from .portfolio import Portfolio
-from .portfolio_proxy import PortfolioProxy
+from .portfolio_record import PortfolioRecord
 
 
 __all__ = [
     "Portfolio",
-    "PortfolioProxy",
+    "PortfolioRecord",
 ]

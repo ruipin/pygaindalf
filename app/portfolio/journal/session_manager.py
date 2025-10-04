@@ -41,11 +41,11 @@ class SessionManager(LoggableHierarchicalModel):
     # MARK: Instance Parent
     @field_validator("instance_parent_weakref", mode="before")
     def _validate_instance_parent_is_session_manager(cls, v: Any) -> Any:
-        from ..models.entity.entity import Entity
+        from ..models.entity.entity_record import EntityRecord
 
         obj = v() if isinstance(v, weakref.ref) else v
-        if obj is None or not isinstance(obj, Entity):
-            msg = "Session parent must be a Entity object"
+        if obj is None or not isinstance(obj, EntityRecord):
+            msg = "Session parent must be a EntityRecord object"
             raise TypeError(msg)
         return v
 

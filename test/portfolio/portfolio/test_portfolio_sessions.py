@@ -23,8 +23,9 @@ from iso4217 import Currency
 
 from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
 from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
-from app.portfolio.models.instrument.instrument import Instrument
-from app.portfolio.models.ledger.ledger import Ledger
+from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.ledger import Ledger
+from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.root.portfolio_root import PortfolioRoot
 from app.portfolio.models.transaction import Transaction, TransactionType
 
@@ -33,89 +34,98 @@ from app.portfolio.models.transaction import Transaction, TransactionType
 @pytest.mark.session
 class TestPortfolioSessions:
     def test_add_ledgers_commit(self, portfolio_root: PortfolioRoot, session_manager):
-        p1 = portfolio_root.portfolio
-        assert p1.ledgers == set()
-        assert len(p1.ledgers) == 0
+        portfolio = portfolio_root.portfolio
+        initial_record = portfolio.record
+        assert len(portfolio.ledgers) == 0
+        assert list(portfolio) == []
+        assert Portfolio(uid=initial_record.uid) is portfolio
 
         with session_manager(actor="tester", reason="test_add_ledgers_commit") as s:
             inst1 = Instrument(ticker="AAPL", currency=Currency("USD"))
-            ledg1 = Ledger(instrument_uid=inst1.uid)
+            ledg1 = Ledger(instrument=inst1)
 
             inst2 = Instrument(ticker="MSFT", currency=Currency("USD"))
-            ledg2 = Ledger(instrument_uid=inst2.uid)
+            ledg2 = Ledger(instrument=inst2)
 
             from app.portfolio.models.portfolio.portfolio_journal import PortfolioJournal
 
-            assert type(p1.journal) is PortfolioJournal
-            ledgers_set = p1.journal.ledgers
+            journal = portfolio.journal
+            assert type(journal) is PortfolioJournal
+            ledgers_set = journal.ledgers
             ledgers_set.add(ledg1)
             ledgers_set.add(ledg2)
-            assert p1.dirty is True
+            assert portfolio.record.dirty is True
             assert s.dirty is True
 
         # Session auto-commits on exit -> portfolio superseded
-        p_new = portfolio_root.portfolio
-        assert p_new is not None and p_new is not p1
-        assert p_new is p1.superseding
-        # Membership only; set holds ledgers
-        assert ledg1 in p_new.ledgers and ledg2 in p_new.ledgers
-        # Retrieve via portfolio __getitem__ using Instrument or Uid
-        assert p_new[inst1] is ledg1
-        assert p_new[inst2] is ledg2
+        updated_record = portfolio.record
+        assert updated_record is not None and updated_record is not initial_record
+        assert updated_record is initial_record.superseding
+        assert updated_record is portfolio_root.portfolio.record
+        # Membership only; set holds ledger entities
+        assert ledg1 in portfolio.ledgers and ledg2 in portfolio.ledgers
+        # Retrieve via portfolio __getitem__ using Instrument instances
+        assert portfolio[inst1] is ledg1
+        assert portfolio[inst2] is ledg2
 
     def test_add_and_remove_ledger_abort(self, portfolio_root: PortfolioRoot, session_manager):
-        p1 = portfolio_root.portfolio
+        portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
+        initial_record = portfolio.record
+
         with session_manager(actor="tester", reason="setup-ledger") as s:
             inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
-            ledg = Ledger(instrument_uid=inst.uid)
+            ledger = Ledger(instrument=inst)
 
-            ledgers_set = p1.journal.ledgers
-            ledgers_set.add(ledg)
-            assert ledg in ledgers_set
-            assert p1.dirty
+            ledgers_set = portfolio.journal.ledgers
+            ledgers_set.add(ledger)
+            assert ledger in ledgers_set
+            assert portfolio.record.dirty
+
             s.abort()  # abort edits
-
             assert not s.dirty
-            # Still inside context, but edits cleared
-            assert ledg not in p1.ledgers
+            assert ledger not in portfolio.ledgers
 
-        # After context, portfolio unchanged
-        assert ledg not in portfolio_root.portfolio.ledgers
+        assert portfolio.record is initial_record
+        assert ledger not in portfolio.ledgers
 
     def test_remove_existing_ledger_commit(self, portfolio_root: PortfolioRoot, session_manager):
-        # Seed a ledger through update (no session needed for initial construction)
-        p1 = portfolio_root.portfolio
+        portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
+        initial_record = portfolio.record
+
         with session_manager(actor="tester", reason="setup-ledger"):
             inst = Instrument(ticker="ORCL", currency=Currency("USD"))
-            ledg = Ledger(instrument_uid=inst.uid)
-            p1.journal.ledgers.add(ledg)
+            ledger = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(ledger)
+            ledger_uid = ledger.uid
 
-        p2 = portfolio_root.portfolio
-        assert p2 is not p1
-        assert p2 is p1.superseding
-        assert ledg in p2.ledgers
+        ledger = Ledger.by_uid(ledger_uid)
+        second_record = portfolio.record
+        assert second_record is not initial_record
+        assert second_record is initial_record.superseding
+        assert ledger in portfolio.ledgers
 
-        # Remove the ledger inside a session and commit
         with session_manager(actor="tester", reason="remove-ledger"):
-            p2.journal.ledgers.discard(ledg)
+            portfolio.journal.ledgers.discard(ledger)
 
-        p3 = portfolio_root.portfolio
-        assert p3 is not p2
-        assert p3 is p2.superseding
-        assert p3 is p1.superseding
-        assert ledg not in p3.ledgers
-        assert p3 is not None and ledg not in p3.ledgers
+        final_record = portfolio.record
+        assert final_record is not second_record
+        assert final_record is second_record.superseding
+        assert ledger.deleted is True
+        assert ledger.record_or_none is None
+        assert ledger not in portfolio.ledgers
 
     def test_add_transactions_commit_and_ordering(self, portfolio_root: PortfolioRoot, session_manager):
-        p1 = portfolio_root.portfolio
+        portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
         with session_manager(actor="tester", reason="setup-ledger"):
             inst = Instrument(ticker="TSLA", currency=Currency("USD"))
-            ledg = Ledger(instrument_uid=inst.uid)
-            p1.journal.ledgers.add(ledg)
+            ledger = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(ledger)
+            ledger_uid = ledger.uid
 
-        p2 = portfolio_root.portfolio
+        ledger = Ledger.by_uid(ledger_uid)
+        second_record = portfolio.record
+
         with session_manager(actor="tester", reason="tx-add-reorder") as s:
-            # Create three txns
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 1),
@@ -135,33 +145,29 @@ class TestPortfolioSessions:
                 consideration=Decimal(630),
             )
 
-            # Access ledger transactions via the journal (mutable ordered set view)
-            assert ledg.in_session
-            # Entities expose frozen sets; journal exposes mutable proxies
-            assert isinstance(ledg.transaction_uids, AbstractSet) and not isinstance(ledg.transaction_uids, MutableSet)
-            tx_set = ledg.journal.transactions
+            assert isinstance(ledger.transactions, AbstractSet) and not isinstance(ledger.transactions, MutableSet)
+            tx_set = ledger.journal.transactions
             assert len(tx_set) == 0
-            # Add transactions (order determined by date automatically)
+
             tx_set.add(t2)
             tx_set.add(t3)
             tx_set.add(t1)
-            # Ordering should be by date ascending -> t1, t2, t3
+
             assert len(tx_set) == 3
             assert list(tx_set) == [t1, t2, t3]
-            assert s.dirty and ledg.dirty and p2.dirty
+            assert s.dirty and ledger.record.dirty and portfolio.record.dirty
 
-        # After auto-commit, get superseding portfolio & ledger
-        p3 = portfolio_root.portfolio
-        assert p3 is not None
-        assert p3 is not p2
-        assert p3 is p2.superseding
-        new_ledger = p3[ledg.uid]
-        assert new_ledger is not ledg
-        # Persisted ordering by date
-        assert list(new_ledger.transactions) == [t1, t2, t3]
+        third_record = portfolio.record
+        assert third_record is not None
+        assert third_record is not second_record
+        assert third_record is second_record.superseding
+        assert third_record is portfolio_root.portfolio.record
+
+        ledger = Ledger.by_uid(ledger_uid)
+        assert list(ledger.transactions) == [t1, t2, t3]
 
     def test_remove_transaction_abort(self, portfolio_root: PortfolioRoot, session_manager):
-        p_setup = portfolio_root.portfolio
+        portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
         with session_manager(actor="tester", reason="setup-ledger"):
             inst = Instrument(ticker="NVDA", currency=Currency("USD"))
             t1 = Transaction(
@@ -176,29 +182,33 @@ class TestPortfolioSessions:
                 quantity=Decimal(3),
                 consideration=Decimal(1500),
             )
-            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
-            p_setup.journal.ledgers.add(ledg)
+            ledger = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(ledger)
+            journal_tx = ledger.journal.transactions
+            journal_tx.add(t1)
+            journal_tx.add(t2)
+            ledger_uid = ledger.uid
 
-        # After commit, retrieve updated portfolio
-        p2 = portfolio_root.portfolio
+        ledger = Ledger.by_uid(ledger_uid)
+        second_record = portfolio.record
+        assert ledger in portfolio.ledgers
+        assert list(second_record[ledger.uid].transactions) == [t1, t2]
 
         with session_manager(actor="tester", reason="tx-remove-abort") as s:
-            tx_set = ledg.journal.transactions
-            # Date ordering t1 (Feb 1) then t2 (Feb 2)
+            tx_set = ledger.journal.transactions
             assert list(tx_set) == [t1, t2]
             tx_set.discard(t1)
             assert list(tx_set) == [t2]
             assert s.dirty
             s.abort()
             assert not s.dirty
-            # Reverted view inside session
-            assert list(ledg.transactions) == [t1, t2]
+            assert [tx.uid for tx in ledger.transactions] == [t1.uid, t2.uid]
 
-        # After abort session exit, no change
-        # Retrieve original ledger via indexing
-        assert list(p2[ledg.uid].transactions) == [t1, t2]
+        ledger = Ledger.by_uid(ledger_uid)
+        assert list(second_record[ledger.uid].transactions) == [t1, t2]
 
     def test_reorder_transactions_commit(self, portfolio_root: PortfolioRoot, session_manager):
+        portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
         with session_manager(actor="tester", reason="setup-ledger"):
             inst = Instrument(ticker="IBM", currency=Currency("USD"))
             t1 = Transaction(
@@ -219,24 +229,25 @@ class TestPortfolioSessions:
                 quantity=Decimal(3),
                 consideration=Decimal(330),
             )
-            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid, t3.uid})
-            p_setup = portfolio_root.portfolio
-            p_setup.journal.ledgers.add(ledg)
+            ledger = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(ledger)
+            seq = ledger.journal.transactions
+            seq.add(t1)
+            seq.add(t2)
+            seq.add(t3)
+            ledger_uid = ledger.uid
 
-        # After commit, retrieve updated portfolio
-        p2 = portfolio_root.portfolio
-        assert portfolio_root.portfolio is p2
+        ledger = Ledger.by_uid(ledger_uid)
 
         with session_manager(actor="tester", reason="ordering-commit"):
-            seq = ledg.journal.transactions
-            # Initial ordering should be by date: t1, t2, t3
+            seq = ledger.journal.transactions
             assert list(seq) == [t1, t2, t3]
-            # Removing and re-adding should preserve date ordering
             seq.discard(t2)
             assert list(seq) == [t1, t3]
             seq.add(t2)
             assert list(seq) == [t1, t2, t3]
 
-        p3 = p2.superseding
-        new_ledger = p3[ledg.uid]
-        assert list(new_ledger.transactions) == [t1, t2, t3]
+        updated_portfolio_record = portfolio.record
+        new_ledger_record = updated_portfolio_record[ledger.uid]
+        ledger = Ledger.by_uid(new_ledger_record.uid)
+        assert list(ledger.transactions) == [t1, t2, t3]

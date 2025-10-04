@@ -8,11 +8,11 @@ from decimal import Decimal
 
 from pydantic import Field
 
-from ..entity import EntityFieldsBase
+from ..entity import EntitySchemaBase
 from .transaction_type import TransactionType
 
 
-class TransactionFields(EntityFieldsBase, metaclass=ABCMeta):
+class TransactionSchema(EntitySchemaBase, metaclass=ABCMeta):
     # MARK: Fields
     # fmt: off
     type           : TransactionType = Field(description="The type of transaction.")

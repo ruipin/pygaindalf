@@ -3,8 +3,10 @@
 
 import datetime as dt
 
+from abc import ABCMeta
 from decimal import Decimal
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,9 +14,11 @@ from pydantic import Field
 
 from app.portfolio.collections.uid_proxy import UidProxyMutableSequence
 from app.portfolio.collections.uid_proxy.sequence import UidProxySequence
-from app.portfolio.models.entity import IncrementingUidEntity
+from app.portfolio.journal.journal import Journal
+from app.portfolio.models.entity import Entity, EntityImpl, EntityRecord, EntitySchemaBase, IncrementingUidMixin
 from app.portfolio.models.transaction import Transaction, TransactionType
 from app.portfolio.util.uid import Uid
+from app.util.helpers.empty_class import empty_class
 
 
 # Proxy specialization ------------------------------------------------------
@@ -26,9 +30,43 @@ class _UidProxyFrozenTransactionSequence(UidProxySequence[Transaction]):
     pass
 
 
-class Holder(IncrementingUidEntity):
+class HolderSchema(EntitySchemaBase, metaclass=ABCMeta):
     transaction_uids: list[Uid] = Field(default_factory=list)
 
+
+class HolderImpl(
+    EntityImpl,
+    HolderSchema if TYPE_CHECKING else empty_class(),
+    metaclass=ABCMeta,
+):
+    pass
+
+
+class HolderJournal(
+    HolderImpl,
+    Journal,
+    init=False,
+):
+    pass
+
+
+class HolderRecord(
+    HolderImpl,
+    HolderSchema if not TYPE_CHECKING else empty_class(),
+    EntityRecord[HolderJournal],
+    init=False,
+    unsafe_hash=True,
+):
+    pass
+
+
+class Holder(
+    HolderImpl if TYPE_CHECKING else empty_class(),
+    IncrementingUidMixin,
+    Entity[HolderRecord, HolderJournal],
+    init=False,
+    unsafe_hash=True,
+):
     @cached_property
     def transactions(self):
         return _UidProxyTransactionSequence(instance=self, field="transaction_uids")
@@ -36,6 +74,9 @@ class Holder(IncrementingUidEntity):
     @cached_property
     def transactions_frozen(self):
         return _UidProxyFrozenTransactionSequence(instance=self, field="transaction_uids")
+
+
+HolderRecord.register_entity_class(Holder)
 
 
 @pytest.mark.portfolio_collections

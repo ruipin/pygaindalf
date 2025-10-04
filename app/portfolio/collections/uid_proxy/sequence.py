@@ -3,14 +3,13 @@
 
 from collections.abc import MutableSequence, Sequence
 
-from ...models.entity import Entity
 from ...util.uid import Uid
 from ..proxy import ProxyMutableSequence, ProxySequence
-from .collection import UidProxyCollection, UidProxyMutableCollection
+from .collection import T_ProxyBase, UidProxyCollection, UidProxyMutableCollection
 
 
 class UidProxySequence[
-    T: Entity,
+    T: T_ProxyBase,
 ](
     UidProxyCollection[T, Sequence[Uid]],
     ProxySequence[Uid, T],
@@ -19,7 +18,7 @@ class UidProxySequence[
 
 
 class UidProxyMutableSequence[
-    T: Entity,
+    T: T_ProxyBase,
 ](
     UidProxyMutableCollection[T, Sequence[Uid], MutableSequence[Uid]],
     ProxyMutableSequence[Uid, T],

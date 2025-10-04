@@ -9,7 +9,7 @@ from typing import override
 from pydantic import Field, field_validator
 
 from ..helpers.weakref import WeakRef
-from ..mixins import HierarchicalMixinMinimal, HierarchicalProtocol, NamedProtocol
+from ..mixins import HierarchicalProtocol, NamedProtocol
 from .hierarchical_root import HierarchicalRootModel
 
 
@@ -53,11 +53,3 @@ class HierarchicalModel(HierarchicalRootModel):
     @instance_parent.setter
     def instance_parent(self, new_parent: HierarchicalProtocol | NamedProtocol | None) -> None:
         self.instance_parent_weakref = weakref.ref(new_parent) if new_parent is not None else None
-
-    @override
-    def __str__(self) -> str:
-        return super(HierarchicalMixinMinimal, self).__str__()
-
-    @override
-    def __repr__(self) -> str:
-        return super(HierarchicalMixinMinimal, self).__repr__()

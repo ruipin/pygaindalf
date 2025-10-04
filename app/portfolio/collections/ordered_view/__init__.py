@@ -3,8 +3,8 @@
 
 
 from .collection import OrderedViewCollection
-from .frozen_set import OrderedViewSet, OrderedViewUidSet
-from .mutable_set import OrderedViewMutableSet, OrderedViewUidMutableSet
+from .frozen_set import OrderedViewSet
+from .mutable_set import OrderedViewMutableSet
 from .protocols import HasJournalledTypeCollectionProtocol, SortKeyProtocol
 
 
@@ -13,7 +13,5 @@ __all__ = [
     "OrderedViewCollection",
     "OrderedViewMutableSet",
     "OrderedViewSet",
-    "OrderedViewUidMutableSet",
-    "OrderedViewUidSet",
     "SortKeyProtocol",
 ]

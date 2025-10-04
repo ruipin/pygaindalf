@@ -10,6 +10,7 @@ from typing import Any, override
 
 from pydantic_core import CoreSchema, core_schema
 
+from ....util.uid import Uid, UidProtocol
 from ..collection import JournalledCollection
 
 
@@ -22,7 +23,7 @@ class JournalledSetEditType(Enum):
 @dataclasses.dataclass(frozen=True, slots=True)
 class JournalledSetEdit[T]:
     type: JournalledSetEditType
-    value: T
+    value: T | Uid
 
     @override
     def __str__(self) -> str:
@@ -38,7 +39,7 @@ class GenericJournalledSet[T: Any, T_Original: AbstractSet, T_Mutable: MutableSe
 ):
     # MARK: Functionality
     def _append_journal(self, type: JournalledSetEditType, value: T) -> None:  # noqa: A002
-        self._journal.append(JournalledSetEdit(type=type, value=value))
+        self._journal.append(JournalledSetEdit(type=type, value=value.uid if isinstance(value, UidProtocol) else value))
         self._on_edit()
 
     @override

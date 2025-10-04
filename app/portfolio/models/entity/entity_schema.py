@@ -6,30 +6,41 @@ from abc import ABCMeta
 from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, dataclass_transform
 
-from pydantic import Field
+from pydantic import Field, PositiveInt
 
 from ...util.uid import Uid
 
 
 @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
-class EntityFieldsBase:
+class EntitySchemaBase:
     pass
 
 
 # MARK: Fields
-class EntityFields[T_Uid_Set: AbstractSet[Uid]](EntityFieldsBase, metaclass=ABCMeta):
+class EntitySchema[T_Uid_Set: AbstractSet[Uid]](EntitySchemaBase, metaclass=ABCMeta):
+    # TODO: These should all be marked Final, but pydantic is broken here, see https://github.com/pydantic/pydantic/issues/10474#issuecomment-2478666651
+
     # MARK: Basic Attributes
     uid: Uid = Field(
-        default_factory=lambda: None,
+        default_factory=(lambda: None) if TYPE_CHECKING else None,
         validate_default=True,
         json_schema_extra={"readOnly": True},
         description="Unique identifier for the entity.",
+    )
+
+    version: PositiveInt = Field(
+        default_factory=lambda: None,
+        validate_default=True,
+        ge=1,
+        json_schema_extra={"readOnly": True},
+        description="The version of this entity. Incremented when the entity is cloned as part of an update action.",
     )
 
     @property
     def instance_name(self) -> str: ...
 
     # MARK: Uid Sets
+    # TODO: Fix annotations and dependencies
     if TYPE_CHECKING:
         annotation_uids: T_Uid_Set = Field(default=...)
         extra_dependency_uids: T_Uid_Set = Field(default=...)

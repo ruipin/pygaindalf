@@ -20,7 +20,6 @@ from app.util.callguard import (
     callguard_callable,
     callguard_class,
     callguard_property,
-    callguarded_model_mixin,
     no_callguard,
 )
 from test.util.helpers.lib.test_callguard_lib import TestDoubleUnderscore
@@ -382,32 +381,39 @@ class TestCallguardHandler:
         with pytest.raises(PermissionError):
             _ = obj._prop
         assert HandlerPropertySample.handler_logs[-1] == ("_prop", False)
+        HandlerPropertySample.handler_logs.clear()
 
         # External direct property set -> blocked by handler
         with pytest.raises(PermissionError):
             obj._prop = 100
         assert HandlerPropertySample.handler_logs[-1] == ("_prop.setter", False)
+        HandlerPropertySample.handler_logs.clear()
 
         # External direct property delete -> blocked by handler
         with pytest.raises(PermissionError):
             del obj._prop
         assert HandlerPropertySample.handler_logs[-1] == ("_prop.deleter", False)
+        HandlerPropertySample.handler_logs.clear()
 
         # Internal access via method -> allowed
         assert obj.access() == 42
         assert HandlerPropertySample.handler_logs[-1] == ("_prop", True)
+        HandlerPropertySample.handler_logs.clear()
 
         # Internal setter via method -> allowed
         assert obj.mutate(99) == 99
         assert HandlerPropertySample.handler_logs[-1] == ("_prop.setter", True)
+        HandlerPropertySample.handler_logs.clear()
 
         # Internal deleter via method -> allowed
         assert obj.remove() == -1
         assert HandlerPropertySample.handler_logs[-1] == ("_prop.deleter", True)
+        HandlerPropertySample.handler_logs.clear()
 
         # Internal access after deleter -> allowed and reflects sentinel value
         assert obj.access() == -1
         assert HandlerPropertySample.handler_logs[-1] == ("_prop", True)
+        HandlerPropertySample.handler_logs.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +637,7 @@ def _decorator_factory(**options: Any):
     return _decorator
 
 
-@callguard_class(allow_same_module=False, decorator_factory=_decorator_factory, decorate_private_methods=True)
+@callguard_class(allow_same_module=False, decorator_factory=_decorator_factory, decorate_private_methods=True, wrap_getattribute=False, wrap_setattr=False)
 class FactorySample:
     def _secret(self) -> str:
         return "ok"
@@ -937,10 +943,8 @@ class TestCallguardDecorateSkipOptions:
 # ---------------------------------------------------------------------------
 # MARK: Pydantic model attributes
 # ---------------------------------------------------------------------------
-CallguardedModelMixin = callguarded_model_mixin(allow_same_module=False)
-
-
-class ModelSample(CallguardedModelMixin, pydantic.BaseModel):
+@callguard_class(allow_same_module=False)
+class ModelSample(pydantic.BaseModel):
     test: int = pydantic.Field(default=0)
     _priv: int = pydantic.PrivateAttr(default=1)
     __dpriv: int = pydantic.PrivateAttr(default=2)
@@ -948,9 +952,20 @@ class ModelSample(CallguardedModelMixin, pydantic.BaseModel):
     def public(self) -> str:
         return "public ok"
 
+    def access_privates(self) -> tuple[int, int]:
+        return (self._priv, self.__dpriv)
+
+    def mutate_privates(self, priv: int, dpriv: int) -> tuple[int, int]:
+        self._priv = priv
+        self.__dpriv = dpriv
+        return (self._priv, self.__dpriv)
+
 
 class ModelSample2(ModelSample):
-    __callguard_class_options__ = CallguardClassOptions["ModelSample2"](guard_public_methods=True)
+    __callguard_class_options__ = CallguardClassOptions["ModelSample2"](
+        guard_public_methods=True,
+        allow_same_module=False,
+    )
 
     def public2(self) -> str:
         return "public2 ok"
@@ -963,11 +978,11 @@ class TestCallguardPydanticAttributes:
         t = ModelSample()
 
         assert t.test == 0
+        assert t.access_privates() == (1, 2)
         with pytest.raises(CallguardError, match=r"Unauthorized call to [a-zA-Z._]+\._priv"):
             _ = t._priv
         with pytest.raises(CallguardError, match=r"Unauthorized call to [a-zA-Z._]+\._ModelSample__dpriv"):
             _ = t._ModelSample__dpriv  # pyright: ignore[reportAttributeAccessIssue]
-        assert t.public() == "public ok"
 
         t.test = 10
         assert t.test == 10
@@ -976,10 +991,16 @@ class TestCallguardPydanticAttributes:
         with pytest.raises(CallguardError, match=r"Unauthorized call to [a-zA-Z._]+\._ModelSample__dpriv"):
             t._ModelSample__dpriv = 12  # pyright: ignore[reportAttributeAccessIssue]
 
+        updated = t.mutate_privates(10, 12)
+        assert updated == (10, 12)
+        assert t.access_privates() == (10, 12)
+        assert t.public() == "public ok"
+
     def test_pydantic_redefine_options(self):
         t2 = ModelSample2()
 
         assert t2.test == 0
+        assert t2.access_privates() == (1, 2)
         with pytest.raises(CallguardError, match=r"Unauthorized call to [a-zA-Z._]+\._priv"):
             _ = t2._priv
         with pytest.raises(CallguardError, match=r"Unauthorized call to [a-zA-Z._]+\._ModelSample__dpriv"):
@@ -988,3 +1009,177 @@ class TestCallguardPydanticAttributes:
 
         with pytest.raises(CallguardError, match=r"Unauthorized call to [a-zA-Z._]+\.public2"):
             t2.public2()
+
+        res = t2.mutate_privates(20, 21)
+        assert res == (20, 21)
+        assert t2.access_privates() == (20, 21)
+
+
+# ---------------------------------------------------------------------------
+# MARK: Custom attribute wrappers
+# ---------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.callguard
+class TestCallguardCustomAttributeAccess:
+    def test_callguard_with_custom_getattribute(self):
+        @callguard_class(allow_same_module=False)
+        class CustomGetattribute:
+            events: list[str]
+
+            def __init__(self) -> None:
+                object.__setattr__(self, "events", [])
+
+            @override
+            def __getattribute__(self, name: str) -> Any:
+                if name in {
+                    "events",
+                    "__class__",
+                    "__dict__",
+                    "__callguarded_getattribute__",
+                    "__callguarded_setattr__",
+                    "__getattribute__",
+                    "__setattr__",
+                }:
+                    return object.__getattribute__(self, name)
+
+                events = object.__getattribute__(self, "events")
+                events.append(f"get:{name}")
+                return object.__getattribute__(self, name)
+
+            def _hidden(self) -> str:
+                events = object.__getattribute__(self, "events")
+                events.append("call:_hidden")
+                return "secret"
+
+            def public(self) -> str:
+                return self._hidden()
+
+        obj = CustomGetattribute()
+        with pytest.raises(CallguardError):
+            obj._hidden()
+
+        assert "get:_hidden" in obj.events
+        assert obj.events.count("call:_hidden") == 0
+
+        obj.events.clear()
+        assert obj.public() == "secret"
+        assert "get:_hidden" in obj.events
+        assert obj.events.count("call:_hidden") == 1
+
+    def test_callguard_with_custom_setattr(self):
+        @callguard_class(allow_same_module=False)
+        class CustomSetattr:
+            events: list[str]
+            state: str
+
+            def __init__(self) -> None:
+                object.__setattr__(self, "events", [])
+                self.state = "init"
+
+            @override
+            def __setattr__(self, name: str, value: Any) -> None:
+                if name == "events":
+                    object.__setattr__(self, name, value)
+                    return
+
+                events = object.__getattribute__(self, "events")
+                events.append(f"set:{name}={value}")
+                object.__setattr__(self, name, value)
+
+            def _hidden(self) -> str:
+                events = object.__getattribute__(self, "events")
+                events.append("call:_hidden")
+                return "secret"
+
+            def update_state(self, value: str) -> str:
+                self.state = value
+                return self.state
+
+            def public(self) -> str:
+                return self._hidden()
+
+        obj = CustomSetattr()
+        assert any(event == "set:state=init" for event in obj.events)
+
+        with pytest.raises(CallguardError):
+            obj._hidden()
+
+        assert obj.events.count("call:_hidden") == 0
+
+        obj.events.clear()
+        assert obj.update_state("mutated") == "mutated"
+        assert obj.events == ["set:state=mutated"]
+
+        obj.events.clear()
+        assert obj.public() == "secret"
+        assert obj.events.count("call:_hidden") == 1
+
+    def test_callguard_with_inherited_getattribute(self):
+        class BaseGetattribute:
+            events: list[str]
+
+            def __init__(self) -> None:
+                object.__setattr__(self, "events", [])
+
+            @override
+            def __getattribute__(self, name: str) -> Any:
+                if name in {
+                    "events",
+                    "__class__",
+                    "__dict__",
+                    "__callguarded_getattribute__",
+                    "__callguarded_setattr__",
+                    "__getattribute__",
+                    "__setattr__",
+                }:
+                    return object.__getattribute__(self, name)
+
+                events = object.__getattribute__(self, "events")
+                events.append(f"base:{name}")
+                return object.__getattribute__(self, name)
+
+        @callguard_class(allow_same_module=False)
+        class DerivedGetattribute(BaseGetattribute):
+            def __init__(self) -> None:
+                super().__init__()
+
+            @override
+            def __getattribute__(self, name: str) -> Any:
+                if name in {
+                    "events",
+                    "__class__",
+                    "__dict__",
+                    "__callguarded_getattribute__",
+                    "__callguarded_setattr__",
+                    "__getattribute__",
+                    "__setattr__",
+                }:
+                    return super().__getattribute__(name)
+
+                events = super().__getattribute__("events")
+                events.append(f"derived:{name}")
+                return super().__getattribute__(name)
+
+            def _hidden(self) -> str:
+                events = super().__getattribute__("events")
+                events.append("call:_hidden")
+                return "secret"
+
+            def public(self) -> str:
+                return self._hidden()
+
+        obj = DerivedGetattribute()
+        obj.events.clear()
+
+        with pytest.raises(CallguardError):
+            obj._hidden()
+
+        assert "derived:_hidden" in obj.events
+        assert "base:_hidden" in obj.events
+        assert obj.events.count("call:_hidden") == 0
+
+        obj.events.clear()
+        assert obj.public() == "secret"
+        assert obj.events.count("derived:_hidden") >= 1
+        assert obj.events.count("base:_hidden") >= 1
+        assert obj.events.count("call:_hidden") == 1

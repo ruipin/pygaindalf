@@ -115,7 +115,7 @@ type GenericAlias = types.GenericAlias | typing._GenericAlias  # noqa: SLF001 # 
 # Identifiers accepted when referring to a generic parameter definition.
 type ParamType = str | typing.TypeVar | ParameterInfo | int
 # Values that may be used as arguments to generic parameter.
-type ArgType = type | GenericAlias | typing.TypeVar | typing.ForwardRef
+type ArgType = type | GenericAlias | typing.TypeVar | typing.TypeAliasType | typing.ForwardRef
 # Values that may be used as arguments to generic parameters, excluding ForwardRefs.
 type NonForwardArgType = type | GenericAlias | typing.TypeVar
 # Values that may be used as concrete (i.e. non-TypeVar / non-ForwardRef) arguments to generic parameters.
@@ -141,30 +141,44 @@ class ParameterInfo(typing.NamedTuple):
     #: Zero-based position of the parameter within the generic declaration.
     position: int
     #: The declared ``TypeVar`` for the parameter, if known.
-    value: typing.TypeVar | None
+    raw_value: typing.TypeVar | typing.TypeAliasType | None
     #: The originating generic class or alias where the parameter was declared.
     origin: type | GenericAlias
 
     @property
     def known(self) -> bool:
         """Return ``True`` if this parameter was declared on the originating class."""
-        return self.value is not None
+        return self.raw_value is not None
 
     @property
     def name(self) -> str:
         """Return the parameter name derived from the underlying ``TypeVar``."""
-        value = self.value
+        if not self.known:
+            return str(self.position)
+
+        value = self.raw_value
         return str(self.position) if value is None else value.__name__
 
     @property
+    def value(self) -> ArgType:
+        """Return the evaluated value currently bound to the parameter."""
+        if (evaluate_value := getattr(self.raw_value, "evaluate_value", None)) is not None:
+            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+        else:
+            return self.raw_value
+
+    @property
     def bound(self) -> BoundType:
-        """Return the evaluated bound of the underlying ``TypeVar`` if present."""
+        """Return the evaluated bound of the underlying ``TypeVar`` or ``TypeAlias`` if present."""
         if (evaluate_bound := getattr(self.value, "evaluate_bound", None)) is None:
             return None
-        return annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        arg = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        if (evaluate_value := getattr(arg, "evaluate_value", None)) is not None:
+            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+        return arg
 
     @classmethod
-    def narrow(cls, target_cls: type | GenericAlias, param: ParameterInfo | str | typing.TypeVar | int) -> ParameterInfo:
+    def narrow(cls, target_cls: ConcreteArgType, param: ParamType) -> ParameterInfo:
         """Resolve arbitrary parameter identifiers into a concrete ``ParameterInfo``.
 
         Raises:
@@ -199,7 +213,7 @@ class ArgumentInfo(typing.NamedTuple):
     #: The parameter definition associated with this bound argument.
     parameter: ParameterInfo
     #: The raw argument currently bound to the parameter.
-    value: ArgType
+    raw_value: ArgType
 
     @property
     def name(self) -> str:
@@ -218,14 +232,22 @@ class ArgumentInfo(typing.NamedTuple):
         return not isinstance(self.value, typing.TypeVar)
 
     @property
+    def value(self) -> ArgType:
+        """Return the evaluated value currently bound to the parameter."""
+        if (evaluate_value := getattr(self.raw_value, "evaluate_value", None)) is not None:
+            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+        else:
+            return self.raw_value
+
+    @property
     def bound(self) -> BoundType:
         """Return the evaluated bound for the underlying ``TypeVar`` argument."""
-        if not isinstance(self.value, typing.TypeVar):
-            msg = f"Only TypeVar arguments have bounds, got {type(self.value).__name__}"
-            raise TypeError(msg)
         if (evaluate_bound := getattr(self.value, "evaluate_bound", None)) is None:
             return None
-        return annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        arg = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        if (evaluate_value := getattr(arg, "evaluate_value", None)) is not None:
+            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+        return arg
 
     @property
     def value_or_bound(self) -> ArgType | BoundType:
@@ -371,13 +393,13 @@ def iter_parameter_infos(cls: type | GenericAlias, *, fail: bool = True) -> typi
 
     params = _get_parameters(generic)
     for pos, param in enumerate(params):
-        if not isinstance(param, typing.TypeVar):
-            msg = f"Expected all generic arguments to be TypeVars, got {param} at position {pos} in {cls.__name__}"
+        if not isinstance(param, (typing.TypeVar, typing.TypeAliasType)):
+            msg = f"Expected all generic arguments to be TypeVars or TypeAliasTypes, got {param} at position {pos} in {cls.__name__}"
             raise GenericsError(msg)
 
         yield ParameterInfo(
             position=pos,
-            value=param,
+            raw_value=param,
             origin=cls,
         )
 
@@ -424,7 +446,7 @@ def get_parameter_info_or_none(
     if default_to_position and pos is not None:
         return ParameterInfo(
             position=pos,
-            value=None,
+            raw_value=None,
             origin=cls,
         )
 
@@ -507,7 +529,7 @@ def get_argument_info_or_none(
 
     return ArgumentInfo(
         parameter=param,
-        value=arg,
+        raw_value=arg,
     )
 
 
@@ -575,6 +597,7 @@ def get_concrete_argument(cls: GenericAlias, param: ParamType) -> ConcreteArgTyp
     param = ParameterInfo.narrow(cls, param)
 
     arg = get_argument(cls, param)
+
     if isinstance(arg, typing.TypeVar):
         msg = f"Could not resolve {cls.__name__}.{param.name} type argument to a concrete type"
         raise GenericsError(msg)
@@ -781,6 +804,10 @@ def get_parent_argument_or_none(
     result = arg.value_or_bound
 
     if not isinstance(bound, bool):
+        if isinstance(result, typing.ForwardRef):
+            warnings.warn(f"ForwardRef resolution not yet implemented, cannot sanity check {result} arguments against TypeVar bounds", stacklevel=2)
+            return result
+
         matched = type_hints.match_type_hint(result, bound)
         if matched is None:
             msg = f"{cls.__name__}.{param} type argument {result} is not a subclass of {bound}"

@@ -44,7 +44,7 @@ class ConfigFilePath:
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
-        assert source is cls
+        assert source is cls, f"Expected source to be {cls.__name__}, got {source.__name__} instead."
         return core_schema.no_info_after_validator_function(
             function=cls._pydantic_validate,
             schema=core_schema.union_schema([core_schema.str_schema(), core_schema.is_instance_schema(cls)]),

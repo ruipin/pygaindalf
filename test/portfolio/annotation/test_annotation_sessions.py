@@ -5,11 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from .annotation_types import (
-    HostEntity,
-    SampleIncrementingAnnotation,
-    SampleUniqueAnnotation,
-)
+from .annotation_types import HostEntity, SampleIncrementingAnnotation, SampleUniqueAnnotation
 
 
 if TYPE_CHECKING:
@@ -34,8 +30,8 @@ class TestAnnotationSessions:
             assert s.dirty is True
             assert host.dirty is True
 
-        # After commit, annotations exist
-        host = host.superseding
+        # After commit, annotations exist on the same entity instance
+        assert host.dirty is False
         assert len(host.annotation_uids) == 2
         assert a1.uid in host.annotation_uids and a2.uid in host.annotation_uids
         assert a1.uid in host.children_uids and a2.uid in host.children_uids
@@ -54,7 +50,6 @@ class TestAnnotationSessions:
         assert a2.deleted is False
 
         # Exactly one annotation remains
-        host = host.superseding
         anns = list(host.get_annotations(SampleIncrementingAnnotation))
         assert len(anns) == 1
 
@@ -62,12 +57,12 @@ class TestAnnotationSessions:
         with session_manager(actor="tester", reason="create-host"):
             host = entity_root.root = HostEntity()
 
-        # Create unique annotation; parent remains clean
+        # Create unique annotation; parent is tracked as dirty during the session
         with session_manager(actor="tester", reason="unique-add") as s:
             u = SampleUniqueAnnotation.create(host, payload=5)
             assert host.dirty is True
             assert s.dirty is True
-        host = host.superseding
+        assert host.dirty is False
 
         # Creating another unique annotation for same parent should fail
         with session_manager(actor="tester", reason="unique-dup"), pytest.raises(ValueError, match=r"Entity with UID .* already exists."):
@@ -77,6 +72,5 @@ class TestAnnotationSessions:
         with session_manager(actor="tester", reason="unique-recreate") as s:
             u.delete()
             s.commit()
-            host = host.superseding
             u2 = SampleUniqueAnnotation.create(host, payload=7)
             assert u2.payload == 7

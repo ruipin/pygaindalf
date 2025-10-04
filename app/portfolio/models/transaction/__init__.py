@@ -2,12 +2,12 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from .transaction import Transaction
-from .transaction_proxy import TransactionProxy
+from .transaction_record import TransactionRecord
 from .transaction_type import TransactionType
 
 
 __all__ = [
     "Transaction",
-    "TransactionProxy",
+    "TransactionRecord",
     "TransactionType",
 ]

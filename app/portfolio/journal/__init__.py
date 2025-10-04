@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from .entity_journal import EntityJournal
+from .journal import Journal
 from .session import Session
 from .session_manager import SessionManager
 
 
 __all__ = [
-    "EntityJournal",
+    "Journal",
     "Session",
     "SessionManager",
 ]

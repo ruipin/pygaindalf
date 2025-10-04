@@ -1,18 +1,61 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+from abc import ABCMeta
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 import pytest
 
 from app.portfolio.collections.uid_proxy import UidProxyMutableSet, UidProxySet
-from app.portfolio.models.entity import IncrementingUidEntity
+from app.portfolio.journal.journal import Journal
+from app.portfolio.models.entity import Entity, EntityImpl, EntityRecord, EntitySchemaBase, IncrementingUidMixin
 from app.portfolio.util.uid import Uid
+from app.util.helpers.empty_class import empty_class
 
 
 # Test entities -------------------------------------------------------------
-class Child(IncrementingUidEntity):
+class ChildSchema(EntitySchemaBase, metaclass=ABCMeta):
     pass
+
+
+class ChildImpl(
+    EntityImpl,
+    ChildSchema if TYPE_CHECKING else empty_class(),
+    metaclass=ABCMeta,
+):
+    pass
+
+
+class ChildJournal(
+    ChildImpl,
+    Journal,
+    init=False,
+):
+    pass
+
+
+class ChildRecord(
+    ChildImpl,
+    ChildSchema if not TYPE_CHECKING else empty_class(),
+    EntityRecord[ChildJournal],
+    init=False,
+    unsafe_hash=True,
+):
+    pass
+
+
+class Child(
+    ChildImpl if TYPE_CHECKING else empty_class(),
+    IncrementingUidMixin,
+    Entity[ChildRecord, ChildJournal],
+    init=False,
+    unsafe_hash=True,
+):
+    pass
+
+
+ChildRecord.register_entity_class(Child)
 
 
 class _UidProxyChildSet(UidProxySet[Child]):

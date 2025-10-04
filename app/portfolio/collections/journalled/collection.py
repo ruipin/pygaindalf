@@ -104,7 +104,7 @@ class JournalledCollection[T_Value: Any, T_Original: Collection, T_Mutable: Coll
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
-        assert cls is source
+        assert cls is source, f"Expected cls to be source, got {type(source).__name__} instead."
         schema = cls.get_core_schema(source, handler)
         return core_schema.no_info_plain_validator_function(
             function=cls.coerce,

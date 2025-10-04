@@ -192,7 +192,7 @@ class ABCInfo(typing.NamedTuple):
     def specialized(self) -> bool:
         """Return ``True`` when the collection is specialised with value types."""
         has_value = self.has_value
-        assert not has_value or self.has_key or not self.mutable
+        assert not has_value or self.has_key or not self.mutable, f"Mutable collections must have keys if they have values, got {self}"
         return has_value
 
     @classmethod
@@ -280,12 +280,12 @@ def _validate_get_abc_info_params(
         if namespace is None:
             msg = "If attr is provided, namespace must also be provided."
             raise ValueError(msg)
-        assert isinstance(attr, str)
+        assert isinstance(attr, str), f"Expected attr to be str, got {type(attr).__name__} instead."
     if namespace is not None:
         if attr is None:
             msg = "If namespace is provided, attr must also be provided."
             raise ValueError(msg)
-        assert isinstance(namespace, object)
+        assert isinstance(namespace, object), f"Expected namespace to be object, got {type(namespace).__name__} instead."
 
 
 def _get_lookup_mapping(origin: type[ABCType]) -> ABCLookupInfo | None:

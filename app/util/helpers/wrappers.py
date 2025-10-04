@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+WRAPPERS_HIDE_TRACEBACK = True  # Whether to hide traceback entries from wrappers using __tracebackhide__
+
+
 # MARK: Wrapper Property
 type Wrapped[**P, R] = Callable[P, R]
 type Wrapper[**P, R] = Callable[Concatenate[Wrapped[P, R], P], R]
@@ -28,13 +31,15 @@ class WrapperDecorator[**P, R]:
     def decorate(wrapped: Wrapped[P, R], wrapper: Wrapper[P, R]) -> Wrapped[P, R]:
         return functools.wraps(wrapped)(functools.partial(wrapper, wrapped))
 
+    def call(self, wrapped: Wrapped[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+        return self.wrapper(wrapped, *args, **kwargs)
+
 
 def wrapper[**P, R](wrapper: Wrapper[P, R]) -> WrapperDecorator[P, R]:
     return WrapperDecorator(wrapper)
 
 
 # MARK: Before Wrapper Decorator
-# TODO: If WrapperDecorator starts relying on functools.partial, we should inherit from WrapperDecorator instead
 type BeforeMethod[**P, R] = Callable[Concatenate[Wrapped[P, R], P], None]
 
 
@@ -44,6 +49,7 @@ class BeforeDecorator[**P, R](WrapperDecorator[P, R]):
 
     @staticmethod
     def before_wrapper(before: BeforeMethod[P, R], wrapped: Wrapped[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+        __tracebackhide__ = WRAPPERS_HIDE_TRACEBACK
         before(wrapped, *args, **kwargs)
         return wrapped(*args, **kwargs)
 
@@ -67,6 +73,7 @@ class BeforeAttributeCheckDecorator[T: object, **P, R](BeforeDecorator[Concatena
         super().__init__(before=method)
 
     def before_attribute_check(self, wrapped: Wrapped[Concatenate[T, P], R], /, __p0: T, *args: P.args, **kwargs: P.kwargs) -> None:
+        __tracebackhide__ = WRAPPERS_HIDE_TRACEBACK
         target = __p0  # We use __p0 to make pyright happy above
         attr = self.options.get("attribute")
         desired = self.options.get("desired")
@@ -116,6 +123,7 @@ class AfterDecorator[**P, R](WrapperDecorator[P, R]):
 
     @staticmethod
     def after_wrapper(after: AfterMethod[P, R], wrapped: Wrapped[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+        __tracebackhide__ = WRAPPERS_HIDE_TRACEBACK
         result = wrapped(*args, **kwargs)
         return after(wrapped, result, *args, **kwargs)
 

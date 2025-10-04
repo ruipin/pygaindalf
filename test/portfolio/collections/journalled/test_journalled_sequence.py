@@ -109,7 +109,7 @@ class TestJournalledSequence:
         assert (j1.type, j1.index, j1.value) == (JournalledSequenceEditType.INSERT, 3, 35)
         assert (j2.type, j2.index, j2.value) == (JournalledSequenceEditType.DELITEM, 0, None)
         assert j3.type is JournalledSequenceEditType.SETITEM and isinstance(j3.index, slice)
-        assert j3.value == [300, 350]
+        assert j3.value == (300, 350)
 
         # Final sequence state
         assert list(js) == [21, 300, 350, 40, 50]

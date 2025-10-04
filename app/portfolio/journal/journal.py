@@ -14,7 +14,7 @@ from ...util.callguard import CallguardClassOptions
 from ...util.models import LoggableHierarchicalModel
 from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet
 from ..collections.ordered_view import OrderedViewSet
-from ..models.entity import Entity, EntityBase
+from ..models.entity import Entity, EntityImpl, EntityRecord
 from ..util.superseded import SupersededError, superseded_check
 from ..util.uid import Uid
 
@@ -22,21 +22,22 @@ from ..util.uid import Uid
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
-    from ..collections.uid_proxy import UidProxyMutableSet
+    from ..collections import UidProxyMutableSet
     from ..models.annotation import Annotation
     from .session import Session
 
 
-class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
-    __callguard_class_options__ = CallguardClassOptions["EntityJournal"](
+class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
+    __callguard_class_options__ = CallguardClassOptions["Journal"](
         decorator=superseded_check,
         decorate_public_methods=True,
         decorate_ignore_patterns=(
             "superseded",
+            "_marked_superseded",
             "dirty",
             "deleted",
             "marked_for_deletion",
-            "entity_uid",
+            "uid",
             "mark_superseded",
             "freeze",
             "commit_yield_hierarchy",
@@ -57,54 +58,64 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     # MARK: Subclassing
     # We rely on init=False on subclasses to convince the type checker that fields do not get exposed in the constructor
     # as such we must swallow that parameter here
-    def __init_subclass__(cls, *, init: bool = False) -> None:
-        pass
+    def __init_subclass__(cls, *, init: bool = False, unsafe_hash: bool = False) -> None:
+        super().__init_subclass__()
 
-    # MARK: Entity
-    entity: InstanceOf[Entity] = Field(description="The entity associated with this journal entry.")
+    # MARK: EntityRecord
+    record: InstanceOf[EntityRecord] = Field(description="The entity record associated with this journal entry.")
 
     @property
     @override
     def uid(self) -> Uid:  # pyright: ignore[reportIncompatibleVariableOverride]
-        return self.entity.uid
+        return self.record.uid
 
-    @property
-    def version(self) -> int:
-        return self.entity.version
+    if not TYPE_CHECKING:
+
+        @property
+        def version(self) -> int:
+            return self.record.version
 
     @override
     def __hash__(self) -> int:
-        return hash((type(self).__name__, hash(self.entity)))
+        return hash((type(self).__name__, hash(self.record)))
 
-    @field_validator("entity", mode="before")
+    @field_validator("record", mode="before")
     @classmethod
-    def _validate_entity(cls, entity: Any) -> Entity:
-        if not isinstance(entity, Entity):
-            msg = f"Expected Entity, got {type(entity).__name__}"
+    def _validate_record(cls, record: Any) -> EntityRecord:
+        if not isinstance(record, EntityRecord):
+            msg = f"Expected EntityRecordBase, got {type(record).__name__}"
             raise TypeError(msg)
 
-        if entity.superseded:
-            msg = f"EntityJournal.entity '{entity}' is superseded."
+        if record.superseded:
+            msg = f"EntityJournal.record '{record}' is superseded."
             raise SupersededError(msg)
 
-        return entity
+        return record
+
+    @property
+    def entity_or_none(self) -> Entity | None:
+        return self.record.entity_or_none
+
+    @property
+    def entity(self) -> Entity:
+        return self.record.entity
 
     @override
     def __str__(self) -> str:
-        return f"{type(self).__name__}({self.entity!s})"
+        return f"{type(self).__name__}({self.record!s})"
 
     @override
     def __repr__(self) -> str:
-        return f"<{type(self).__name__}:{self.entity!r}>"
+        return f"<{type(self).__name__}:{self.record!r}>"
 
     @property
     @override
     def instance_name(self) -> str:
-        return f"{type(self).__name__}({self.entity.uid})"
+        return f"{type(self).__name__}({self.record.uid})"
 
     def sort_key(self) -> SupportsRichComparison:
         # Delegate to entity sort key, but we pretend to be the entity for this call
-        return type(self.entity).sort_key(typing_cast("Entity", self))
+        return type(self.record).sort_key(typing_cast("EntityRecord", self))
 
     # MARK: Superseded
     _marked_superseded: bool = PrivateAttr(default=False)
@@ -121,7 +132,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         except (TypeError, AttributeError, KeyError):
             pass
 
-        return self.deleted or self.entity.superseded
+        return self.deleted or self.record.superseded
 
     @property
     def dirty(self) -> bool:
@@ -175,22 +186,22 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
     @staticmethod
     def _is_journal_attribute(name: str) -> bool:
-        return hasattr(EntityJournal, name) or name in EntityJournal.model_fields or name in EntityJournal.model_computed_fields
+        return hasattr(Journal, name) or name in Journal.model_fields or name in Journal.model_computed_fields
 
     def is_computed_field(self, field: str) -> bool:
-        return self.entity.is_computed_field(field)
+        return self.record.is_computed_field(field)
 
     def is_field_alias(self, field: str) -> bool:
-        return self.entity.is_model_field_alias(field)
+        return self.record.is_model_field_alias(field)
 
     def is_model_field(self, field: str) -> bool:
-        return self.entity.is_model_field(field)
+        return self.record.is_model_field(field)
 
     def has_field(self, field: str) -> bool:
         return self.is_model_field(field) or self.is_computed_field(field)
 
     def can_modify(self, field: str) -> bool:
-        info = type(self.entity).model_fields.get(field, None)
+        info = type(self.record).model_fields.get(field, None)
         if info is None:
             return False
 
@@ -207,9 +218,9 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
     def get_original_field(self, field: str) -> Any:
         if not self.has_field(field):
-            msg = f"Entity of type {type(self.entity).__name__} does not have field '{field}'."
+            msg = f"EntityRecord of type {type(self.record).__name__} does not have field '{field}'."
             raise AttributeError(msg)
-        return super(Entity, self.entity).__getattribute__(field)
+        return super(EntityRecord, self.record).__getattribute__(field)
 
     def _wrap_field(self, field: str, original: Any) -> Any:
         if field in self._updates:
@@ -240,15 +251,15 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         return new
 
     def set_field[T](self, field: str, value: T) -> T:
-        field = self.entity.resolve_field_alias(field)
+        field = self.record.resolve_field_alias(field)
 
         has_update = field in self._updates
         if not has_update and not self.has_field(field):
-            msg = f"Entity of type {type(self.entity).__name__} does not have field '{field}'."
+            msg = f"EntityRecord of type {type(self.record).__name__} does not have field '{field}'."
             raise AttributeError(msg)
 
         if not self.can_modify(field):
-            msg = f"Field '{field}' of entity type {type(self.entity).__name__} is read-only."
+            msg = f"Field '{field}' of entity type {type(self.record).__name__} is read-only."
             raise AttributeError(msg)
 
         current = self.get_field(field, wrap=False)
@@ -265,8 +276,8 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
             if has_update:
                 del self._updates[field]
         else:
-            if self.entity.is_protected_field_type(field):
-                msg = f"Field '{field}' of entity type {type(self.entity).__name__} is protected and cannot be modified. Use the collection's methods to modify it instead."
+            if self.record.is_protected_field_type(field):
+                msg = f"Field '{field}' of record type {type(self.record).__name__} is protected and cannot be modified. Use the collection's methods to modify it instead."
                 raise AttributeError(msg)
             self._updates[field] = value
 
@@ -279,7 +290,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
             msg = "Cannot get field from a superseded journal."
             raise SupersededError(msg)
 
-        field = self.entity.resolve_field_alias(field)
+        field = self.record.resolve_field_alias(field)
 
         if field in self._updates:
             return self._updates[field]
@@ -293,8 +304,8 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         def __getattribute__(self, name: str) -> Any:
             # Short-circuit cases
             if (
-                # Short-circuit private and 'Entity' attributes
-                (name.startswith("_") or EntityJournal._is_journal_attribute(name))
+                # Short-circuit private and 'EntityRecord' attributes
+                (name.startswith("_") or Journal._is_journal_attribute(name))
                 or
                 # If this is not a model field
                 (not self.is_model_field(name))
@@ -310,8 +321,8 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     @override
     def __setattr__(self, name: str, value: Any) -> None:
         if (
-            # Short-circuit private and 'Entity' attributes
-            (name.startswith("_") or EntityJournal._is_journal_attribute(name))
+            # Short-circuit private and 'EntityRecord' attributes
+            (name.startswith("_") or Journal._is_journal_attribute(name))
             or
             # If this is not a model field
             (not self.is_model_field(name))
@@ -353,7 +364,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     _dirty_children: MutableSet[Uid] = PrivateAttr(default_factory=set)
     _propagated_dirty: bool = PrivateAttr(default=False)
 
-    def _update_child_dirty_state(self, child: EntityJournal, *, dirty: bool | None = None) -> None:
+    def _update_child_dirty_state(self, child: Journal, *, dirty: bool | None = None) -> None:
         if dirty is None:
             dirty = child.dirty
 
@@ -372,14 +383,8 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
             return
 
         # Propagate to parent journal
-        parent = self.entity.instance_parent
-        if parent is None:
+        if (parent := self.record.record_parent_or_none) is None:
             return
-        if not isinstance(parent, Entity):
-            if parent is self.entity.session_manager.instance_parent:
-                return
-            msg = "EntityJournal can only propagate when the parent is an Entity or the SessionManager parent."
-            raise TypeError(msg)
 
         parent_journal = parent.journal
         parent_journal._update_child_dirty_state(self, dirty=dirty)  # noqa: SLF001
@@ -415,7 +420,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
 
         # Delete all children recursively
         self._propagate_dirty()
-        self.entity.propagate_deletion()
+        self.record.propagate_deletion()
 
     # MARK: Dependent Notifications
     _notified_dependents: bool = PrivateAttr(default=False)
@@ -437,14 +442,14 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         deletion = self._marked_for_deletion
         self.log.debug(t"Notifying dependents of pending {'deletion' if deletion else 'update'}...")
 
-        for dep in self.entity.dependent_uids:
-            entity = Entity.by_uid(dep)
+        for dep in self.record.dependent_uids:
+            record = EntityRecord.by_uid(dep)
 
-            if not entity.marked_for_deletion:
+            if not record.marked_for_deletion:
                 if deletion:
-                    entity.on_dependency_deleted(self)
+                    record.on_dependency_deleted(self)
                 else:
-                    entity.on_dependency_updated(self)
+                    record.on_dependency_updated(self)
 
     def _reset_notified_dependents(self) -> None:
         if not self._notified_dependents:
@@ -460,14 +465,14 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     def committed(self) -> bool:
         return self._committed
 
-    def commit(self) -> Entity | None:
-        assert self._notified_dependents
-        assert not self._committed
+    def commit(self) -> EntityRecord | None:
+        assert self._notified_dependents, f"Cannot commit journal {self} before notifying dependents."
+        assert not self._committed, f"Journal {self} has already been committed."
         self.freeze()
 
         if not self.dirty:
             self.mark_superseded()
-            return self.entity
+            return self.record
 
         deletion = self._marked_for_deletion
         self.log.debug(t"Committing entity {'deletion' if deletion else 'update'}...")
@@ -482,7 +487,7 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
         self.mark_superseded()
         return result
 
-    def _commit_update(self) -> Entity:
+    def _commit_update(self) -> EntityRecord:
         self.log.debug("Committing update")
 
         # Collect all updates
@@ -496,30 +501,30 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
             updates[attr] = update
 
         if not updates:
-            return self.entity
+            return self.record
 
         self.log.debug("Updates to apply: %s", updates)
 
         # Update the entity
-        new_entity = self._new_entity = self.entity.update(**updates)
+        new_record = self._new_entity = self.record.update(**updates)
 
-        self.log.debug("New entity created: %s (v%d)", new_entity, new_entity.version)
+        self.log.debug("New entity record created: %s version %d", new_record, new_record.version)
 
         # Done
-        return new_entity
+        return new_record
 
     def _commit_delete(self) -> None:
-        assert self._marked_for_deletion
-        assert not self._deleted
+        assert self._marked_for_deletion, f"Cannot commit deletion of journal {self} that is not marked for deletion."
+        assert not self._deleted, f"Journal {self} has already been deleted."
 
         self.log.debug("Committing deletion")
 
-        self.entity.apply_deletion()
+        self.record.apply_deletion()
         self._deleted = True
 
     # MARK: Children
     def iter_children_uids(self) -> Iterable[Uid]:
-        yield from self.entity.iter_children_uids(use_journal=True)
+        yield from self.record.iter_children_uids(use_journal=True)
 
     @cached_property
     def children_uids(self) -> Iterable[Uid]:
@@ -531,26 +536,28 @@ class EntityJournal(LoggableHierarchicalModel, EntityBase[MutableSet[Uid]]):
     # MARK: Annotations
     @property
     def annotations(self) -> UidProxyMutableSet[Annotation]:
-        from ..collections.uid_proxy import UidProxyMutableSet
+        from ..collections import UidProxyMutableSet
         from ..models.annotation import Annotation
 
-        return UidProxyMutableSet[Annotation](instance=self, field="annotation_uids")
+        klass = UidProxyMutableSet[Annotation]
+        return klass(instance=self, field="annotation_uids", source=klass)
 
     # MARK: Dependencies
     @property
     def extra_dependencies(self) -> UidProxyMutableSet[Entity]:
-        from ..collections.uid_proxy import UidProxyMutableSet
+        from ..collections import UidProxyMutableSet
 
-        return UidProxyMutableSet[Entity](instance=self, field="extra_dependency_uids")
+        klass = UidProxyMutableSet[Entity]
+        return klass(instance=self, field="extra_dependency_uids", source=klass)
 
-    def add_dependency(self, entity_or_uid: Entity | Uid) -> None:
-        uid = Entity.narrow_to_uid(entity_or_uid)
+    def add_dependency(self, record_or_uid: EntityRecord | Uid) -> None:
+        uid = EntityRecord.narrow_to_uid(record_or_uid)
         if uid in self.extra_dependency_uids:
             return
         self.extra_dependency_uids.add(uid)
 
-    def remove_dependency(self, entity_or_uid: Entity | Uid) -> None:
-        uid = Entity.narrow_to_uid(entity_or_uid)
+    def remove_dependency(self, record_or_uid: EntityRecord | Uid) -> None:
+        uid = EntityRecord.narrow_to_uid(record_or_uid)
         if uid not in self.extra_dependency_uids:
             return
         self.extra_dependency_uids.discard(uid)

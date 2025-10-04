@@ -20,8 +20,6 @@ if TYPE_CHECKING:
 from ....util.callguard import callguard_class
 from ....util.helpers import generics
 from ....util.helpers.instance_lru_cache import instance_lru_cache
-from ...models.entity import Entity
-from ...util.uid import Uid
 from .protocols import SortKeyProtocol
 
 
@@ -43,8 +41,6 @@ class OrderedViewCollection[T: Hashable](Collection[T], metaclass=ABCMeta):
         raise NotImplementedError(msg)
 
     def item_sort_key(self, item: T) -> SupportsRichComparison:
-        if isinstance(item, Uid):
-            item = Entity.by_uid(item)
         if isinstance(item, SortKeyProtocol):
             return item.sort_key()
         return typing_cast("SupportsRichComparison", item)
@@ -117,11 +113,12 @@ class OrderedViewCollection[T: Hashable](Collection[T], metaclass=ABCMeta):
 
     @classmethod
     def validate_and_coerce(cls, value: Any, *, source: type[Self] | None = None) -> Self:
+        concrete_item_type = cls.get_content_type(source=source)
+
         if not isinstance(value, Iterable):
-            msg = f"Expected an iterable of {cls.get_content_type().__name__}, got {type(value).__name__}."
+            msg = f"Expected an Iterable[{concrete_item_type.__name__}], got {type(value).__name__}."
             raise TypeError(msg)
 
-        concrete_item_type = cls.get_content_type()
         for item in value:
             cls._validate_item(concrete_item_type, item, source=source)
 
@@ -139,17 +136,3 @@ class OrderedViewCollection[T: Hashable](Collection[T], metaclass=ABCMeta):
         from ..journalled.set.ordered_view_set import JournalledOrderedViewSet
 
         return JournalledOrderedViewSet
-
-
-class OrderedViewUidCollection[T: Entity](OrderedViewCollection[Uid], metaclass=ABCMeta):
-    get_entity_type = generics.GenericIntrospectionMethod[T]()
-
-    @classmethod
-    @override
-    def _validate_item(cls, concrete_item_type: type[Uid], item: Any, *, source: type[Self] | None = None) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        super()._validate_item(concrete_item_type, item, source=source)
-
-        entity_type = cls.get_entity_type(source=source)
-        if item.namespace != (ns := entity_type.uid_namespace()):
-            msg = f"Invalid entity UID namespace: expected '{ns}', got '{item.namespace}'."
-            raise ValueError(msg)

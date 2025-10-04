@@ -3,15 +3,14 @@
 
 from collections.abc import Mapping, MutableMapping
 
-from ...models.entity import Entity
 from ...util.uid import Uid
 from ..proxy import ProxyMapping, ProxyMutableMapping
-from .collection import UidProxyCollection, UidProxyMutableCollection
+from .collection import T_ProxyBase, UidProxyCollection, UidProxyMutableCollection
 
 
 class UidProxyMapping[
     K,
-    V: Entity,
+    V: T_ProxyBase,
 ](
     UidProxyCollection[V, Mapping[K, Uid]],
     ProxyMapping[K, Uid, V],
@@ -21,7 +20,7 @@ class UidProxyMapping[
 
 class UidProxyMutableMapping[
     K,
-    V: Entity,
+    V: T_ProxyBase,
 ](
     UidProxyMutableCollection[V, Mapping[K, Uid], MutableMapping[K, Uid]],
     ProxyMutableMapping[K, Uid, V],

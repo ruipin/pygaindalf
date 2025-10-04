@@ -3,15 +3,20 @@
 
 from abc import ABCMeta
 from collections.abc import Collection
-from typing import override
+from typing import TYPE_CHECKING, override
 
-from ...models.entity import Entity
 from ...util.uid import Uid
 from ..proxy import ProxyCollection, ProxyMutableCollection
 
 
+if TYPE_CHECKING:
+    from ...models.entity import EntityBase, EntityRecordBase
+
+type T_ProxyBase = EntityRecordBase | EntityBase
+
+
 class UidProxyCollection[
-    T_Proxy: Entity,
+    T_Proxy: T_ProxyBase,
     T_Collection: Collection,
 ](
     ProxyCollection[Uid, T_Proxy, T_Collection],
@@ -31,7 +36,7 @@ class UidProxyCollection[
 
 
 class UidProxyMutableCollection[
-    T_Proxy: Entity,
+    T_Proxy: T_ProxyBase,
     T_Collection: Collection,
     T_Mut_Collection: Collection,
 ](

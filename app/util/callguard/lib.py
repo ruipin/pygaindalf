@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 # MARK: Frame inspection utilities
-def get_execution_frame(*, frames_up: int = 0) -> FrameType:
+def get_execution_frame(*, frames_up: int = 0, skip_callguard: bool = True) -> FrameType:
     # WARNING: It is important to 'del frame' once you are done with the frame!
 
     if frames_up < 0:
@@ -35,10 +35,13 @@ def get_execution_frame(*, frames_up: int = 0) -> FrameType:
             if next_frame is None:
                 msg = "No caller frame available"
                 raise RuntimeError(msg)
-            n_frames -= 1
+
+            if not skip_callguard or (module := get_execution_frame_module(next_frame)) is None or not module.startswith("app.util.callguard"):
+                n_frames -= 1
 
             del frame
             frame = next_frame
+            del next_frame
             if n_frames <= 0:
                 return frame
     except:

@@ -4,10 +4,10 @@
 from collections.abc import MutableSet
 from typing import TYPE_CHECKING, override
 
-from ...collections import OrderedViewUidMutableSet, UidProxyOrderedViewMutableSet
-from ...journal.entity_journal import EntityJournal
+from ...collections import OrderedViewMutableSet
+from ...journal.journal import Journal
 from ..ledger import Ledger
-from .portfolio_base import PortfolioBase
+from .portfolio_impl import PortfolioImpl
 
 
 if TYPE_CHECKING:
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 
 
 class PortfolioJournal(
-    PortfolioBase[OrderedViewUidMutableSet[Ledger], UidProxyOrderedViewMutableSet[Ledger]],
-    EntityJournal,
+    PortfolioImpl[OrderedViewMutableSet[Ledger]],
+    Journal,
     MutableSet[Ledger],
     init=False,
 ):

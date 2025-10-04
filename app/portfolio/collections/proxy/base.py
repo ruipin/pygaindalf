@@ -22,16 +22,22 @@ class ProxyBase[
     _instance: _weakref.ref[object] | object
     _field: str | None
     _allow_any: bool
+    _source: type | generics.GenericAlias | None
 
     @overload
-    def __init__(self, *, instance: T_Instance, weakref: bool = True, allow_any: bool = False) -> None: ...
+    def __init__(self, *, instance: T_Instance, weakref: bool = True, allow_any: bool = False, source: type | generics.GenericAlias | None = None) -> None: ...
     @overload
-    def __init__(self, *, instance: object, field: str, weakref: bool = True, allow_any: bool = False) -> None: ...
+    def __init__(
+        self, *, instance: object, field: str, weakref: bool = True, allow_any: bool = False, source: type | generics.GenericAlias | None = None
+    ) -> None: ...
 
-    def __init__(self, *, instance: object, field: str | None = None, weakref: bool = True, allow_any: bool = False):
+    def __init__(
+        self, *, instance: object, field: str | None = None, weakref: bool = True, allow_any: bool = False, source: type | generics.GenericAlias | None = None
+    ) -> None:
         self._instance = _weakref.ref(instance) if weakref else instance
         self._field = field
         self._allow_any = allow_any
+        self._source = source
 
     def _get_instance(self) -> object:
         if isinstance(self._instance, _weakref.ref):
@@ -49,16 +55,18 @@ class ProxyBase[
         else:
             return typing_cast("T_Instance", getattr(self._get_instance(), self._field))
 
-    get_item_type = generics.GenericIntrospectionMethod[T_Item]()
-    get_proxy_type = generics.GenericIntrospectionMethod[T_Proxy]()
+    # fmt: off
+    get_item_type     = generics.GenericIntrospectionMethod[T_Item    ]()
+    get_proxy_type    = generics.GenericIntrospectionMethod[T_Proxy   ]()
     get_instance_type = generics.GenericIntrospectionMethod[T_Instance]()
+    # fmt: on
 
     def _convert_item_to_proxy(self, item: T_Item) -> T_Proxy:
         if item is None:
             msg = "Value must not be None"
             raise ValueError(msg)
 
-        item_type = self.get_item_type()
+        item_type = self.get_item_type(source=self._source)
         item_origin_type = generics.get_origin(item_type, passthrough=True)
         if not isinstance(item, item_origin_type):
             if not self._allow_any:
@@ -66,7 +74,7 @@ class ProxyBase[
                 raise TypeError(msg)
             return typing_cast("T_Proxy", item)
 
-        proxy_type = self.get_proxy_type()
+        proxy_type = self.get_proxy_type(source=self._source)
         proxy = self._do_convert_item_to_proxy(item, item_type, proxy_type)
         proxy_origin_type = generics.get_origin(proxy_type, passthrough=True)
         if not isinstance(proxy, proxy_origin_type):
@@ -85,7 +93,7 @@ class ProxyBase[
             msg = "Value must not be None"
             raise ValueError(msg)
 
-        proxy_type = self.get_proxy_type()
+        proxy_type = self.get_proxy_type(source=self._source)
         proxy_origin_type = generics.get_origin(proxy_type, passthrough=True)
         if not isinstance(proxy, proxy_origin_type):
             if not self._allow_any:
@@ -93,7 +101,7 @@ class ProxyBase[
                 raise TypeError(msg)
             return typing_cast("T_Item", proxy)
 
-        item_type = self.get_item_type()
+        item_type = self.get_item_type(source=self._source)
         item = self._do_convert_proxy_to_item(proxy, proxy_type, item_type)
         item_origin_type = generics.get_origin(item_type, passthrough=True)
         if not isinstance(item, item_origin_type):

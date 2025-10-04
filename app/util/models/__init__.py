@@ -10,13 +10,12 @@ from .combined import (
     LoggableHierarchicalRootNamedModel,
     LoggableModel,
 )
-from .hierarchical import HierarchicalMixinMinimal, HierarchicalModel
+from .hierarchical import HierarchicalModel
 from .hierarchical_root import HierarchicalRootModel
 from .single_initialization import SingleInitializationModel
 
 
 __all__ = [
-    "HierarchicalMixinMinimal",
     "HierarchicalModel",
     "HierarchicalNamedModel",
     "HierarchicalRootModel",

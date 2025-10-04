@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
     from ...ordered_view.protocols import SortKeyProtocol
 
-from ....util.uid import UidProtocol
 from ...ordered_view import OrderedViewMutableSet, OrderedViewSet
 from .generic_set import GenericJournalledSet, JournalledSetEditType
 
@@ -52,14 +51,18 @@ class JournalledOrderedViewSet[T: Any, T_Mutable: OrderedViewMutableSet, T_Immut
         if self.edited:
             self._get_mut_container().clear_sort_cache()
 
-    def on_item_updated(self, old_item: SortKeyProtocol, new_item: SortKeyProtocol) -> None:
+    def on_item_updated(self, old_item: T, new_item: T) -> None:
         original_sort_key = self.item_sort_key(old_item)
         new_sort_key = self.item_sort_key(new_item)
 
         if original_sort_key != new_sort_key:
-            # We assume T is Uid here. Not a big deal if it's not, as this is only used for the audit log
-            assert isinstance(new_item, UidProtocol), "JournalledOrderedViewSet.on_item_updated: item must implement UidProtocol"
-            self._append_journal(JournalledSetEditType.ITEM_UPDATED, typing_cast("T", new_item.uid))
+            from ....journal import Journal
+
+            # If the new item is actually a journal, we log the entity as modified instead
+            if isinstance(new_item, Journal):
+                new_item = typing_cast("T", new_item.entity)
+
+            self._append_journal(JournalledSetEditType.ITEM_UPDATED, new_item)
             self._update_frontier_sort_key(new_sort_key)
 
     @property

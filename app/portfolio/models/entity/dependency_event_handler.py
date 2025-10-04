@@ -12,8 +12,8 @@ from ....util.models import LoggableModel
 
 
 if TYPE_CHECKING:
-    from ...journal import EntityJournal
-    from .entity import Entity
+    from ...journal import Journal
+    from .entity_record import EntityRecord
 
 
 # MARK: Enums
@@ -34,19 +34,19 @@ class EntityDependencyEventType(StrEnum):
 @runtime_checkable
 class EntityDependencyEventEntityMatcher(Protocol):
     @staticmethod
-    def __call__(self: Entity, entity: Entity) -> bool: ...  # pyright: ignore[reportSelfClsParameterName] # noqa: PLW0211
+    def __call__(self: EntityRecord, record: EntityRecord) -> bool: ...  # pyright: ignore[reportSelfClsParameterName] # noqa: PLW0211
 
 
 @runtime_checkable
 class EntityDependencyEventAttributeMatcher(Protocol):
     @staticmethod
-    def __call__(self: Entity, attribute: str, value: Any) -> bool: ...  # pyright: ignore[reportSelfClsParameterName] # noqa: PLW0211
+    def __call__(self: EntityRecord, attribute: str, value: Any) -> bool: ...  # pyright: ignore[reportSelfClsParameterName] # noqa: PLW0211
 
 
 @runtime_checkable
 class EntityDependencyEventHandler(Protocol):
     @staticmethod
-    def __call__(self: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None: ...  # pyright: ignore[reportSelfClsParameterName] # noqa: PLW0211
+    def __call__(self: EntityRecord, event: EntityDependencyEventType, record: EntityRecord, *, matched_attributes: frozenset[str] | None = None) -> None: ...  # pyright: ignore[reportSelfClsParameterName] # noqa: PLW0211
 
 
 # MARK: Record
@@ -64,7 +64,7 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
         None
     )
 
-    def register(self, owner: type[Entity]) -> None:
+    def register(self, owner: type[EntityRecord]) -> None:
         owner.register_dependency_event_handler(self)
 
     # MARK: Matching
@@ -75,16 +75,16 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
             return True
         return False
 
-    def match_entity(self, owner: Entity, event: EntityDependencyEventType, entity: Entity) -> bool:  # noqa: ARG002 this is for overidding
+    def match_entity(self, owner: EntityRecord, event: EntityDependencyEventType, record: EntityRecord) -> bool:  # noqa: ARG002 this is for overidding
         if self.entity_matchers is None:
             return True
 
         if isinstance(self.entity_matchers, Callable):
-            return self.entity_matchers(owner, entity)
+            return self.entity_matchers(owner, record)
 
-        return any(matcher(owner, entity) for matcher in self.entity_matchers)
+        return any(matcher(owner, record) for matcher in self.entity_matchers)
 
-    def match_attribute(self, owner: Entity, attribute: str, value: Any) -> bool:
+    def match_attribute(self, owner: EntityRecord, attribute: str, value: Any) -> bool:
         if self.attribute_matchers is None:
             return True
 
@@ -103,8 +103,8 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
 
         return False
 
-    def match_attributes(self, owner: Entity, journal: EntityJournal) -> frozenset[str] | None:
-        assert journal is not None
+    def match_attributes(self, owner: EntityRecord, journal: Journal) -> frozenset[str] | None:
+        assert journal is not None, "Journal must be provided when matching attributes."
 
         if self.attribute_matchers is None:
             return None
@@ -122,28 +122,28 @@ class EntityDependencyEventHandlerRecord(LoggableModel):
                 matched_attributes.add(attribute)
         return frozenset(matched_attributes) if matched_attributes else None
 
-    def call(self, owner: Entity, event: EntityDependencyEventType, entity: Entity, *, matched_attributes: frozenset[str] | None = None) -> None:
-        self.log.debug(t"Calling {event.value} handler on {entity} with matched attributes {matched_attributes}")
-        return self.handler(owner, event, entity, matched_attributes=matched_attributes)
+    def call(self, owner: EntityRecord, event: EntityDependencyEventType, record: EntityRecord, *, matched_attributes: frozenset[str] | None = None) -> None:
+        self.log.debug(t"Calling {event.value} handler on {record} with matched attributes {matched_attributes}")
+        return self.handler(owner, event, record, matched_attributes=matched_attributes)
 
     # MARK: Call
-    def __call__(self, owner: Entity, event: EntityDependencyEventType, entity: Entity, journal: EntityJournal) -> bool:
-        if owner is entity:
+    def __call__(self, owner: EntityRecord, event: EntityDependencyEventType, record: EntityRecord, journal: Journal) -> bool:
+        if owner is record:
             msg = "An entity cannot handle its own dependency events."
             raise ValueError(msg)
 
         if not self.match_event(event):
             return False
 
-        if not self.match_entity(owner, event, entity):
+        if not self.match_entity(owner, event, record):
             return False
 
         matched_attributes: frozenset[str] | None = None
         if event.updated and self.attribute_matchers:
-            assert journal is not None
+            assert journal is not None, "Journal must be provided when matching attributes."
             matched_attributes = self.match_attributes(owner, journal)
             if matched_attributes is None:
                 return False
 
-        self.call(owner, event, entity, matched_attributes=matched_attributes)
+        self.call(owner, event, record, matched_attributes=matched_attributes)
         return True

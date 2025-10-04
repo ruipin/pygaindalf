@@ -121,7 +121,7 @@ class LoggableMixin:
         if cnm in nm:
             return nm
         else:
-            return f"{cnm}:{nm}"
+            return f"{cnm} {nm}"
 
     @override
     def __repr__(self) -> str:

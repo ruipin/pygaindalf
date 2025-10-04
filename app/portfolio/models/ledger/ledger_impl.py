@@ -4,46 +4,31 @@
 from abc import ABCMeta
 from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
-from functools import cached_property
 from typing import TYPE_CHECKING, override
 
-from ....util.helpers import generics
-from ....util.helpers.empty_class import EmptyClass
-from ...collections import UidProxyOrderedViewMutableSet
+from ....util.helpers.empty_class import empty_class
+from ...collections import OrderedViewSet
 from ...util.uid import Uid
-from ..entity import EntityBase
-from ..instrument import Instrument
-from ..transaction import Transaction
-from .ledger_fields import LedgerFields
+from ..entity import EntityImpl
+from ..transaction import Transaction, TransactionRecord
+from .ledger_schema import LedgerSchema
 
 
-class LedgerBase[
-    T_Uid_Set: AbstractSet[Uid],
-    T_Proxy_Set: UidProxyOrderedViewMutableSet[Transaction],
+class LedgerImpl[
+    T_Transaction_Set: OrderedViewSet[Transaction],
 ](
-    EntityBase,
-    LedgerFields[T_Uid_Set] if TYPE_CHECKING else EmptyClass,
+    EntityImpl,
+    LedgerSchema[T_Transaction_Set] if TYPE_CHECKING else empty_class(),
     AbstractSet[Transaction],
     metaclass=ABCMeta,
 ):
-    # MARK: Instrument
-    @property
-    def instrument(self) -> Instrument:
-        return Instrument.by_uid(self.instrument_uid)
-
     # MARK: Transactions
-    get_proxy_set_type = generics.GenericIntrospectionMethod[T_Proxy_Set]()
-
-    @cached_property
-    def transactions(self) -> T_Proxy_Set:
-        return self.get_proxy_set_type(origin=True)(instance=self, field="transaction_uids")
-
     def __getitem__(self, index: int | Uid) -> Transaction:
         if isinstance(index, int):
             return self.transactions[index]
 
         elif isinstance(index, Uid):
-            if index not in self.transaction_uids:
+            if index not in self.transactions:
                 msg = f"Transaction with UID {index} not found in ledger"
                 raise KeyError(msg)
             return Transaction.by_uid(index)
@@ -55,9 +40,9 @@ class LedgerBase[
     # MARK: Set ABC
     @override
     def __contains__(self, value: object) -> bool:
-        if not isinstance(value, (Transaction, Uid)):
+        if not isinstance(value, (Transaction, TransactionRecord, Uid)):
             return False
-        return Transaction.narrow_to_uid(value) in self.transaction_uids
+        return Transaction.narrow_to_uid(value) in self.transactions
 
     @override
     def __iter__(self) -> Iterator[Transaction]:  # pyright: ignore[reportIncompatibleMethodOverride] since we are overriding the pydantic.BaseModel iterator on purpose
@@ -65,12 +50,12 @@ class LedgerBase[
 
     @override
     def __len__(self) -> int:
-        return len(self.transaction_uids)
+        return len(self.transactions)
 
     @property
     def length(self) -> int:
-        return len(self.transaction_uids)
+        return len(self.transactions)
 
     @override
     def __repr__(self) -> str:
-        return super().__repr__().replace(">", f", transactions={self.transaction_uids!r}>")
+        return super().__repr__().replace(">", f", transactions={self.transactions!r}>")

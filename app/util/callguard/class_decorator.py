@@ -9,11 +9,13 @@ from typing import TYPE_CHECKING, Any, Self, Unpack
 from typing import cast as typing_cast
 
 import pydantic
+import pydantic.fields
 
 from . import lib
 from .callable_decorator import CallguardCallableDecorator
+from .callguard import Callguard
 from .classmethod_decorator import CallguardClassmethodDecorator
-from .defines import LOG
+from .defines import CALLGUARD_TRACEBACK_HIDE, LOG
 from .property_decorator import CallguardPropertyDecorator
 
 
@@ -124,9 +126,9 @@ class CallguardClassDecorator[T: object]:
 
     @classmethod
     def _filter_by_name(
-        cls, klass: type[T], name: str, value: Any, callguard_class_options: CallguardClassOptions[T], pydantic_decorators: tuple[str, ...]
+        cls, klass: type[T], name: str, value: Any, callguard_class_options: CallguardClassOptions[T], pydantic_decorators: tuple[str, ...] | None
     ) -> tuple[bool, bool]:
-        if name in pydantic_decorators:
+        if pydantic_decorators is not None and name in pydantic_decorators:
             LOG.debug(t"Callguard: Skipping {klass.__name__}.{name} as it is a pydantic decorator")
             return (False, False)
 
@@ -157,11 +159,15 @@ class CallguardClassDecorator[T: object]:
 
         # Filter out ignored patterns
         if guard or decorate:
-            (guard, decorate) = cls._ignore_patterns_match(name=name, decorate=decorate, guard=guard, options=callguard_class_options)
+            (_guard, _decorate) = cls._ignore_patterns_match(name=name, decorate=decorate, guard=guard, options=callguard_class_options)
+            guard &= _guard
+            decorate &= _decorate
 
         # Call custom filter method, if defined
         if guard or decorate:
-            (guard, decorate) = cls._call_filter_method(klass=klass, attribute=name, value=value, guard=guard, decorate=decorate)
+            (_guard, _decorate) = cls._call_filter_method(klass=klass, attribute=name, value=value, guard=guard, decorate=decorate)
+            guard &= _guard
+            decorate &= _decorate
 
         # Done
         return (guard, decorate)
@@ -187,7 +193,6 @@ class CallguardClassDecorator[T: object]:
         if isinstance(value, pydantic.fields.ModelPrivateAttr):
             guard = not guard_skip_properties
             decorate = not decorate_skip_properties
-            LOG.info("YAY")
         if isinstance(value, staticmethod):
             return value  # Static methods can't be guarded, as they have no self/cls
         elif isinstance(value, property):
@@ -233,9 +238,131 @@ class CallguardClassDecorator[T: object]:
         else:
             return public
 
-    @staticmethod
-    def _getattribute(klass: type[T], obj: T, name: str) -> Any:
-        return super(klass, obj).__getattribute__(name)
+    @classmethod
+    def _filter_attribute_within_getattr_setattr(cls, self: T, name: str, options: CallguardClassOptions) -> tuple[bool, bool]:
+        klass = type(self)
+
+        if not name.startswith("_"):
+            return (False, False)
+
+        if name.startswith("__") and name.endswith("__"):
+            return (False, False)
+
+        private_attributes = getattr(klass, "__private_attributes__", None)  # from pydantic
+        if private_attributes is None or name not in private_attributes:
+            return (False, False)
+
+        attr = getattr(klass, name, None)
+        if attr is None:
+            return (False, False)
+        _attr = attr.fget if isinstance(attr, property) else attr
+        if getattr(_attr, "__callguarded__", False) or getattr(_attr, "__callguard_disabled__", False):
+            return (False, False)
+
+        return cls._filter_by_name(
+            klass=klass,
+            name=name,
+            value=attr,
+            callguard_class_options=options,
+            pydantic_decorators=None,
+        )
+
+    @classmethod
+    def _get_superclass(cls, self: T, klass: type[T]) -> type[T]:
+        mro = type(self).__mro__
+        i = mro.index(klass)
+        return mro[i + 1]
+
+    @classmethod
+    def _wrap_getattribute(cls, klass: type[T], class_options: CallguardClassOptions) -> None:
+        if getattr(klass, "__callguarded__", False) and klass.__dict__.get("__getattribute__", None) is None:
+            return
+
+        orig_getattribute = klass.__dict__.get("__getattribute__", None)
+
+        options: CallguardOptions = {
+            "method_name": lambda _, name: name,
+            "check_module": False,
+            "guard": True,
+        }
+        if (val := class_options.get("allow_same_module")) is not None:
+            options["allow_same_module"] = val
+
+        callguard = Callguard(**options)  # pyright: ignore[reportArgumentType]
+
+        def __getattribute__(self: T, name: str) -> Any:  # noqa: N807
+            __tracebackhide__ = CALLGUARD_TRACEBACK_HIDE
+
+            if orig_getattribute is not None:
+                _super = orig_getattribute.__func__ if hasattr(orig_getattribute, "__func__") else orig_getattribute
+                callguard.callee_module = _super.__module__
+            else:
+                # HACK: super(self, klass) results in extremely strange behaviour when trying to get '__module__'. Use direct MRO lookup instead.
+                supercls = cls._get_superclass(self, klass)
+                callguard.callee_module = supercls.__module__
+                _super = supercls.__getattribute__
+
+            _options = type(self).__get_callguard_class_options__()  # pyright: ignore[reportAttributeAccessIssue] as we know this method exists
+            (guard, decorate) = cls._filter_attribute_within_getattr_setattr(self, name, _options)
+
+            if decorate:
+                _super = callguard.decorate(_super)
+
+            if not guard:
+                return _super(self, name)
+            else:
+                return callguard.guard(_super, self, name)
+
+        setattr(klass, "__getattribute__", __getattribute__)
+
+    @classmethod
+    def _wrap_setattr(cls, klass: type[T], class_options: CallguardClassOptions) -> None:
+        if getattr(klass, "__callguarded__", False) and klass.__dict__.get("__setattr__", None) is None:
+            return
+
+        orig_setattr = klass.__dict__.get("__setattr__", None)
+
+        options: CallguardOptions = {
+            "method_name": lambda _, name, __: name,
+            "check_module": False,
+            "guard": True,
+        }
+        if (val := class_options.get("allow_same_module")) is not None:
+            options["allow_same_module"] = val
+
+        callguard = Callguard(**options)  # pyright: ignore[reportArgumentType]
+
+        def __setattr__(self: T, name: str, value: Any) -> None:  # noqa: N807
+            __tracebackhide__ = CALLGUARD_TRACEBACK_HIDE
+
+            if orig_setattr is not None:
+                _super = orig_setattr.__func__ if hasattr(orig_setattr, "__func__") else orig_setattr
+                callguard.callee_module = _super.__module__
+            else:
+                # HACK: super(self, klass) results in extremely strange behaviour when trying to get '__module__'. Use direct MRO lookup instead.
+                supercls = cls._get_superclass(self, klass)
+                callguard.callee_module = supercls.__module__
+                _super = supercls.__setattr__
+
+            _options = type(self).__get_callguard_class_options__()  # pyright: ignore[reportAttributeAccessIssue] as we know this method exists
+            (guard, decorate) = cls._filter_attribute_within_getattr_setattr(self, name, _options)
+
+            if decorate:
+                _super = callguard.decorate(_super)
+
+            if not guard:
+                return _super(self, name, value)
+            else:
+                return callguard.guard(_super, self, name, value)
+
+        setattr(klass, "__setattr__", __setattr__)
+
+    @classmethod
+    def _wrap_attribute_methods(cls, klass: type[T], options: CallguardClassOptions) -> None:
+        if options.get("wrap_getattribute", True):
+            cls._wrap_getattribute(klass, options)
+        if options.get("wrap_setattr", True):
+            cls._wrap_setattr(klass, options)
 
     @classmethod
     def _mark_callguarded(cls, klass: type[T]) -> None:
@@ -253,6 +380,10 @@ class CallguardClassDecorator[T: object]:
 
             @classmethod
             def __get_callguard_class_options__(subcls: type[Self]) -> CallguardClassOptions[T] | None:  # noqa: N807 as this is a custom special method
+                options = subcls.__dict__.get("__callguard_class_options_final__", None)
+                if options is not None:
+                    return options
+
                 options = getattr(subcls, "__callguard_class_options__", None)
                 if options is None:
                     msg = f"Could not find a valid '__callguard_class_options__' attribute in {subcls.__name__}"
@@ -261,19 +392,33 @@ class CallguardClassDecorator[T: object]:
                 for mro in subcls.__mro__:
                     if mro is subcls:
                         continue
-                    if hasattr(mro, "__get_callguard_class_options__"):
-                        break
-                else:
-                    return options
+                    if not hasattr(mro, "__get_callguard_class_options__"):
+                        continue
 
-                LOG.error(t"Found {subcls.__name__} superclass {mro.__name__} with __get_callguard_class_options__")
-                options_super = mro.__get_callguard_class_options__()
-                if options_super is None:
-                    return options
+                    options_super = mro.__get_callguard_class_options__()
+                    if options_super is None:
+                        continue
 
-                result = options_super.copy()
-                result.update(options)
-                return result
+                    _options = options_super.copy()
+                    _options.update(options)
+
+                    if "ignore_patterns" in options_super and "ignore_patterns" in options:
+                        ignore = options["ignore_patterns"]
+                        ignore = {ignore} if isinstance(ignore, str) else set(ignore)
+
+                        _ignore = options_super["ignore_patterns"]
+                        if isinstance(_ignore, str):
+                            ignore.add(_ignore)
+                        else:
+                            for pattern in _ignore:
+                                ignore.add(pattern)
+
+                        _options["ignore_patterns"] = ignore
+
+                    options = _options
+
+                setattr(subcls, "__callguard_class_options_final__", options)
+                return options
 
             setattr(klass, "__get_callguard_class_options__", __get_callguard_class_options__)
 
@@ -282,7 +427,7 @@ class CallguardClassDecorator[T: object]:
                 LOG.debug(t"__init_subclass__: {cls.__name__} -> {klass.__name__} -> {subcls.__name__}")
 
                 if original_init_subclass is not None:
-                    original_init_subclass.__func__(subcls, *args, **kwargs)
+                    original_init_subclass.__get__(None, subcls)(*args, **kwargs)
                 else:
                     super(klass, subcls).__init_subclass__(*args, **kwargs)
 
@@ -356,6 +501,9 @@ class CallguardClassDecorator[T: object]:
         for name, value in modifications.items():
             LOG.info(t"Callguard: Patching {klass.__name__}.{name}")
             setattr(klass, name, value)
+
+        # Wrap __getattribute__ and __setattr__
+        cls._wrap_attribute_methods(klass, callguard_class_options)
 
         # Mark class as callguarded
         cls._mark_callguarded(klass)

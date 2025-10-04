@@ -6,6 +6,8 @@ import re
 from abc import ABCMeta
 from typing import ClassVar, Protocol, override, runtime_checkable
 
+from ...util.helpers import type_hints
+
 
 # MARK: shorten_name
 def shorten_name(name: str) -> str:
@@ -44,7 +46,9 @@ class NamedMutableProtocol(NamedProtocol, Protocol):
 class NamedMixinMinimal(metaclass=ABCMeta):
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
-        assert hasattr(cls, "instance_name"), f"{cls.__name__} must have an 'instance_name' property to use NamedMixinMinimal"
+        assert hasattr(cls, "instance_name") or type_hints.get_type_hint(cls, "instance_name"), (
+            f"{cls.__name__} must have an 'instance_name' property to use NamedMixinMinimal"
+        )
 
     @property
     def final_instance_name(self) -> str:
@@ -95,7 +99,7 @@ class NamedMixinMinimal(metaclass=ABCMeta):
         if cnm in nm:
             return nm
         else:
-            return f"{cnm}:{nm}"
+            return f"{cnm} {nm}"
 
     @override
     def __repr__(self) -> str:

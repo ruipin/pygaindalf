@@ -6,10 +6,10 @@ from abc import ABCMeta
 from iso4217 import Currency
 from pydantic import Field
 
-from ..entity import EntityFieldsBase
+from ..entity import EntitySchemaBase
 
 
-class InstrumentFields(EntityFieldsBase, metaclass=ABCMeta):
+class InstrumentSchema(EntitySchemaBase, metaclass=ABCMeta):
     # MARK: Fields
     isin: str | None = Field(default=None, min_length=1, description="International Securities Identification Number (ISIN) of the instrument.")
     ticker: str | None = Field(default=None, min_length=1, description="Ticker symbol of the instrument, used for trading and identification.")

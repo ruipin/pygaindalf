@@ -12,6 +12,7 @@ from typing import (
 
 from pydantic_core import CoreSchema, core_schema
 
+from ...util.uid import Uid, UidProtocol
 from .collection import JournalledCollection
 
 
@@ -25,7 +26,7 @@ class JournalledSequenceEditType(Enum):
 class JournalledSequenceEdit[T]:
     type: JournalledSequenceEditType
     index: int | slice
-    value: T | Iterable[T] | None
+    value: T | Uid | Iterable[T | Uid] | None
 
     @override
     def __str__(self) -> str:
@@ -45,7 +46,12 @@ class JournalledSequence[T](JournalledCollection[T, Sequence[T], list[T], tuple[
 
     # MARK : Functionality
     def _append_journal(self, type: JournalledSequenceEditType, index: int | slice, value: T | Iterable[T] | None) -> None:  # NOQA: A002
-        self._journal.append(JournalledSequenceEdit(type=type, index=index, value=value))
+        if isinstance(value, Iterable):
+            _value = tuple(v.uid if isinstance(v, UidProtocol) else v for v in value)
+        else:
+            _value = value.uid if isinstance(value, UidProtocol) else value
+
+        self._journal.append(JournalledSequenceEdit(type=type, index=index, value=_value))
         self._on_edit()
 
     @overload

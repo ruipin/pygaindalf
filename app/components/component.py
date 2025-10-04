@@ -138,7 +138,7 @@ class ComponentSubclassMeta[C: BaseComponentConfig](LoggableHierarchicalNamedMix
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
-        assert cls is source
+        assert cls is source, f"Expected cls to be source, got {type(source).__name__} instead."
         return core_schema.is_instance_schema(cls)
 
     def __init__(self, config: C, *args, **kwargs) -> None:

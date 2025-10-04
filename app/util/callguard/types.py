@@ -92,6 +92,8 @@ class CallguardClassOptions[T: object](TypedDict):
     decorator_factory: NotRequired[CallguardWrappedDecoratorFactory[T, ..., Any]]
     allow_same_class: NotRequired[bool]
     allow_same_module: NotRequired[bool]
+    wrap_getattribute: NotRequired[bool]
+    wrap_setattr: NotRequired[bool]
 
 
 # MARK: Exception Classes

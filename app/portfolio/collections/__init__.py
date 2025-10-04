@@ -19,8 +19,6 @@ from .ordered_view import (
     OrderedViewCollection,
     OrderedViewMutableSet,
     OrderedViewSet,
-    OrderedViewUidMutableSet,
-    OrderedViewUidSet,
     SortKeyProtocol,
 )
 from .uid_proxy import (
@@ -56,8 +54,6 @@ __all__ = [
     "OrderedViewCollection",
     "OrderedViewMutableSet",
     "OrderedViewSet",
-    "OrderedViewUidMutableSet",
-    "OrderedViewUidSet",
     "SortKeyProtocol",
     "UidProxyCollection",
     "UidProxyMapping",

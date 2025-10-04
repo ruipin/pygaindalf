@@ -2,5 +2,8 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-class EmptyClass:
-    pass
+def empty_class() -> type:
+    class EmptyClass:
+        pass
+
+    return EmptyClass

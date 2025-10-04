@@ -21,10 +21,15 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
         validate_assignment=True,
     )
 
-    PROPAGATE_FROM_PARENT: ClassVar[bool] = True
-    PROPAGATE_TO_CHILDREN: ClassVar[bool] = True
-    PROPAGATE_INSTANCE_PARENT_FROM_PARENT: ClassVar[bool] = True
-    PROPAGATE_INSTANCE_PARENT_TO_CHILDREN: ClassVar[bool] = True
+    # These class variables can be overridden in subclasses to control propagation behavior
+    # This includes propagating instance parents and names
+    PROPAGATE_FROM_PARENT: ClassVar[bool] = True  # Whether to propagate information to an instance of this model
+    PROPAGATE_TO_CHILDREN: ClassVar[bool] = True  # Whether to propagating from an instance of this model to its children
+    PROPAGATE_INSTANCE_PARENT_FROM_PARENT: ClassVar[bool] = True  # Whether to propagate a parent to an instance of this model
+    PROPAGATE_INSTANCE_PARENT_TO_CHILDREN: ClassVar[bool] = True  # Whether to propagate an instance of this model as the parent to its children
+    PROPAGATE_INSTANCE_PARENT_FROM_PARENT_TO_CHILDREN: ClassVar[bool] = (
+        False  # Whether to propagate the model's parent to its children, instead of propagating itself.
+    )
 
     @property
     def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
@@ -35,30 +40,24 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
     #       Since it only happens at the model validation stage as part of __init__ we are not breaking the mutability contract.
     #       We do sanity check that the current values are not already set to avoid overwriting them.
     def _seed_parent_to_object(self, *, obj: Any) -> None:
-        if isinstance(obj, HierarchicalMutableProtocol) and obj.instance_parent is not self:
+        if isinstance(obj, HierarchicalMutableProtocol):
             if not getattr(type(obj), "PROPAGATE_INSTANCE_PARENT_FROM_PARENT", True):
                 return
+            propagate_parent = self if not getattr(type(self), "PROPAGATE_INSTANCE_PARENT_FROM_PARENT_TO_CHILDREN", False) else self.instance_parent
+            if obj.instance_parent is propagate_parent:
+                return
             if (parent := obj.instance_parent) is not None:
-                if parent is obj:
-                    return
-
-                # Entity special case
-                from ...portfolio.util.versioned_uid import VersionedUid
-
-                if isinstance(self, VersionedUid) and isinstance(parent, VersionedUid) and self.is_newer_version_than(parent):
-                    pass
-                else:
-                    msg = f"{type(obj).__name__} {obj} already has a parent: {obj.instance_parent}. Cannot overwrite with {self}."
-                    raise ValueError(msg)
+                msg = f"{type(obj).__name__} {obj} already has a parent: {parent}. Cannot overwrite with {propagate_parent}."
+                raise ValueError(msg)
 
             from .hierarchical import HierarchicalModel
 
             if isinstance(obj, HierarchicalModel):
-                object.__setattr__(obj, "instance_parent_weakref", weakref.ref(self))
+                object.__setattr__(obj, "instance_parent_weakref", weakref.ref(propagate_parent))
             else:
                 # If there is no setter, python raises AttributeError
                 with contextlib.suppress(AttributeError):
-                    object.__setattr__(obj, "instance_parent", self)
+                    object.__setattr__(obj, "instance_parent", propagate_parent)
 
     def _seed_name_to_object(self, *, obj: Any, name: str) -> None:
         if isinstance(obj, NamedMutableProtocol) and obj.instance_name != name:
@@ -90,7 +89,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             self._seed_name_to_object(obj=obj, name=name)
 
     def _should_seed_parent_and_name_to_field(self, fldnm: str, fldinfo: FieldInfo | None = None) -> tuple[bool, bool]:
-        if fldnm == "instance_parent":
+        if fldnm in ("instance_parent", "instance_parent_weakref", "uid"):
             return (False, False)
 
         if fldinfo is None:
@@ -159,6 +158,13 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
         @override
         def __setattr__(self, name: str, value: Any) -> None:
             super().__setattr__(name, value)
-
             if name in type(self).model_fields:
                 self._seed_parent_and_name_to_field(name)
+
+    @override
+    def __str__(self) -> str:
+        return super(HierarchicalMixinMinimal, self).__str__()
+
+    @override
+    def __repr__(self) -> str:
+        return super(HierarchicalMixinMinimal, self).__repr__()

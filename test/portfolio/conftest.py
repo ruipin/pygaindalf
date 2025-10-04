@@ -6,14 +6,14 @@ from collections.abc import Generator
 import pytest
 
 from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.models.entity import Entity
+from app.portfolio.models.entity import EntityRecord
 from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.root import EntityRoot, PortfolioRoot
 from app.portfolio.models.store import EntityStore
 
 
 # Automatically provide a global EntityStore for all tests, that is not attached to any EntityRoot.
-# This ensures that tests that rely on the global EntityStore by default (e.g. Entity UID assignment) have a valid entity store to work with.
+# This ensures that tests that rely on the global EntityStore by default (e.g. EntityRecord UID assignment) have a valid entity store to work with.
 # If tests wish to use the EntityRoot mechanisms (e.g. SessionManager), they should use the portfolio_root or entity_root fixtures, which will override this one
 @pytest.fixture(autouse=True)
 def autouse_entity_store() -> Generator[EntityStore]:
@@ -26,7 +26,7 @@ def autouse_entity_store() -> Generator[EntityStore]:
 @pytest.fixture(autouse=True)
 def autouse_entity_dependency_event_handlers() -> Generator[None]:
     yield
-    Entity.clear_dependency_event_handlers()
+    EntityRecord.clear_dependency_event_handlers()
 
 
 # Provide a per-test PortfolioRoot and make it the global root so EntityStore/SessionManager

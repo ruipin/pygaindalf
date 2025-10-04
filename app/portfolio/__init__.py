@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from .models import Entity
+from .models import EntityRecord
 
 
 __all__ = [
-    "Entity",
+    "EntityRecord",
 ]

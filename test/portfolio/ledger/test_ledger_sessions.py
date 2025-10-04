@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-"""Session-backed tests that validate propagation of child sort-key changes from Transaction -> Ledger via the JournalledOrderedViewSet mechanism.
+"""Session-backed tests validating propagation of child sort-key changes from Transaction -> Ledger via the JournalledOrderedViewSet mechanism.
 
-These mirror the requested behavior: when a Transaction's sort key (date) changes inside a session, the parent Ledger's transaction_uids journal should record
-an ITEM_UPDATED edit for that transaction UID, but only if the UID is in the set.
+These mirror the requested behavior: when a Transaction entity's sort key (date) changes
+inside a session, the parent Ledger journal should record an ITEM_UPDATED edit for that
+transaction UID, but only if the transaction is currently tracked in the set.
 
-We set up a minimal root that exposes a SessionManager (like test_instrument_journal_session.py) so the Ledger is inside a session-managed hierarchy.
+We set up a minimal root that exposes a SessionManager so the Ledger entity participates in
+the session-managed hierarchy.
 """
 
 import datetime
@@ -20,8 +22,8 @@ from iso4217 import Currency
 from app.portfolio.collections.journalled.set import JournalledSetEdit, JournalledSetEditType
 from app.portfolio.journal.session import Session
 from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.models.instrument.instrument import Instrument
-from app.portfolio.models.ledger.ledger import Ledger
+from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.root import EntityRoot
 from app.portfolio.models.transaction import Transaction, TransactionType
 
@@ -47,7 +49,7 @@ class TestLedgerJournalPropagationSessions:
                 quantity=Decimal(2),
                 consideration=Decimal(2),
             )
-            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
+            ledg = Ledger(instrument=inst, transactions={t1, t2})
 
             # Attach ledger under owner so it participates in the session-managed hierarchy
             entity_root.root = ledg
@@ -71,8 +73,8 @@ class TestLedgerJournalPropagationSessions:
 
         # After invalidation propagation, parent should have an ITEM_UPDATED edit for t1
         diff = lj.get_diff()
-        assert "transaction_uids" in diff
-        journal = diff["transaction_uids"]
+        assert "transactions" in diff
+        journal = diff["transactions"]
         assert isinstance(journal, tuple) and len(journal) == 1
         edit = journal[0]
         assert edit.type is JournalledSetEditType.ITEM_UPDATED
@@ -93,7 +95,7 @@ class TestLedgerJournalPropagationSessions:
                 quantity=Decimal(2),
                 consideration=Decimal(2),
             )
-            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
+            ledg = Ledger(instrument=inst, transactions={t1, t2})
             entity_root.root = ledg
 
         with session_manager(actor="tester", reason="no-op-date") as s:
@@ -124,7 +126,7 @@ class TestLedgerJournalPropagationSessions:
                 quantity=Decimal(1),
                 consideration=Decimal(1),
             )
-            ledg = Ledger(instrument_uid=inst.uid, transaction_uids={t1.uid, t2.uid})
+            ledg = Ledger(instrument=inst, transactions={t1, t2})
             entity_root.root = ledg
 
         with session_manager(actor="tester", reason="not-member") as s:
@@ -132,12 +134,12 @@ class TestLedgerJournalPropagationSessions:
             assert lj.get_diff() == {}
 
             # Remove t1 from the ledger set
-            ledg.journal.transaction_uids.remove(t1.uid)
+            ledg.journal.transactions.discard(t1)
 
             # Modify t1 (not present in ledger set) sort key
             tj = t1.journal
             tj.date = datetime.date(2025, 3, 5)
 
             # Still no diff because child isn't in the parent's OrderedViewMutableSet
-            assert lj.get_diff() == {"transaction_uids": (JournalledSetEdit(type=JournalledSetEditType.DISCARD, value=t1.uid),)}
+            assert lj.get_diff() == {"transactions": (JournalledSetEdit(type=JournalledSetEditType.DISCARD, value=t1.uid),)}
             s.abort()

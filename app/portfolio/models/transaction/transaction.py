@@ -3,31 +3,27 @@
 
 import weakref
 
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any
 
 from pydantic import computed_field, field_validator
 
-from ....util.helpers.empty_class import EmptyClass
-from ...util.uid import Uid  # noqa: TC001
-from ..entity import IncrementingUidEntity
-from .transaction_base import TransactionBase
-from .transaction_fields import TransactionFields
+from ....util.helpers.empty_class import empty_class
+from ..entity import Entity, IncrementingUidMixin
+from ..instrument import Instrument
+from .transaction_impl import TransactionImpl
 from .transaction_journal import TransactionJournal
-
-
-if TYPE_CHECKING:
-    from _typeshed import SupportsRichComparison
-
-    from ..instrument.instrument import Instrument
-    from .transaction_proxy import TransactionProxy  # noqa: F401
+from .transaction_record import TransactionRecord
 
 
 class Transaction(
-    TransactionBase,
-    TransactionFields if not TYPE_CHECKING else EmptyClass,
-    IncrementingUidEntity[TransactionJournal, "TransactionProxy"],
+    TransactionImpl if TYPE_CHECKING else empty_class(),
+    IncrementingUidMixin,
+    Entity[TransactionRecord, TransactionJournal],
+    init=False,
+    unsafe_hash=True,
 ):
     # MARK: Instrument
+    @computed_field(description="The financial instrument associated with this transaction, derived from its parent ledger.")
     @property
     def instrument(self) -> Instrument:
         from ..ledger import Ledger
@@ -37,10 +33,6 @@ class Transaction(
             msg = f"Transaction.instrument requires parent to be a Ledger, got {type(parent)}"
             raise TypeError(msg)
         return parent.instrument
-
-    @computed_field(description="The UID of the associated instrument.")
-    def instrument_uid(self) -> Uid:
-        return self.instrument.uid
 
     @field_validator("instance_parent_weakref", mode="before")
     @classmethod
@@ -57,7 +49,5 @@ class Transaction(
 
         return value
 
-    # MARK: Utilities
-    @override
-    def sort_key(self) -> SupportsRichComparison:
-        return (self.date, self.uid)
+
+TransactionRecord.register_entity_class(Transaction)

@@ -11,6 +11,7 @@ from typing import (
 )
 
 from ....util.helpers.frozendict import PydanticFrozenDictAnnotation, frozendict
+from ...util.uid import Uid, UidProtocol
 from .collection import JournalledCollection
 
 
@@ -27,7 +28,7 @@ class JournalledMappingEditType(Enum):
 class JournalledMappingEdit[K, V]:
     type: JournalledMappingEditType
     key: K
-    value: V | None
+    value: V | Uid | None
 
     @override
     def __str__(self) -> str:
@@ -47,7 +48,7 @@ class JournalledMapping[K, V](JournalledCollection[V, Mapping[K, V], dict[K, V],
 
     # MARK: Functionality
     def _append_journal(self, type: JournalledMappingEditType, key: K, value: V | None) -> None:  # NOQA: A002
-        self._journal.append(JournalledMappingEdit(type=type, key=key, value=value))
+        self._journal.append(JournalledMappingEdit(type=type, key=key, value=value.uid if isinstance(value, UidProtocol) else value))
         self._on_edit()
 
     @override

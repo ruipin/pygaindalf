@@ -15,6 +15,7 @@ from ..entity import Entity
 
 
 if TYPE_CHECKING:
+    from ..entity import EntityRecord
     from .entity_store import EntityStore
 
 
@@ -61,7 +62,7 @@ class StringUidMapping(MutableMapping[str, Uid], LoggableHierarchicalMixin):
                 elif isinstance(item, Entity):
                     self[name] = item.uid
                 else:
-                    msg = f"Value must be an Entity or a Uid, got {type(item)}."
+                    msg = f"Value must be an EntityRecord or a Uid, got {type(item)}."
                     raise TypeError(msg)
         else:
             msg = f"Value must be a Mapping, got {type(value)}."
@@ -75,7 +76,11 @@ class StringUidMapping(MutableMapping[str, Uid], LoggableHierarchicalMixin):
                 raise KeyError(msg)
             return None
 
-        return self.entity_store[uid]
+        return self.entity_store.get(uid, None)
+
+    def get_entity_record(self, name: str, *, fail: bool = True) -> EntityRecord | None:
+        entity = self.get_entity(name, fail=fail)
+        return None if entity is None else entity.record_or_none
 
     def remove_uid(self, uid: Uid) -> None:
         name = self._reverse.pop(uid, None)
@@ -110,7 +115,7 @@ class StringUidMapping(MutableMapping[str, Uid], LoggableHierarchicalMixin):
             uid = self.pop(value)
             del self._reverse[uid]
         else:
-            msg = f"Value must be a str, Uid or Entity, got {type(value)}."
+            msg = f"Value must be a str, Uid or EntityRecord, got {type(value)}."
             raise TypeError(msg)
 
     @override

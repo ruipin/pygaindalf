@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+from abc import ABCMeta
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -9,12 +11,53 @@ from pydantic import Field
 
 from app.portfolio.collections.uid_proxy import UidProxyMutableMapping
 from app.portfolio.collections.uid_proxy.mapping import UidProxyMapping
-from app.portfolio.models.entity import IncrementingUidEntity
+from app.portfolio.journal.journal import Journal
+from app.portfolio.models.entity import Entity, EntityImpl, EntityRecord, EntitySchemaBase, IncrementingUidMixin
 from app.portfolio.util.uid import Uid
+from app.util.helpers.empty_class import empty_class
 
 
-class Item(IncrementingUidEntity):
+class ItemSchema(EntitySchemaBase, metaclass=ABCMeta):
     pass
+
+
+class ItemImpl(
+    EntityImpl,
+    ItemSchema if TYPE_CHECKING else empty_class(),
+    metaclass=ABCMeta,
+):
+    pass
+
+
+class ItemJournal(
+    ItemImpl,
+    Journal,
+    init=False,
+):
+    pass
+
+
+class ItemRecord(
+    ItemImpl,
+    ItemSchema if not TYPE_CHECKING else empty_class(),
+    EntityRecord[ItemJournal],
+    init=False,
+    unsafe_hash=True,
+):
+    pass
+
+
+class Item(
+    ItemImpl if TYPE_CHECKING else empty_class(),
+    IncrementingUidMixin,
+    Entity[ItemRecord, ItemJournal],
+    init=False,
+    unsafe_hash=True,
+):
+    pass
+
+
+ItemRecord.register_entity_class(Item)
 
 
 class _UidProxyItemMapping(UidProxyMutableMapping[str, Item]):
@@ -25,9 +68,43 @@ class _UidProxyFrozenItemMapping(UidProxyMapping[str, Item]):
     pass
 
 
-class Owner(IncrementingUidEntity):
+class OwnerSchema(EntitySchemaBase, metaclass=ABCMeta):
     item_uids: dict[str, Uid] = Field(default_factory=dict)
 
+
+class OwnerImpl(
+    EntityImpl,
+    OwnerSchema if TYPE_CHECKING else empty_class(),
+    metaclass=ABCMeta,
+):
+    pass
+
+
+class OwnerJournal(
+    OwnerImpl,
+    Journal,
+    init=False,
+):
+    pass
+
+
+class OwnerRecord(
+    OwnerImpl,
+    OwnerSchema if not TYPE_CHECKING else empty_class(),
+    EntityRecord[OwnerJournal],
+    init=False,
+    unsafe_hash=True,
+):
+    pass
+
+
+class Owner(
+    OwnerImpl if TYPE_CHECKING else empty_class(),
+    IncrementingUidMixin,
+    Entity[OwnerRecord, OwnerJournal],
+    init=False,
+    unsafe_hash=True,
+):
     @cached_property
     def items(self):
         return _UidProxyItemMapping(instance=self, field="item_uids")
@@ -35,6 +112,9 @@ class Owner(IncrementingUidEntity):
     @cached_property
     def items_frozen(self):
         return _UidProxyFrozenItemMapping(instance=self, field="item_uids")
+
+
+OwnerRecord.register_entity_class(Owner)
 
 
 @pytest.mark.portfolio_collections

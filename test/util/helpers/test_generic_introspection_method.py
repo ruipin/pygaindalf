@@ -15,6 +15,11 @@ class Animal: ...
 class Dog(Animal): ...
 
 
+type ListAlias = list[int]
+type NumberAlias = int | str
+type IntAlias = int
+
+
 @pytest.mark.helpers
 @pytest.mark.generics
 class TestGenericIntrospectionMethod:
@@ -41,6 +46,42 @@ class TestGenericIntrospectionMethod:
         pass
 
     class ChildGeneric[Z](Parent[Z]):  # leaves T unresolved through Z
+        pass
+
+    class ChildUnion(Parent[int | str]):
+        pass
+
+    class ChildAliasUnion(Parent[NumberAlias]):
+        pass
+
+    class ChildListAlias(Parent[ListAlias]):
+        pass
+
+    class UnionBoundParent[T: int | str]:
+        kind_union = GenericIntrospectionMethod[T]()
+
+    class UnionBoundChild(UnionBoundParent[int]):
+        pass
+
+    class UnionBoundInvalid(UnionBoundParent[float]):  # pyright: ignore[reportInvalidTypeArguments]
+        pass
+
+    class AliasBoundParent[T: IntAlias]:
+        kind_alias = GenericIntrospectionMethod[T]()
+
+    class AliasBoundChild(AliasBoundParent[IntAlias]):
+        pass
+
+    class AliasBoundInvalid(AliasBoundParent[str]):  # pyright: ignore[reportInvalidTypeArguments]
+        pass
+
+    class AliasUnionBoundParent[T: NumberAlias]:
+        kind_union_alias = GenericIntrospectionMethod[T]()
+
+    class AliasUnionBoundChild(AliasUnionBoundParent[int]):
+        pass
+
+    class AliasUnionBoundInvalid(AliasUnionBoundParent[float]):  # pyright: ignore[reportInvalidTypeArguments]
         pass
 
     def test_class_and_instance_access(self):
@@ -79,3 +120,52 @@ class TestGenericIntrospectionMethod:
         with pytest.raises(GenericsError) as ei:
             ChildGeneric.kind()
         assert str(ei.value) == "Could not resolve ChildGeneric.T type argument to a concrete type, got <Z>"
+
+    def test_union_specialisation_returns_union(self):
+        ChildUnion = TestGenericIntrospectionMethod.ChildUnion
+
+        value = ChildUnion.kind()
+
+        assert value == (int | str)
+        assert ChildUnion.kind_origin() is type(int | str)
+
+    def test_union_alias_specialisation_resolves_value(self):
+        ChildAliasUnion = TestGenericIntrospectionMethod.ChildAliasUnion
+
+        value = ChildAliasUnion.kind()
+
+        assert value == (int | str)
+        assert ChildAliasUnion.kind_origin() is type(int | str)
+
+    def test_list_alias_specialisation_preserves_generic_alias(self):
+        ChildListAlias = TestGenericIntrospectionMethod.ChildListAlias
+
+        alias_value = ChildListAlias.kind()
+
+        assert typing.get_origin(alias_value) is list
+        assert typing.get_args(alias_value) == (int,)
+        assert ChildListAlias.kind_origin() is list
+
+    def test_union_bound_descriptor_enforces_membership(self):
+        UnionBoundChild = TestGenericIntrospectionMethod.UnionBoundChild
+        UnionBoundInvalid = TestGenericIntrospectionMethod.UnionBoundInvalid
+
+        assert UnionBoundChild.kind_union() is int
+        with pytest.raises(GenericsError):
+            UnionBoundInvalid.kind_union()
+
+    def test_alias_bound_descriptor_returns_alias(self):
+        AliasBoundChild = TestGenericIntrospectionMethod.AliasBoundChild
+        AliasBoundInvalid = TestGenericIntrospectionMethod.AliasBoundInvalid
+
+        assert AliasBoundChild.kind_alias() is int
+        with pytest.raises(GenericsError):
+            AliasBoundInvalid.kind_alias()
+
+    def test_alias_union_bound_descriptor_handles_union(self):
+        AliasUnionBoundChild = TestGenericIntrospectionMethod.AliasUnionBoundChild
+        AliasUnionBoundInvalid = TestGenericIntrospectionMethod.AliasUnionBoundInvalid
+
+        assert AliasUnionBoundChild.kind_union_alias() is int
+        with pytest.raises(GenericsError):
+            AliasUnionBoundInvalid.kind_union_alias()

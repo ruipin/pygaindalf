@@ -3,20 +3,20 @@
 
 from typing import TYPE_CHECKING
 
-from ....util.helpers.empty_class import EmptyClass
-from ..entity import IncrementingUidEntity
-from .portfolio_base import PortfolioBase
-from .portfolio_fields import PortfolioFields
+from ....util.helpers.empty_class import empty_class
+from ..entity import Entity, IncrementingUidMixin
+from .portfolio_impl import PortfolioImpl
 from .portfolio_journal import PortfolioJournal
-
-
-if TYPE_CHECKING:
-    from .portfolio_proxy import PortfolioProxy  # noqa: F401
+from .portfolio_record import PortfolioRecord
 
 
 class Portfolio(
-    PortfolioBase,
-    PortfolioFields if not TYPE_CHECKING else EmptyClass,
-    IncrementingUidEntity[PortfolioJournal, "PortfolioProxy"],
+    PortfolioImpl if TYPE_CHECKING else empty_class(),
+    IncrementingUidMixin,
+    Entity[PortfolioRecord, PortfolioJournal],
+    init=False,
 ):
     pass
+
+
+PortfolioRecord.register_entity_class(Portfolio)

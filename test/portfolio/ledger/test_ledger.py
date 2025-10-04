@@ -9,109 +9,128 @@ import pytest
 
 from iso4217 import Currency
 
-from app.portfolio.models.instrument.instrument import Instrument
-from app.portfolio.models.ledger.ledger import Ledger
+from app.portfolio.models.entity.entity_log import EntityLog, EntityModificationType
+from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.transaction import Transaction, TransactionType
 
 
 @pytest.mark.portfolio
 @pytest.mark.ledger
-class TestLedger:
-    def test_initialization_uses_instrument_name_and_audit(self):
-        inst = Instrument.model_validate(
-            {
-                "ticker": "MSFT",
-                "currency": Currency("USD"),
-            }
-        )
-        ledg = Ledger.model_validate(
-            {
-                "instrument_uid": inst.uid,
-            }
-        )
-
-        # Name and linkage
-        assert ledg.instance_name == f"Ledger@{inst.instance_name}"
-        assert ledg.instrument is inst
-
-        # Instance store lookup
-        by_name = Ledger.by_instrument(inst)
-        assert by_name is ledg
-
-        # Audit basics
-        assert ledg.version == 1
-        assert ledg.entity_log.entity_uid == ledg.uid
-        assert len(ledg.entity_log) == 1
-        assert ledg.entity_log.exists is True
-        assert ledg.entity_log.next_version == 2
-
-    def test_ledger_with_transactions_set_interface(self):
-        inst = Instrument(
+class TestLedgerEntity:
+    def test_entity_initialization_sets_instance_name_and_audit(self):
+        instrument = Instrument(
             ticker="AAPL",
             currency=Currency("USD"),
         )
-        # Manually construct transactions (ledger currently immutable, so we just build iterable)
-        tx1 = Transaction(
+        ledger = Ledger(instrument=instrument)
+
+        record = ledger.record
+        assert ledger.instance_name == f"Ledger@{instrument.instance_name}"
+        assert ledger.uid.namespace == "Ledger"
+        assert record.version == 1
+        assert record.entity_log.entity_uid == ledger.uid
+        assert len(record.entity_log) == 1
+        assert record.entity_log.exists is True
+        assert record.entity_log.next_version == 2
+
+    def test_entity_reuses_instance_per_instrument(self):
+        instrument = Instrument(
+            ticker="MSFT",
+            currency=Currency("USD"),
+        )
+
+        ledger1 = Ledger(instrument=instrument)
+        ledger2 = Ledger(instrument=instrument)
+
+        assert ledger1 is ledger2
+        assert Ledger.by_instrument(instrument) is ledger1
+
+    def test_entity_wraps_record_and_exposes_transactions(self):
+        instrument = Instrument(
+            ticker="AAPL",
+            currency=Currency("USD"),
+        )
+        txn = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
-            quantity=Decimal(10),
-            consideration=Decimal(1500),
-        )
-        tx2 = Transaction(
-            type=TransactionType.SELL,
-            date=datetime.date(2025, 1, 5),
-            quantity=Decimal(4),
-            consideration=Decimal(620),
+            quantity=Decimal(1),
+            consideration=Decimal(100),
         )
 
-        ledg = Ledger(
-            instrument_uid=inst.uid,
-            # Provide a set (primary expected input type now)
-            transaction_uids={tx1.uid, tx2.uid},
+        ledger = Ledger(
+            instrument=instrument,
+            transactions={txn},
         )
 
-        assert len(ledg) == 2
-        assert ledg.length == 2
-        # OrderedViewMutableSet sorts by transaction date; tx1 earlier than tx2
-        assert ledg[0] is tx1
-        assert ledg[1] is tx2
-        assert list(iter(ledg)) == [tx1, tx2]
+        assert ledger.instrument is instrument
+        assert ledger.record.instrument is instrument
+        assert len(ledger) == 1
+        assert list(ledger.transactions) == [txn]
+        assert Ledger.by_uid(ledger.uid) is ledger
 
-    def test_ledger_with_transactions_iterable_sequence_input(self):
-        """Validate that non-set iterables (e.g. sequence/tuple) are accepted and coerced."""
-        inst = Instrument(
+    def test_entity_accepts_iterable_transaction_input(self):
+        instrument = Instrument(
             ticker="NFLX",
             currency=Currency("USD"),
         )
-        tx1 = Transaction(
+        t1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 4, 1),
             quantity=Decimal(1),
             consideration=Decimal(500),
         )
-        tx2 = Transaction(
+        t2 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 4, 2),
             quantity=Decimal(2),
             consideration=Decimal(1000),
         )
-        # Supply a tuple (sequence) to test broader Iterable support
-        ledg = Ledger.model_validate(
-            {
-                "instrument_uid": inst.uid,
-                "transaction_uids": (tx1.uid, tx2.uid),
-            }
-        )
-        assert len(ledg) == 2
-        assert ledg[0] is tx1 and ledg[1] is tx2
 
-    def test_ledger_uid_and_instance_name_stable(self):
-        inst = Instrument(
-            ticker="TSLA",
+        ledger = Ledger(instrument=instrument, transactions=(t1, t2))
+
+        assert len(ledger.transactions) == 2
+        assert list(ledger.transactions) == [t1, t2]
+
+    def test_entity_refreshes_after_superseding_record(self):
+        instrument = Instrument(
+            ticker="MSFT",
             currency=Currency("USD"),
         )
-        ledg1 = Ledger(instrument_uid=inst.uid)
-        # Reinitialize with same instrument (should reuse)
-        ledg2 = Ledger(instrument_uid=inst.uid)
+        txn1 = Transaction(
+            type=TransactionType.BUY,
+            date=datetime.date(2025, 2, 1),
+            quantity=Decimal(2),
+            consideration=Decimal(200),
+        )
+        ledger = Ledger(
+            instrument=instrument,
+            transactions={txn1},
+        )
 
-        assert ledg1 is ledg2
+        original_record = ledger.record
+
+        txn2 = Transaction(
+            type=TransactionType.SELL,
+            date=datetime.date(2025, 2, 3),
+            quantity=Decimal(1),
+            consideration=Decimal(150),
+        )
+        ledger.update(transactions={txn1, txn2})
+
+        updated_record = ledger.record
+        assert updated_record is not original_record
+        assert original_record.superseded
+        assert updated_record is original_record.superseding
+        assert list(ledger.transactions) == [txn1, txn2]
+        assert Ledger.by_uid(ledger.uid) is ledger
+
+        log = ledger.record.entity_log
+        assert log.version == 2
+        entry_v1 = log.get_entry_by_version(1)
+        assert entry_v1 is not None and entry_v1.what == EntityModificationType.CREATED
+        if EntityLog.TRACK_ENTITY_DIFF:
+            assert entry_v1.diff == {"instrument": instrument, "transactions": {txn1}}
+
+        entry_v2 = log.get_entry_by_version(2)
+        assert entry_v2 is not None and entry_v2.what == EntityModificationType.UPDATED

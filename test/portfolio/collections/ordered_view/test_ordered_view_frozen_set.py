@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import re
+
 import pytest
+
+from pydantic import BaseModel
 
 from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
 
@@ -64,9 +68,23 @@ class TestOrderedViewSet:
         assert isinstance(ok, _FrozenInts) and set(ok) == {1, 2, 3}
         # Type mismatch
         with pytest.raises(TypeError):
-            _FrozenInts.validate_and_coerce([1, "x"])  # type: ignore[list-item]
+            _FrozenInts.validate_and_coerce([1, "x"])
         with pytest.raises(TypeError):
             _FrozenInts.validate_and_coerce(123)  # not iterable
+
+    def test_pydantic_model_field_validation(self):
+        class Model(BaseModel):
+            items: _FrozenInts
+
+        model = Model.model_validate({"items": [3, 1]})
+        assert isinstance(model.items, _FrozenInts)
+        assert tuple(model.items) == (1, 3)
+
+        with pytest.raises(TypeError, match=re.escape("Expected item of type int, got str.")):
+            Model.model_validate({"items": [1, "x"]})
+
+        with pytest.raises(TypeError, match=re.escape("Expected an Iterable[int], got int.")):
+            Model.model_validate({"items": 123})
 
     def test_get_mutable_type_round_trip(self):
         assert _FrozenInts.get_mutable_type() == OrderedViewMutableSet[int]

@@ -6,7 +6,7 @@ Covers all public functions (excluding private ones) and ignores GenericIntrospe
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import TypeVar
+import typing
 
 import pytest
 
@@ -20,6 +20,7 @@ from app.util.helpers.generics import (
     get_bases_between,
     get_concrete_argument,
     get_concrete_parent_argument,
+    get_concrete_parent_argument_origin,
     get_generic_base,
     get_generic_base_or_none,
     get_origin,
@@ -199,7 +200,7 @@ class TestDirectArgAccess:
     def test_get_concrete_arg_unresolved_typevar(self):
         Pair = TestDirectArgAccess.Pair
         with pytest.raises(GenericsError) as ei:
-            get_concrete_argument(Pair[str, TypeVar("U", bound=int)], "U")
+            get_concrete_argument(Pair[str, typing.TypeVar("U", bound=int)], "U")
         assert str(ei.value) == "Could not resolve Pair.U type argument to a concrete type"
 
 
@@ -248,7 +249,7 @@ class TestParentTraversal:
         # Or-none variant: unresolved through LeafUnresolved
         spec2 = get_parent_argument_info_or_none(LeafUnresolved, ParentGeneric, "T")
         assert isinstance(spec2, ArgumentInfo)
-        assert not spec2.is_concrete and isinstance(spec2.value, TypeVar)
+        assert not spec2.is_concrete and isinstance(spec2.value, typing.TypeVar)
         assert spec2.value.__name__ == "Z"
         with pytest.raises(GenericsError) as ei:
             get_concrete_parent_argument(LeafUnresolved, ParentGeneric, "T")
@@ -356,8 +357,8 @@ class TestBoundsAndPropagation:
 
         spec_x = get_argument_info(UnboundAndBound, "X")
         spec_y = get_argument_info(UnboundAndBound, "Y")
-        assert not spec_x.is_concrete and isinstance(spec_x.value, TypeVar) and spec_x.value.__name__ == "X"
-        assert not spec_y.is_concrete and isinstance(spec_y.value, TypeVar)
+        assert not spec_x.is_concrete and isinstance(spec_x.value, typing.TypeVar) and spec_x.value.__name__ == "X"
+        assert not spec_y.is_concrete and isinstance(spec_y.value, typing.TypeVar)
         assert spec_y.value_or_bound is int
 
     def test_subclass_of_bound_is_accepted(self):
@@ -406,3 +407,192 @@ class TestBoundsAndPropagation:
         with pytest.raises(TypeError) as ei:
             get_parent_argument(Child[int, int, int], Parent, "T")  # pyright: ignore[reportInvalidTypeArguments]
         assert str(ei.value) == "Parent.T type argument <int> is not a subclass of its bound <Animal>"
+
+
+# -------------------------------------------------------------------------------
+# MARK: Union arguments
+# -------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestUnionArguments:
+    class Container[T]:
+        pass
+
+    class UnionLeaf(Container[int | str]):
+        pass
+
+    def test_union_argument_round_trip(self):
+        Container = TestUnionArguments.Container
+
+        alias = Container[int | str]
+        info = get_argument_info(alias, "T")
+
+        assert info.is_concrete
+        assert info.value == (int | str)
+        assert list(get_argument_infos(alias).keys()) == ["T"]
+        assert get_argument(alias, "T") == (int | str)
+        assert get_concrete_argument(alias, "T") is type(int | str)
+
+    def test_union_argument_through_parent_traversal(self):
+        Container = TestUnionArguments.Container
+        UnionLeaf = TestUnionArguments.UnionLeaf
+
+        result = get_parent_argument(UnionLeaf, Container, "T")
+
+        assert result == (int | str)
+        assert get_concrete_parent_argument(UnionLeaf, Container, "T") == (int | str)
+        assert get_concrete_parent_argument_origin(UnionLeaf, Container, "T") is type(int | str)
+
+
+# -------------------------------------------------------------------------------
+# MARK: Type alias arguments
+# -------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestAliasArguments:
+    type SequenceAlias = list[int]
+
+    class Container[T]:
+        pass
+
+    class AliasLeaf(Container[SequenceAlias]):
+        pass
+
+    def test_type_alias_argument_round_trip(self):
+        Container = TestAliasArguments.Container
+        SequenceAlias = TestAliasArguments.SequenceAlias
+
+        alias = Container[SequenceAlias]
+        info = get_argument_info(alias, "T")
+
+        assert info.is_concrete
+        assert typing.get_origin(info.value) is list
+        assert typing.get_args(info.value) == (int,)
+        assert get_argument(alias, "T") == info.value
+        assert get_concrete_argument(alias, "T") is list
+
+    def test_type_alias_argument_through_parent_traversal(self):
+        Container = TestAliasArguments.Container
+        AliasLeaf = TestAliasArguments.AliasLeaf
+        result = get_parent_argument(AliasLeaf, Container, "T")
+
+        assert typing.get_origin(result) is list
+        assert typing.get_args(result) == (int,)
+        assert get_concrete_parent_argument(AliasLeaf, Container, "T") == result
+        assert get_concrete_parent_argument_origin(AliasLeaf, Container, "T") is list
+
+
+# -------------------------------------------------------------------------------
+# MARK: Union alias interactions
+# -------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestUnionAliasInteractions:
+    type NumberAlias = int | str
+
+    class Container[T]:
+        pass
+
+    class AliasLeaf(Container[NumberAlias]):
+        pass
+
+    def test_union_alias_argument_round_trip(self):
+        Container = TestUnionAliasInteractions.Container
+        NumberAlias = TestUnionAliasInteractions.NumberAlias
+
+        alias = Container[NumberAlias]
+        info = get_argument_info(alias, "T")
+
+        assert info.is_concrete
+        assert info.value == (int | str)
+        assert get_argument(alias, "T") == (int | str)
+        assert get_concrete_argument(alias, "T") is type(int | str)
+
+    def test_union_alias_argument_through_parent_traversal(self):
+        Container = TestUnionAliasInteractions.Container
+        AliasLeaf = TestUnionAliasInteractions.AliasLeaf
+
+        result = get_parent_argument(AliasLeaf, Container, "T")
+
+        assert result == (int | str)
+        assert get_concrete_parent_argument(AliasLeaf, Container, "T") == (int | str)
+        assert get_concrete_parent_argument_origin(AliasLeaf, Container, "T") is type(int | str)
+
+
+# -------------------------------------------------------------------------------
+# MARK: TypeVar bounds with unions and aliases
+# -------------------------------------------------------------------------------
+@pytest.mark.helpers
+@pytest.mark.generics
+class TestTypeVarCompositeBounds:
+    type SequenceAlias = list[int]
+    type NumberUnionAlias = int | str
+
+    class UnionParent[T: int | str]:
+        pass
+
+    class UnionChild(UnionParent[int]):
+        pass
+
+    class UnionChildInvalid(UnionParent[float]):  # pyright: ignore[reportInvalidTypeArguments]
+        pass
+
+    class AliasParent[T: SequenceAlias]:
+        pass
+
+    class AliasChild(AliasParent[SequenceAlias]):
+        pass
+
+    class AliasChildInvalid(AliasParent[int]):  # pyright: ignore[reportInvalidTypeArguments]
+        pass
+
+    class AliasUnionParent[T: NumberUnionAlias]:
+        pass
+
+    class AliasUnionChild(AliasUnionParent[int]):
+        pass
+
+    class AliasUnionChildInvalid(AliasUnionParent[float]):  # pyright: ignore[reportInvalidTypeArguments]
+        pass
+
+    def test_union_bound_allows_members(self):
+        Parent = TestTypeVarCompositeBounds.UnionParent
+        Child = TestTypeVarCompositeBounds.UnionChild
+
+        assert get_parent_argument(Child, Parent, "T") is int
+
+    def test_union_bound_rejects_non_members(self):
+        Parent = TestTypeVarCompositeBounds.UnionParent
+        BadChild = TestTypeVarCompositeBounds.UnionChildInvalid
+
+        with pytest.raises(TypeError):
+            get_parent_argument(BadChild, Parent, "T")
+
+    def test_alias_bound_returns_alias_value(self):
+        Parent = TestTypeVarCompositeBounds.AliasParent
+        Child = TestTypeVarCompositeBounds.AliasChild
+
+        result = get_parent_argument(Child, Parent, "T")
+
+        assert typing.get_origin(result) is list
+        assert typing.get_args(result) == (int,)
+
+    def test_alias_bound_rejects_non_alias(self):
+        Parent = TestTypeVarCompositeBounds.AliasParent
+        BadChild = TestTypeVarCompositeBounds.AliasChildInvalid
+
+        with pytest.raises(TypeError):
+            get_parent_argument(BadChild, Parent, "T")
+
+    def test_alias_union_bound_allows_members(self):
+        Parent = TestTypeVarCompositeBounds.AliasUnionParent
+        Child = TestTypeVarCompositeBounds.AliasUnionChild
+
+        assert get_parent_argument(Child, Parent, "T") is int
+
+    def test_alias_union_bound_rejects_non_members(self):
+        Parent = TestTypeVarCompositeBounds.AliasUnionParent
+        BadChild = TestTypeVarCompositeBounds.AliasUnionChildInvalid
+
+        with pytest.raises(TypeError):
+            get_parent_argument(BadChild, Parent, "T")

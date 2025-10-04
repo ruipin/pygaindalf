@@ -14,6 +14,14 @@ if typing.TYPE_CHECKING:
     from .generics import GenericAlias
 
 
+# MARK: Type aliases
+#: Alias for all accepted forms of type hints.
+type TypeHint = type | GenericAlias | typing.ForwardRef | typing.TypeAliasType | typing.Union  # pyright: ignore[reportInvalidTypeForm]
+
+#: Alias for all forms of resolved types that our methods can return.
+type ResolvedType = type | GenericAlias | typing.ForwardRef
+
+
 # MARK: typing.get_type_hints wrapper
 def _get_type_hints(obj: typing.Any, format: annotationlib.Format = annotationlib.Format.FORWARDREF) -> typing.Mapping[str, typing.Any]:  # noqa: A002
     return frozendict(typing.get_type_hints(obj, format=format))
@@ -42,9 +50,30 @@ def get_type_hints(obj: typing.Any) -> typing.Mapping[str, typing.Any]:
         return _get_type_hints(obj)
 
 
+# MARK: get_type_hint
+def get_type_hint(obj: typing.Any, attr: str) -> typing.Any | None:
+    hints = get_type_hints(obj)
+    return hints.get(attr, None)
+
+
 # MARK: Union utilities
-def iterate_type_hints[T](hint: GenericAlias, *, origin: bool = False) -> typing.Iterable[type | GenericAlias | typing.ForwardRef]:
+def iterate_type_hints(
+    hint: TypeHint,
+    *,
+    origin: bool = False,
+) -> typing.Iterable[ResolvedType]:
     from .generics import get_origin
+
+    if isinstance(hint, typing.TypeAliasType):
+        if (evaluate_value := getattr(hint, "evaluate_value", None)) is not None:
+            hint = annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+        else:
+            msg = f"Cannot iterate over unresolved TypeAlias {hint!r}"
+            raise TypeError(msg)
+
+    if isinstance(hint, typing.ForwardRef):
+        warnings.warn(f"{hint!s} type hint iteration not implemented, returning as-is", category=UserWarning, stacklevel=2)
+        return hint
 
     if not isinstance(hint, typing.Union):
         if origin:
@@ -63,11 +92,14 @@ def iterate_type_hints[T](hint: GenericAlias, *, origin: bool = False) -> typing
 
 
 # MARK: Type hint matching
-def match_type_hint(typ: type | GenericAlias, hint: type | GenericAlias | typing.ForwardRef) -> type | GenericAlias | None:
+def match_type_hint(
+    typ: type | GenericAlias,
+    hint: TypeHint,
+) -> ResolvedType | None:
     from .generics import get_origin
 
     typ_origin = get_origin(typ, passthrough=True)
-    assert isinstance(typ_origin, type), f"typ_origin must be a type, got {typ_origin!r}"
+    assert isinstance(typ_origin, type), f"typ_origin must be a type, got {type(typ_origin).__name__}"
 
     if isinstance(hint, typing.ForwardRef):
         warnings.warn(f"{hint!s} type hint matching not implemented, returning as-is", category=UserWarning, stacklevel=2)
@@ -76,12 +108,11 @@ def match_type_hint(typ: type | GenericAlias, hint: type | GenericAlias | typing
     for arg in iterate_type_hints(hint):
         arg_origin = get_origin(arg, passthrough=True)
         if not isinstance(arg_origin, type):
-            return None
+            msg = f"arg_origin must be a type, got {type(arg_origin).__name__}"
+            raise TypeError(msg)
 
         if issubclass(typ_origin, arg_origin):
             return arg
-        else:
-            return None
 
     return None
 

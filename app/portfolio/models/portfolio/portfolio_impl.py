@@ -4,36 +4,27 @@
 from abc import ABCMeta
 from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
-from functools import cached_property
 from typing import TYPE_CHECKING, override
 
-from ....util.helpers import generics
-from ....util.helpers.empty_class import EmptyClass
-from ...collections import UidProxyOrderedViewMutableSet
+from ....util.helpers.empty_class import empty_class
+from ...collections.ordered_view import OrderedViewSet
 from ...util.uid import Uid
-from ..entity import Entity, EntityBase
-from ..instrument import Instrument
-from ..ledger import Ledger
-from .portfolio_fields import PortfolioFields
+from ..entity import Entity, EntityImpl
+from ..instrument import Instrument, InstrumentRecord
+from ..ledger import Ledger, LedgerRecord
+from .portfolio_schema import PortfolioSchema
 
 
-class PortfolioBase[
-    T_Uid_Set: AbstractSet[Uid],
-    T_Proxy_Set: UidProxyOrderedViewMutableSet[Ledger],
+class PortfolioImpl[
+    T_Ledger_Set: OrderedViewSet[Ledger],
 ](
-    EntityBase,
-    PortfolioFields[T_Uid_Set] if TYPE_CHECKING else EmptyClass,
+    EntityImpl,
+    PortfolioSchema[T_Ledger_Set] if TYPE_CHECKING else empty_class(),
     AbstractSet[Ledger],
     metaclass=ABCMeta,
 ):
     # MARK: Ledgers
-    get_proxy_set_type = generics.GenericIntrospectionMethod[T_Proxy_Set]()
-
-    @cached_property
-    def ledgers(self) -> T_Proxy_Set:
-        return self.get_proxy_set_type(origin=True)(instance=self, field="ledger_uids")
-
-    def __getitem__(self, index: int | Uid | Instrument) -> Ledger:
+    def __getitem__(self, index: int | Uid | InstrumentRecord | Instrument) -> Ledger:
         ledger = None
 
         if isinstance(index, int):
@@ -42,7 +33,7 @@ class PortfolioBase[
         if isinstance(index, Uid):
             entity = Entity.by_uid(index)
             if isinstance(entity, Ledger):
-                if entity.uid not in self.ledger_uids:
+                if entity not in self.ledgers:
                     msg = f"Ledger with UID {index} not found in portfolio"
                     raise KeyError(msg)
                 return entity
@@ -51,21 +42,22 @@ class PortfolioBase[
                 raise KeyError(msg)
             index = entity
 
-        if isinstance(index, Instrument):
-            if (ledger := Ledger.by_instrument(index)) is None:
+        if isinstance(index, (Instrument, InstrumentRecord)):
+            instrument = Instrument.narrow_to_uid(index)
+            if (ledger := Ledger.by_instrument(instrument)) is None:
                 msg = f"Ledger for index '{index}' not found"
                 raise KeyError(msg)
             return ledger
 
-        msg = f"Index must be an int, Uid or Instrument, got {type(index).__name__}"
+        msg = f"Index must be an int, Uid or InstrumentRecord, got {type(index).__name__}"
         raise KeyError(msg)
 
     # MARK: Set ABC
     @override
     def __contains__(self, value: object) -> bool:
-        if not isinstance(value, (Ledger, Uid)):
+        if not isinstance(value, (Ledger, LedgerRecord, Uid)):
             return False
-        return Ledger.narrow_to_uid(value) in self.ledger_uids
+        return Ledger.narrow_to_instance(value) in self.ledgers
 
     @override
     def __iter__(self) -> Iterator[Ledger]:  # pyright: ignore[reportIncompatibleMethodOverride] since we are overriding the pydantic BaseModel iterator on purpose
@@ -73,8 +65,8 @@ class PortfolioBase[
 
     @override
     def __len__(self) -> int:
-        return len(self.ledger_uids)
+        return len(self.ledgers)
 
     @override
     def __repr__(self) -> str:
-        return super().__repr__().replace(">", f", ledgers={self.ledger_uids!r}>")
+        return super().__repr__().replace(">", f", ledgers={self.ledgers!r}>")

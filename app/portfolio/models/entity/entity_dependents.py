@@ -2,8 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, ClassVar, Self
-from typing import cast as typing_cast
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import GetCoreSchemaHandler, PositiveInt
 from pydantic_core import CoreSchema, core_schema
@@ -15,46 +14,40 @@ from ....util.mixins import HierarchicalMixinMinimal, LoggableMixin, NamedMixinM
 if TYPE_CHECKING:
     from ...util.uid import Uid
     from .entity import Entity
+    from .entity_record import EntityRecord
 
 
-# MARK: Entity Dependents
+# MARK: EntityRecord Dependents
 @callguard_class()
 class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinimal):
-    # MARK: Entity
+    # MARK: EntityRecord
     _entity_uid: Uid
     _entity_version: PositiveInt
 
-    @classmethod
-    def _get_entity_dependents(cls, uid: Uid) -> Self | None:
-        from ..store import EntityStore
-
-        if (store := EntityStore.get_global_store()) is None:
-            msg = f"Could not get entity store for {cls.__name__}. The global EntityStore is not set."
-            raise ValueError(msg)
-        return typing_cast("Self | None", store.get_entity_dependents(uid))
-
-    def __new__(cls, uid: Uid) -> Self:
-        if (instance := cls._get_entity_dependents(uid)) is None:
-            instance = super().__new__(cls)
-            instance._post_init(uid)
-        return instance
-
-    def __init__(self, _uid: Uid) -> None:
+    def __init__(self, uid: Uid) -> None:
         super().__init__()
 
-    def _post_init(self, uid: Uid) -> None:
         self._entity_uid = uid
         self._entity_version = 0
         self._extra_dependent_uids = set()
         self._extra_dependency_uids = frozenset()
 
     @classmethod
-    def by_entity(cls, entity: Entity) -> EntityDependents | None:
-        return cls._get_entity_dependents(entity.uid)
+    def by_entity(cls, entity_or_record: Entity | EntityRecord) -> EntityDependents | None:
+        from .entity import Entity
+
+        entity = Entity.narrow_to_instance_or_none(entity_or_record)
+        if entity is None:
+            return None
+        return entity.entity_dependents
 
     @classmethod
     def by_uid(cls, uid: Uid) -> EntityDependents | None:
-        return cls._get_entity_dependents(uid)
+        from .entity import Entity
+
+        if (entity := Entity.by_uid_or_none(uid)) is None:
+            return None
+        return cls.by_entity(entity)
 
     @property
     def entity_uid(self) -> Uid:
@@ -71,6 +64,18 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
         from .entity import Entity
 
         return Entity.by_uid(self.entity_uid)
+
+    @property
+    def record_or_none(self) -> EntityRecord | None:
+        from .entity_record import EntityRecord
+
+        return EntityRecord.by_uid_or_none(self.entity_uid)
+
+    @property
+    def record(self) -> EntityRecord:
+        from .entity_record import EntityRecord
+
+        return EntityRecord.by_uid(self.entity_uid)
 
     # MARK: Instance name/parent
     PROPAGATE_INSTANCE_NAME_FROM_PARENT: ClassVar[bool] = False
@@ -90,15 +95,15 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
     # MARK: Pydantic schema
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
-        assert source is cls
+        assert source is cls, f"Expected source to be {cls.__name__}, got {source.__name__} instead."
         return core_schema.is_instance_schema(cls)
 
     # MARK: Extra dependents
     _extra_dependent_uids: set[Uid]
 
-    def add_dependent(self, entity_or_uid: Entity | Uid) -> None:
+    def add_dependent(self, entity_or_uid: Entity | EntityRecord | Uid) -> None:
         if not self.entity.is_update_allowed(in_commit_only=True):
-            msg = f"Entity {self.entity} is not allowed to be updated; cannot add dependent."
+            msg = f"EntityRecord {self.entity} is not allowed to be updated; cannot add dependent."
             raise RuntimeError(msg)
 
         from .entity import Entity
@@ -110,9 +115,9 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
 
         self._extra_dependent_uids.add(uid)
 
-    def remove_dependent(self, entity_or_uid: Entity | Uid) -> None:
+    def remove_dependent(self, entity_or_uid: Entity | EntityRecord | Uid) -> None:
         if not self.entity.is_update_allowed(in_commit_only=True):
-            msg = f"Entity {self.entity} is not allowed to be updated; cannot remove dependent."
+            msg = f"EntityRecord {self.entity} is not allowed to be updated; cannot remove dependent."
             raise RuntimeError(msg)
 
         from .entity import Entity
@@ -125,8 +130,7 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
         entity = self.entity
 
         if entity.is_reachable(recursive=False, use_journal=use_journal):
-            parent = entity.entity_parent_or_none
-            if parent is not None:
+            if (parent := entity.record_parent_or_none) is not None:
                 yield parent.uid
 
         yield from entity.get_children_uids(use_journal=use_journal)
@@ -145,33 +149,33 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
     # MARK: Extra dependencies
     _extra_dependency_uids: frozenset[Uid]
 
-    def on_delete(self, entity: Entity) -> None:
-        self.log.debug(t"EntityDependents {self} received deletion notice for entity {entity}.")
+    def on_delete_record(self, record: EntityRecord) -> None:
+        self.log.debug(t"EntityDependents {self} received deletion notice for entity record {record}.")
 
-        if entity.uid != self.entity_uid:
-            msg = f"Entity UID {entity.uid} does not match EntityDependents' entity UID {self.entity_uid}."
+        if record.uid != self.entity_uid:
+            msg = f"EntityRecord UID {record.uid} does not match EntityDependents' entity UID {self.entity_uid}."
             raise ValueError(msg)
-        if entity.version != self._entity_version:
-            msg = f"Entity version has changed from {self._entity_version} to {entity.version} since EntityDependents was last updated. This indicates a bug."
+        if record.version != self._entity_version:
+            msg = f"EntityRecord version has changed from {self._entity_version} to {record.version} since EntityDependents was last updated. This indicates a bug."
             raise RuntimeError(msg)
-        self._entity_version = entity.entity_log.version
+        self._entity_version = record.entity_log.version
 
         # Notify all extra dependencies that they can remove us from their dependents
         for uid in self._extra_dependency_uids:
             if (other := type(self).by_uid(uid)) is not None:
                 other.remove_dependent(self.entity_uid)
 
-    def on_init(self, entity: Entity) -> None:
-        if entity.uid != self.entity_uid:
-            msg = f"Entity UID {entity.uid} does not match EntityDependents' entity UID {self.entity_uid}."
+    def on_init_record(self, record: EntityRecord) -> None:
+        if record.uid != self.entity_uid:
+            msg = f"EntityRecord UID {record.uid} does not match EntityDependents' entity UID {self.entity_uid}."
             raise ValueError(msg)
-        if entity.version != self._entity_version + 1:
-            msg = f"Entity version has changed from {self._entity_version} to {entity.version} since EntityDependents was last updated. This indicates a bug."
+        if record.version != self._entity_version + 1:
+            msg = f"EntityRecord version has changed from {self._entity_version} to {record.version} since EntityDependents was last updated. This indicates a bug."
             raise RuntimeError(msg)
-        self._entity_version = entity.version
+        self._entity_version = record.version
 
         # Update our extra dependencies to match the entity's current extra dependencies
-        current_extra_dependencies = entity.extra_dependency_uids
+        current_extra_dependencies = record.extra_dependency_uids
 
         # Remove dependencies that are no longer present
         for uid in self._extra_dependency_uids - current_extra_dependencies:

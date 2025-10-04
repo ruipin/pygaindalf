@@ -4,14 +4,14 @@
 from collections.abc import MutableSet
 from collections.abc import Set as AbstractSet
 
-from ....models.entity import Entity
 from ....util.uid import Uid
 from ...proxy import ProxyMutableSet, ProxySet
+from ..collection import T_ProxyBase
 from .generic_set import GenericUidProxyMutableSet, GenericUidProxySet
 
 
 class UidProxySet[
-    T: Entity,
+    T: T_ProxyBase,
 ](
     GenericUidProxySet[T, AbstractSet[Uid]],
 ):
@@ -22,7 +22,7 @@ ProxySet.register(UidProxySet)
 
 
 class UidProxyMutableSet[
-    T: Entity,
+    T: T_ProxyBase,
 ](
     GenericUidProxyMutableSet[T, AbstractSet[Uid], MutableSet[Uid]],
 ):

@@ -7,7 +7,7 @@ from iso4217 import Currency
 
 from app.portfolio.journal.session import Session
 from app.portfolio.journal.session_manager import SessionManager
-from app.portfolio.models.instrument.instrument import Instrument
+from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.instrument.instrument_journal import InstrumentJournal
 from app.portfolio.models.root import EntityRoot
 
@@ -16,8 +16,8 @@ from app.portfolio.models.root import EntityRoot
 @pytest.fixture
 def instrument(entity_root: EntityRoot) -> Instrument:
     with entity_root.session_manager(actor="instrument fixture", reason="fixture setup"):
-        instrument = entity_root.root = Instrument(ticker="AAPL", currency=Currency("USD"))
-    return instrument
+        entity = entity_root.root = Instrument(ticker="AAPL", currency=Currency("USD"))
+    return entity
 
 
 # --- Tests -----------------------------------------------------------------------
@@ -55,7 +55,7 @@ class TestInstrumentJournalWithSessions:
             assert j.is_field_edited("currency") is True
             assert j.dirty is True
 
-            # Entity remains unchanged until commit is implemented
+            # EntityRecord remains unchanged until commit is implemented
             assert instrument.ticker == "AAPL"
             assert instrument.currency == Currency("USD")
 
@@ -81,10 +81,13 @@ class TestInstrumentJournalWithSessions:
             s.abort()
 
     def test_attribute_forbids_name_changes(self, instrument: Instrument, session_manager: SessionManager):
-        with pytest.raises(ValueError, match="Updating the entity cannot change its instance name"), session_manager(actor="tester", reason="attr-style"):
+        with (
+            pytest.raises(ValueError, match="Updating the entity record cannot change its instance name"),
+            session_manager(actor="tester", reason="attr-style"),
+        ):
             j = instrument.journal
 
-            # Expected new behavior: write via journal attributes instead of entity
+            # Write via journal attributes
             j.ticker = "TSLA"
             j.currency = Currency("GBP")
 

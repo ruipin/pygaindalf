@@ -1,22 +1,20 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from .entity import Entity, EntityAuditLog, EntityBase, EntityFields, EntityFieldsBase, EntityProxy, IncrementingUidEntity, IncrementingUidEntityMixin
+from .entity import Entity, EntityImpl, EntityLog, EntityRecord, EntitySchema, EntitySchemaBase
 from .root import EntityRoot, PortfolioRoot
 from .store import EntityStore, StringUidMapping
 
 
 __all__ = [
     "Entity",
-    "EntityAuditLog",
-    "EntityBase",
-    "EntityFields",
-    "EntityFieldsBase",
-    "EntityProxy",
+    "EntityImpl",
+    "EntityLog",
+    "EntityRecord",
     "EntityRoot",
+    "EntitySchema",
+    "EntitySchemaBase",
     "EntityStore",
-    "IncrementingUidEntity",
-    "IncrementingUidEntityMixin",
     "PortfolioRoot",
     "StringUidMapping",
 ]

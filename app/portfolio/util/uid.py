@@ -13,10 +13,10 @@ from ...util.helpers import script_info
 
 
 if TYPE_CHECKING:
-    from ..models.entity import Entity
+    from ..models.entity import Entity, EntityRecord
 
 
-UID_SEPARATOR = "#"
+UID_SEPARATOR = ":"
 UID_ID_REGEX = re.compile(r"^[a-zA-Z0-9@_#-]+$")
 
 
@@ -97,6 +97,18 @@ class Uid:
         from ..models.entity import Entity
 
         return Entity.by_uid(self)
+
+    @property
+    def record_or_none(self) -> EntityRecord | None:
+        from ..models.entity import EntityRecord
+
+        return EntityRecord.by_uid_or_none(self)
+
+    @property
+    def record(self) -> EntityRecord:
+        from ..models.entity import EntityRecord
+
+        return EntityRecord.by_uid(self)
 
     @override
     def __str__(self) -> str:

@@ -18,6 +18,10 @@ from app.util.helpers.type_hints import (
 )
 
 
+type SimpleAlias = list[int]
+type NumberAlias = int | str
+
+
 class _SampleWithHints(CachedTypeHintsMixin):
     required: int
     optional: str | None = None
@@ -82,6 +86,16 @@ class TestTypeHints:
 
         assert result == alias
 
+    def test_match_type_hint_handles_type_alias(self) -> None:
+        result = match_type_hint(list, SimpleAlias)
+
+        assert result == list[int]
+
+    def test_match_type_hint_handles_union_alias(self) -> None:
+        result = match_type_hint(int, NumberAlias)
+
+        assert result is int
+
     def test_match_type_hint_with_forward_ref_raises_not_implemented(self) -> None:
         with pytest.warns(UserWarning, match=r"ForwardRef\('Missing'\) type hint matching not implemented"):
             match_type_hint(int, typing.ForwardRef("Missing"))
@@ -89,18 +103,28 @@ class TestTypeHints:
     def test_validate_type_hint_true_when_type_matches(self) -> None:
         assert validate_type_hint(int, int | str)
 
+    def test_validate_type_hint_true_when_alias_matches(self) -> None:
+        assert validate_type_hint(list, SimpleAlias)
+
+    def test_validate_type_hint_true_when_union_alias_matches(self) -> None:
+        assert validate_type_hint(str, NumberAlias)
+
     def test_validate_type_hint_false_when_type_mismatch(self) -> None:
         assert not validate_type_hint(float, int | str)
 
     def test_iterate_type_hints_returns_hint_for_non_union(self) -> None:
-        alias = list[int]
-
-        assert list(iterate_type_hints(alias)) == [alias]
+        assert list(iterate_type_hints(list[int])) == [list[int]]
 
     def test_iterate_type_hints_flattens_union(self) -> None:
         hint = int | str
 
         assert list(iterate_type_hints(hint)) == [int, str]
+
+    def test_iterate_type_hints_returns_alias_value(self) -> None:
+        assert list(iterate_type_hints(SimpleAlias)) == [list[int]]
+
+    def test_iterate_type_hints_expands_union_alias(self) -> None:
+        assert list(iterate_type_hints(NumberAlias)) == [int, str]
 
     def test_iterate_type_hints_flattens_nested_union(self) -> None:
         hint = int | str | float
