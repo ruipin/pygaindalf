@@ -101,20 +101,20 @@ class EntityRoot(LoggableHierarchicalRootModel):
     def on_session_end(self, session: Session) -> None:
         pass
 
-    def on_session_notify(self, session: Session) -> None:
-        pass
+    def on_session_notify(self, session: Session) -> None:  # noqa: ARG002
+        root = self.root
+        if root is not None and root.marked_for_deletion:
+            msg = f"Root entity {root.uid} cannot be marked for deletion."
+            raise RuntimeError(msg)
 
     def on_session_apply(self, session: Session) -> None:
         pass
 
     def on_session_commit(self, session: Session) -> None:  # noqa: ARG002
-        if self.root is None:
-            assert len(self.entity_store) == 0, f"Entity store is not empty ({len(self.entity_store)}) but root entity is None."
-        else:
-            unreachable_uids = self.entity_store.get_unreachable_uids(self.root.uid)
-            if unreachable_uids:
-                msg = f"Unreachable entities detected in entity store: {unreachable_uids}. This indicates a bug and/or memory leak in the session commit logic."
-                raise RuntimeError(msg)
+        unreachable_uids = self.entity_store.get_entity_uids() if self.root is None else self.entity_store.get_unreachable_uids(self.root.uid)
+        if unreachable_uids:
+            msg = f"Unreachable entities detected in entity store: {unreachable_uids}. This indicates a bug and/or memory leak in the session commit logic."
+            raise RuntimeError(msg)
 
     def on_session_abort(self, session: Session) -> None:
         pass

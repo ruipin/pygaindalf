@@ -25,6 +25,8 @@ from .entity_record import EntityRecord
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
+    from ...journal.session import Session
+    from ...journal.session_manager import SessionManager
     from ..store import EntityStore
 
 
@@ -88,6 +90,7 @@ class EntityBase[
                 raise TypeError(msg)
 
             if (entity := cls.by_uid_or_none(uid)) is not None:
+                entity._on_reinit(**data)  # noqa: SLF001
                 return typing_cast("Self", entity)
             else:
                 msg = f"Could not find existing {cls.__name__} with UID {uid}."
@@ -107,33 +110,34 @@ class EntityBase[
             assert entity.instance_name == new_inst_name, (
                 f"Existing entity instance name '{entity.instance_name}' does not match new instance name '{new_inst_name}'."
             )
+
+            entity._on_reinit(**data)  # noqa: SLF001
+            return entity
         else:
             # Create new instance
             entity = super().__new__(cls)
-
-        entity.__init__(**data)
-        return entity
+            entity.__init__(**data)
+            return entity
 
     def __init__(self, **data) -> None:
         # Creating a new entity
         if not self.initialized:
             super().__init__(**data)
-        # We are creating a new record for an existing entity without a record
-        elif not self.exists:
+            self.log.debug(t"Created new {type(self).__name__} with UID {self.uid} and instance name '{self.instance_name}'.")
+
+    def _on_reinit(self, **data) -> None:
+        if not self.exists:
             record_data = data.copy()
-            for k in (
-                "instance_parent",
-                "instance_name",
-            ):
-                del record_data[k]
+
+            for k in ("instance_name", "uid"):
+                if (v := record_data.get(k, None)) is not None:
+                    if v != getattr(self, k):
+                        msg = f"Cannot change {k} of existing entity from '{getattr(self, k)}' to '{v}'."
+                        raise ValueError(msg)
+                    record_data.pop(k)
+
             self.update(**record_data)
-        # Sanity check: if recreating the instance, any provided attributes match
-        elif __debug__:
-            for k, v in data.items():
-                if isinstance(v, weakref.ref):
-                    v = v()
-                cur_v = getattr(self, k)
-                assert cur_v == v, f"Attribute '{k}' value '{cur_v}' does not match expected value '{v}'."
+            self.log.debug(t"Re-initialized {type(self).__name__} with UID {self.uid} and instance name '{self.instance_name}'.")
 
     @classmethod
     def _prepare_data_for_init(cls, data: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
@@ -392,7 +396,7 @@ class EntityBase[
         assert entity_store[self.uid] is self, f"Failed to store entity {self} in the entity store."
 
         # Create entity record
-        self._create_record()
+        self._create_first_record()
 
         return self
 
@@ -465,18 +469,23 @@ class EntityBase[
 
     get_record_type = generics.GenericIntrospectionMethod[T_Record]()
 
-    def _create_record(self) -> Self:
-        record_type = self.get_record_type()
-
+    def _create_first_record(self) -> T_Record:
         if (extra := self.__pydantic_extra__) is None:
             msg = "Expected '__pydantic_extra__' to be set for Entity."
             raise ValueError(msg)
 
-        record = record_type(uid=self.uid, **extra)
-        self._set_record(record)
-
+        record = self._create_record(**extra)
         extra.clear()
-        return self
+        return record
+
+    def _create_record(self, **data) -> T_Record:
+        record_type = self.get_record_type()
+
+        record = record_type(uid=self.uid, **data)  # pyright: ignore[reportCallIssue]
+        self._set_record(record)
+        assert record.instance_parent is self, f"Expected record parent to be {self}, got {record.instance_parent} instead."
+
+        return record
 
     def _set_record(self, record: T_Record | None) -> None:
         # Deleted
@@ -493,10 +502,62 @@ class EntityBase[
 
         self._record = record
 
+        # Force instance parent to None if the record was deleted
+        if record is None:
+            object.__setattr__(self, "instance_parent_weakref", None)
+
+    # MARK: Session
+    @property
+    def session_manager_or_none(self) -> SessionManager | None:
+        from ...journal import SessionManager
+
+        return SessionManager.get_global_manager_or_none()
+
+    @property
+    def session_manager(self) -> SessionManager:
+        from ...journal import SessionManager
+
+        return SessionManager.get_global_manager()
+
+    @property
+    def session_or_none(self) -> Session | None:
+        if (manager := self.session_manager_or_none) is None:
+            return None
+        return manager.session
+
+    @property
+    def session(self) -> Session:
+        if (session := self.session_or_none) is None:
+            msg = "No active session found in the session manager."
+            raise RuntimeError(msg)
+        return session
+
+    @property
+    def in_session(self) -> bool:
+        try:
+            manager = self.session_manager
+        except (TypeError, AttributeError, KeyError):
+            return False
+        return manager.in_session
+
     # MARK: Update
     def update(self, **kwargs) -> Self:
         record = self.record_or_none
-        record = self.get_record_type()(**kwargs) if record is None else record.update(**kwargs)
+
+        if (new_parent := kwargs.pop("instance_parent", None)) is not None:
+            if new_parent is None:
+                msg = "Cannot set 'instance_parent' to None. To remove the parent, delete the entity instead."
+                raise ValueError(msg)
+            elif self.exists:
+                if new_parent is not self.instance_parent:
+                    msg = "Cannot change the 'instance_parent' of an existing entity. The parent is managed by the associated Entity instance and should not be changed directly."
+                    raise ValueError(msg)
+            else:
+                object.__setattr__(
+                    self, "instance_parent_weakref", weakref.ref(new_parent) if not isinstance(new_parent, weakref.ReferenceType) else new_parent
+                )
+
+        record = self._create_record(**kwargs) if record is None else record.update(**kwargs)
         assert self.record_or_none is record, f"Expected record to be {record}, got {self.record_or_none} instead."
         return self
 
@@ -543,6 +604,32 @@ class EntityBase[
 
     def on_delete_record(self) -> None:
         self._set_record(None)
+
+    # MARK: Revertion
+    def revert(self) -> None:
+        if (session := self.session_or_none) is None:
+            msg = f"Cannot revert {type(self).__name__} with UID {self.uid} because it is not in an active session."
+            raise RuntimeError(msg)
+
+        if not session.in_abort and not session.in_commit:
+            msg = f"Cannot revert {type(self).__name__} with UID {self.uid} because the session is not in the process of being committed or aborted."
+            raise RuntimeError(msg)
+
+        if self.is_reachable(recursive=True, use_journal=True):
+            msg = f"Cannot revert {type(self).__name__} with UID {self.uid} because it is still reachable from its parent."
+            raise RuntimeError(msg)
+
+        record = self.record_or_none
+        version = self.version
+
+        self.entity_log.revert()
+        if record is not None:
+            record.revert()
+            self._set_record(None)
+
+        if version != self.version + 1:
+            msg = f"Expected entity log version to be {version + 1} after revert, got {self.version} instead."
+            raise RuntimeError(msg)
 
     # MARK: Fields
     @final

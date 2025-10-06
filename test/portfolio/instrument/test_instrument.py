@@ -56,9 +56,12 @@ class TestInstrumentEntity:
         assert by_ticker is inst
         assert by_isin is inst
 
-        # Re-instantiating with conflicting data should not mutate the existing entity
-        inst_again = Instrument(ticker="AAPL", currency=Currency("EUR"))
-        assert inst_again is inst
+        # Re-instantiating with conflicting data should raise an error
+        inst_again = None
+        with pytest.raises(ValueError, match=r"Expected 'currency' value 'Currency\.USD' but got 'Currency\.EUR'\."):
+            inst_again = Instrument(ticker="AAPL", currency=Currency("EUR"))
+
+        assert inst_again is None
         assert inst.currency == Currency("USD")
 
     def test_entity_updates_and_audit_log(self):

@@ -11,7 +11,7 @@ from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_valid
 
 from ...util.callguard import CallguardClassOptions
 from ...util.models import LoggableHierarchicalModel
-from ..models.entity import EntityModificationType, EntityRecord, EntityRecordBase
+from ..models.entity import Entity, EntityModificationType, EntityRecord, EntityRecordBase
 from ..util.superseded import SupersededError, superseded_check
 from ..util.uid import UID_SEPARATOR, IncrementingUidFactory, Uid
 from .journal import Journal
@@ -209,18 +209,10 @@ class Session(LoggableHierarchicalModel):
             # Forcefully delete any entity records created in this session
             if self._created:
                 self._clear_journals()
-                records: set[EntityRecord] = set()
 
                 for uid in self._created:
-                    record = EntityRecord.by_uid_or_none(uid)
-                    if record is None or record.superseded:
-                        continue
-                    records.add(record)
-                    if not record.marked_for_deletion:
-                        record.delete()
-
-                for record in records:
-                    record.apply_deletion()
+                    if (entity := Entity.by_uid_or_none(uid)) is not None:
+                        entity.revert()
 
             self._clear()
             self.log.warning("Session aborted.")
@@ -349,6 +341,7 @@ class Session(LoggableHierarchicalModel):
         for j in self._journals.values():
             j.freeze()
 
+        # Done
         self._after_commit_notify = True
 
     # MARK: Commit - Apply
@@ -360,8 +353,16 @@ class Session(LoggableHierarchicalModel):
         """Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions, or deleting them as requested)."""
         self.log.info("Committing journals...")
 
+        # Apply all journals in dependency order
         for e in self._commit_travel_hierarchy(self._journals.keys(), condition=self._commit_apply_travel_hierarchy_condition, copy=False):
             j = self._journals[e.uid]
             j.commit()
+
+        # Check for newly-created unreachable entities and revert them
+        for uid in self._created:
+            entity = Entity.by_uid(uid)
+            if not entity.is_reachable(recursive=True, use_journal=True):
+                self.log.warning(t"Entity {entity.instance_name} created in this session is unreachable; reverting. This may indicate a logic bug.")
+                entity.revert()
 
         self._call_parent_hook("apply")

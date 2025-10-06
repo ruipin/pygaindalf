@@ -39,8 +39,8 @@ class ItemJournal(
 
 class ItemRecord(
     ItemImpl,
-    ItemSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[ItemJournal],
+    ItemSchema,
     init=False,
     unsafe_hash=True,
 ):
@@ -90,8 +90,8 @@ class OwnerJournal(
 
 class OwnerRecord(
     OwnerImpl,
-    OwnerSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[OwnerJournal],
+    OwnerSchema,
     init=False,
     unsafe_hash=True,
 ):

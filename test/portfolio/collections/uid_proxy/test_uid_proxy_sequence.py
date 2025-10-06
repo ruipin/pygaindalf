@@ -52,8 +52,8 @@ class HolderJournal(
 
 class HolderRecord(
     HolderImpl,
-    HolderSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[HolderJournal],
+    HolderSchema,
     init=False,
     unsafe_hash=True,
 ):

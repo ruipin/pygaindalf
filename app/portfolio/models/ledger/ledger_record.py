@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, override
 
 from pydantic import field_validator
 
-from ....util.helpers.empty_class import empty_class
 from ..entity import EntityRecord
 from ..instrument import Instrument
 from .ledger_impl import LedgerImpl
@@ -19,8 +18,8 @@ if TYPE_CHECKING:
 
 class LedgerRecord(
     LedgerImpl,
-    LedgerSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[LedgerJournal],
+    LedgerSchema,
     init=False,
     unsafe_hash=True,
 ):

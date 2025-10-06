@@ -72,5 +72,11 @@ class TestAnnotationSessions:
         with session_manager(actor="tester", reason="unique-recreate") as s:
             u.delete()
             s.commit()
+            assert u.exists is False
+
             u2 = SampleUniqueAnnotation.create(host, payload=7)
+            assert u2 is u
             assert u2.payload == 7
+
+        assert u2.exists
+        assert u2 is u

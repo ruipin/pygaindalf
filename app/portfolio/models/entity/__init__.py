@@ -4,7 +4,7 @@
 from .entity import Entity
 from .entity_base import EntityBase
 from .entity_impl import EntityImpl
-from .entity_log import EntityLog, EntityModification, EntityModificationType
+from .entity_log import EntityLog, EntityLogEntry, EntityModificationType
 from .entity_record import EntityRecord
 from .entity_record_base import EntityRecordBase
 from .entity_schema import EntitySchema, EntitySchemaBase
@@ -17,7 +17,7 @@ __all__ = [
     "EntityBase",
     "EntityImpl",
     "EntityLog",
-    "EntityModification",
+    "EntityLogEntry",
     "EntityModificationType",
     "EntityRecord",
     "EntityRecordBase",

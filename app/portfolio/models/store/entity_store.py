@@ -152,14 +152,7 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
     @override
     def __delitem__(self, value: Uid | Entity | EntityRecord) -> None:
-        if isinstance(value, Uid):
-            uid = value
-        elif isinstance(value, (Entity, EntityRecord)):
-            uid = value.uid
-        else:
-            msg = f"Value must be a Uid or EntityRecord, got {type(value)}."
-            raise TypeError(msg)
-
+        uid = Entity.narrow_to_uid(value)
         entity = self._entity_store.get(uid, None)
         if entity is None:
             return
@@ -223,7 +216,10 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
         return reachable
 
+    def get_entity_uids(self) -> AbstractSet[Uid]:
+        return {entity.uid for entity in self._entity_store.values() if entity.exists}
+
     def get_unreachable_uids(self, roots: Uid | Iterable[Uid], *, use_journal: bool = False) -> AbstractSet[Uid]:
         reachable = self.get_reachable_uids(roots, use_journal=use_journal)
-        all_uids = {uid for uid, entity in self._entity_store.items() if not entity.deleted}
+        all_uids = self.get_entity_uids()
         return all_uids - reachable

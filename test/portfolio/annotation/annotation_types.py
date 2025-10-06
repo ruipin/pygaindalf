@@ -42,8 +42,8 @@ class HostEntityJournal(
 
 class HostEntityRecord(
     HostEntityImpl,
-    HostEntitySchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[HostEntityJournal],
+    HostEntitySchema,
     init=False,
     unsafe_hash=True,
 ):
@@ -86,8 +86,8 @@ class SampleIncrementingAnnotationJournal(
 
 class SampleIncrementingAnnotationRecord(
     SampleIncrementingAnnotationImpl,
-    SampleIncrementingAnnotationSchema if not TYPE_CHECKING else empty_class(),
     AnnotationRecord[SampleIncrementingAnnotationJournal],
+    SampleIncrementingAnnotationSchema,
     init=False,
     unsafe_hash=True,
 ):

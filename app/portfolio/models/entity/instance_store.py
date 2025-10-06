@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ...util import Uid
     from ..store.entity_store import EntityStore
     from .entity_log import EntityLog
+    from .entity_record_base import EntityRecordBase
 
 
 class InstanceStoreMixin(metaclass=ABCMeta):
@@ -27,9 +28,10 @@ class InstanceStoreMixin(metaclass=ABCMeta):
 
         @classmethod
         def _get_entity_store(cls) -> EntityStore: ...
-
         @property
         def initialized(self) -> bool: ...
+        @property
+        def exists(self) -> bool: ...
 
     # MARK: Construction / metaclassing
     def __init_subclass__(cls, **kwargs) -> None:
@@ -53,13 +55,28 @@ class InstanceStoreMixin(metaclass=ABCMeta):
     def __new__(cls, **kwargs) -> Self:
         if (instance := cls._instance_store_search(**kwargs)) is None:
             instance = super().__new__(cls, **kwargs)
+        else:
+            instance._on_reinit(**kwargs)
         return instance
 
     # MARK: Handle (re-)initialization
     def __init__(self, **kwargs) -> None:
-        if not self.initialized:
-            super().__init__(**kwargs)
+        initialized = self.initialized
+
+        super().__init__(**kwargs)
+
+        if not initialized:
             self._instance_store_add(self)
+
+    def _on_reinit(self, **data) -> None:
+        if self.exists:
+            for k, v in data.items():
+                cur = self.record.__dict__.get(k, None)  # pyright: ignore[reportAttributeAccessIssue]
+                if cur is not v:
+                    msg = f"Expected '{k}' value '{cur}' but got '{v}'."
+                    raise ValueError(msg)
+
+        super()._on_reinit(**data)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 # MARK: Mixin for Named Instances

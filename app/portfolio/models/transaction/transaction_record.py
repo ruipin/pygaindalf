@@ -4,7 +4,6 @@
 
 from typing import TYPE_CHECKING, override
 
-from ....util.helpers.empty_class import empty_class
 from ..entity import EntityRecord
 from .transaction_impl import TransactionImpl
 from .transaction_journal import TransactionJournal
@@ -17,8 +16,8 @@ if TYPE_CHECKING:
 
 class TransactionRecord(
     TransactionImpl,
-    TransactionSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[TransactionJournal],
+    TransactionSchema,
     init=False,
     unsafe_hash=True,
 ):

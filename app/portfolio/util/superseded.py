@@ -21,3 +21,10 @@ superseded_check = before_attribute_check(
     message="Superseded check failed",
     exception=SupersededError,
 )
+
+reverted_check = before_attribute_check(
+    attribute="reverted",
+    desired=False,
+    message="Destroyed check failed",
+    exception=SupersededError,
+)

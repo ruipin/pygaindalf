@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import model_validator
 from pydantic_core import PydanticUseDefault
 
-from ....util.helpers.empty_class import empty_class
 from ..entity import EntityRecord
 from .instrument_impl import InstrumentImpl
 from .instrument_journal import InstrumentJournal
@@ -15,8 +14,8 @@ from .instrument_schema import InstrumentSchema
 
 class InstrumentRecord(
     InstrumentImpl,
-    InstrumentSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[InstrumentJournal],
+    InstrumentSchema,
     init=False,
     unsafe_hash=True,
 ):

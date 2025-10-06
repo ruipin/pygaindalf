@@ -20,7 +20,10 @@ from app.util.helpers.empty_class import empty_class
 
 
 # --- Sample Entity -----------------------------------------------------------------------
-class SampleEntitySchema(EntitySchemaBase, metaclass=ABCMeta):
+class SampleEntitySchema(
+    EntitySchemaBase,
+    metaclass=ABCMeta,
+):
     """Schema shared by the SampleEntity record and entity."""
 
     value: int = Field(description="Simple scalar field used in tests.")
@@ -48,8 +51,8 @@ class SampleEntityJournal(
 
 class SampleEntityRecord(
     SampleEntityImpl,
-    SampleEntitySchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[SampleEntityJournal],
+    SampleEntitySchema,
     init=False,
     unsafe_hash=True,
 ):
@@ -226,6 +229,46 @@ class TestSessionEntityJournal:
             j.mark_superseded()
             with pytest.raises(SupersededError):
                 j.get_field("value")
+
+    def test_deleting_root_entity_raises(self, entity_root: EntityRoot, entity: SampleEntity, session_manager: SessionManager):
+        assert entity_root.root is entity
+
+        msg = f"Root entity {entity.uid} cannot be marked for deletion."
+        with pytest.raises(RuntimeError, match=msg), session_manager(actor="tester", reason="delete-root-entity"):
+            entity.delete()
+
+        assert entity.deleted is False
+        assert entity.marked_for_deletion is False
+        assert entity_root.root is entity
+
+    def test_unattached_entity_is_deleted_on_commit(self, entity_root: EntityRoot, session_manager: SessionManager):
+        assert entity_root.root is None
+
+        with session_manager(actor="tester", reason="create-unattached-entity"):
+            entity = SampleEntity(value=7)
+            record = entity.record
+            uid = entity.uid
+
+            assert entity.instance_parent is None
+            assert entity.exists is True
+            assert entity_root.root is None
+
+        assert entity is not None
+        assert record is not None
+        assert entity.exists is False
+        assert record.exists is False
+        assert entity.deleted is True
+        assert record.deleted is True
+        assert entity.version == 0
+        assert record.reverted is True
+        assert entity.record_or_none is None
+        assert record.entity_or_none is None
+        assert entity.entity_log.exists is False
+        assert entity.entity_log.deleted is True
+        assert entity.entity_log.version == 0
+
+        assert SampleEntity.by_uid_or_none(uid) is entity
+        assert SampleEntityRecord.by_uid_or_none(uid) is None
 
     # --- Additional behavior -----------------------------------------------------------------
     def test_collection_edits_do_not_mutate_originals(self, entity: SampleEntity, session_manager: SessionManager):

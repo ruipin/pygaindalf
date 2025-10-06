@@ -37,8 +37,8 @@ class ChildJournal(
 
 class ChildRecord(
     ChildImpl,
-    ChildSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[ChildJournal],
+    ChildSchema,
     init=False,
     unsafe_hash=True,
 ):

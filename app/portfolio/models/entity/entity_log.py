@@ -19,6 +19,7 @@ from ....util.models import SingleInitializationModel
 
 
 if TYPE_CHECKING:
+    from ...journal import Session, SessionManager
     from ...util.uid import Uid
     from .entity import Entity
     from .entity_record import EntityRecord
@@ -26,9 +27,19 @@ if TYPE_CHECKING:
 
 # MARK: EntityRecord Modification Type enum
 class EntityModificationType(Enum):
-    CREATED = "created"
-    UPDATED = "updated"
-    DELETED = "deleted"
+    # fmt: off
+    CREATED   = "created"
+    UPDATED   = "updated"
+    DELETED   = "deleted"
+    # fmt: on
+
+    @property
+    def record_exists(self) -> bool:
+        return self in (EntityModificationType.CREATED, EntityModificationType.UPDATED)
+
+    @property
+    def record_deleted(self) -> bool:
+        return self == EntityModificationType.DELETED
 
     @override
     def __str__(self) -> str:
@@ -40,7 +51,7 @@ class EntityModificationType(Enum):
 
 
 # MARK: EntityRecord Change class
-class EntityModification(SingleInitializationModel):
+class EntityLogEntry(SingleInitializationModel):
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,
@@ -57,6 +68,7 @@ class EntityModification(SingleInitializationModel):
         description="A dictionary containing the changes made to the entity, if applicable. This can be used to track what was changed in the entity during this action.",
     )
     version: PositiveInt = Field(ge=1, description="The version of this entity at the time of the audit entry.")
+    reverted: bool = Field(default=False, description="Whether this log entry has been reverted.")
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> Self:
@@ -66,6 +78,14 @@ class EntityModification(SingleInitializationModel):
                 raise ValueError(msg)
         return self
 
+    @property
+    def record_exists(self) -> bool:
+        return self.what.record_exists
+
+    @property
+    def record_deleted(self) -> bool:
+        return self.what.record_deleted
+
 
 # MARK: EntityRecord Audit Log class
 @callguard_class()
@@ -74,7 +94,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
 
     # MARK: EntityRecord
     _entity_uid: Uid
-    _entries: list[EntityModification]
+    _entries: list[EntityLogEntry]
 
     @classmethod
     def _get_audit_log(cls, uid: Uid) -> Self | None:
@@ -83,7 +103,9 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
         if (store := EntityStore.get_global_store()) is None:
             msg = f"Could not get entity store for {cls.__name__}. The global EntityStore is not set."
             raise ValueError(msg)
-        return typing_cast("Self | None", store.get_entity_log(uid))
+
+        log = store.get_entity_log(uid)
+        return typing_cast("Self | None", log)
 
     def __new__(cls, uid: Uid) -> Self:
         if (instance := cls._get_audit_log(uid)) is None:
@@ -149,6 +171,40 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
         """
         return self.entity_or_none
 
+    # MARK: Session
+    @property
+    def session_manager_or_none(self) -> SessionManager | None:
+        from ...journal import SessionManager
+
+        return SessionManager.get_global_manager_or_none()
+
+    @property
+    def session_manager(self) -> SessionManager:
+        from ...journal import SessionManager
+
+        return SessionManager.get_global_manager()
+
+    @property
+    def session_or_none(self) -> Session | None:
+        if (manager := self.session_manager_or_none) is None:
+            return None
+        return manager.session
+
+    @property
+    def session(self) -> Session:
+        if (session := self.session_or_none) is None:
+            msg = "No active session found in the session manager."
+            raise RuntimeError(msg)
+        return session
+
+    @property
+    def in_session(self) -> bool:
+        try:
+            manager = self.session_manager
+        except (TypeError, AttributeError, KeyError):
+            return False
+        return manager.in_session
+
     # MARK: Pydantic schema
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
@@ -157,7 +213,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
 
     # MARK: List-like interface
     @override
-    def __getitem__(self, index) -> list[EntityModification]:  # noqa: ANN001 to avoid a complex type hint
+    def __getitem__(self, index) -> list[EntityLogEntry]:  # noqa: ANN001 to avoid a complex type hint
         return self._entries[index]
 
     @override
@@ -165,7 +221,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
         return len(self._entries)
 
     @override
-    def __iter__(self) -> Iterator[EntityModification]:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def __iter__(self) -> Iterator[EntityLogEntry]:  # pyright: ignore[reportIncompatibleMethodOverride]
         return iter(self._entries)
 
     # MARK: EntityRecord Diffing
@@ -259,9 +315,9 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
         return frozendict(diff)
 
     # MARK: EntityRecord Registration
-    def _add_entry(self, entry: EntityModification | None = None, /, **kwargs) -> None:
+    def _add_entry(self, entry: EntityLogEntry | None = None, /, **kwargs) -> None:
         if entry is None:
-            entry = EntityModification(**kwargs)
+            entry = EntityLogEntry(**kwargs)
 
         if entry.version != self.next_version:
             msg = f"Entry version {entry.version} does not match the expected next version {self.next_version}. The version should be incremented when the entity is cloned as part of an update action."
@@ -351,6 +407,31 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
             version=self.next_version,
         )
 
+    def revert(self) -> None:
+        if (session := self.session_or_none) is None:
+            msg = "Cannot revert entity log because there is no active session."
+            raise RuntimeError(msg)
+
+        if not session.in_abort and not session.in_commit:
+            msg = "Cannot revert entity log because the session is not in an abort or commit state"
+            raise RuntimeError(msg)
+
+        # Decrement version
+        if self.most_recent.what != EntityModificationType.CREATED:
+            msg = f"Cannot revert entity log to {self.version - 1} because the most recent entry is not of type 'CREATED'."
+            raise ValueError(msg)
+
+        version = self.version
+        entry = self._entries.pop()
+        assert entry.version == version, f"Popped entry version {entry.version} does not match the expected version {version}."
+        if self.version != version - 1:
+            msg = f"Entity log version after revert is {self.version}, expected {version - 1}."
+            raise ValueError(msg)
+
+        # Forcefully mark the entry as reverted
+        object.__setattr__(entry, "reverted", True)
+        assert entry.reverted, "Failed to mark the reverted entry as reverted."
+
     # MARK: Properties
     @computed_field(description="The most recent version of the entity")
     @property
@@ -372,25 +453,38 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
         return self.version + 1
 
     @property
-    def most_recent(self) -> EntityModification:
+    def most_recent(self) -> EntityLogEntry:
         """Returns the most recent audit entry for the entity, or None if there are no entries."""
         if not self._entries:
             msg = "No audit entries available."
             raise ValueError(msg)
-        return self._entries[-1]
+        entry = self._entries[-1]
+        if entry.reverted:
+            msg = f"Entry version {entry.version} has been reverted."
+            raise ValueError(msg)
+        return entry
 
     @property
     def exists(self) -> bool:
         if not self._entries:
             return False
-        return self.most_recent.what != EntityModificationType.DELETED
+        return self.most_recent.record_exists
 
-    def get_entry_by_version(self, version: PositiveInt) -> EntityModification | None:
+    @property
+    def deleted(self) -> bool:
+        if not self._entries:
+            return True
+        return self.most_recent.record_deleted
+
+    def get_entry_by_version(self, version: PositiveInt) -> EntityLogEntry | None:
         """Return the audit entry for the given version, or None if no such entry exists."""
         if (entry := self._entries[version - 1]) is None:
             return None
         if entry.version != version:
             msg = f"Entry version {entry.version} does not match the requested version {version}."
+            raise ValueError(msg)
+        if entry.reverted:
+            msg = f"Entry version {entry.version} has been reverted."
             raise ValueError(msg)
         return entry
 
@@ -403,7 +497,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
     def __repr__(self) -> str:
         return f"<{self.instance_name} at {hex(id(self))} with {len(self._entries)} entries, exists={self.exists}>"
 
-    def as_tuple(self) -> tuple[EntityModification, ...]:
+    def as_tuple(self) -> tuple[EntityLogEntry, ...]:
         """Return the audit log entries as a list.
 
         This is useful for iterating over the entries.

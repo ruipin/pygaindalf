@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 from typing import cast as typing_cast
 
 from frozendict import frozendict
-from pydantic import ConfigDict, PositiveInt, ValidationInfo, computed_field, field_validator, model_validator
+from pydantic import ConfigDict, PositiveInt, PrivateAttr, ValidationInfo, computed_field, field_validator, model_validator
 
 from ....util.callguard import CallguardClassOptions
 from ....util.helpers import generics, script_info, type_hints
@@ -42,15 +42,25 @@ ENTITY_RECORD_SUBCLASSES: MutableSet[type[EntityRecordBase]] = set()
 ENTITY_CLASSES: MutableMapping[type[EntityRecordBase], type[Entity]] = {}
 
 
+# We need this class to swallow the 'init' kwarg in __init_subclass__ calls from EntityRecordBase
+class EntityRecordMeta(metaclass=ABCMeta):
+    def __init_subclass__(cls, *, init: bool = False) -> None:
+        super().__init_subclass__()
+
+
 class EntityRecordBase[
     T_Journal: Journal,
 ](
+    EntityRecordMeta,
     type_hints.CachedTypeHintsMixin,
     LoggableHierarchicalRootModel,
     EntityImpl,
     EntitySchema,
     NamedMixinMinimal,
     metaclass=ABCMeta,
+    # We need init=False here to ensure that pyright looks at the __init__ method for the entity-specific EntitySchema base,
+    # e.g. InstrumentSchema, TransactionSchema, etc
+    init=False,
 ):
     __callguard_class_options__ = CallguardClassOptions["EntityRecordBase"](
         decorator=superseded_check,
@@ -59,6 +69,8 @@ class EntityRecordBase[
             "superseding",
             "superseded",
             "deleted",
+            "reverted",
+            "exists",
             "marked_for_deletion",
             "uid",
             "version",
@@ -142,12 +154,19 @@ class EntityRecordBase[
         if not self.superseded:
             return False
 
+        if self._reverted:
+            return True
+
         superseding_log = self.entity_log.get_entry_by_version(self.version + 1)
         if superseding_log is None:
             msg = f"Entity record {self} is marked as superseded but no audit log entry found for version {self.version + 1}."
             raise ValueError(msg)
 
-        return superseding_log.what == EntityModificationType.DELETED
+        return superseding_log.record_deleted
+
+    @property
+    def exists(self) -> bool:
+        return not self.deleted
 
     @property
     def marked_for_deletion(self) -> bool:
@@ -198,7 +217,7 @@ class EntityRecordBase[
 
     def apply_deletion(self, *, who: str | None = None, why: str | None = None) -> None:
         if not self.is_update_allowed(allow_in_abort=True):
-            msg = f"Not allowed to apply deletion to {type(self).__name__} instances outside of a session commit."
+            msg = f"Not allowed to apply deletion to {type(self).__name__} instances outside of a session commit or abort."
             raise RuntimeError(msg)
 
         self._apply_deletion(who=who, why=why)
@@ -214,6 +233,27 @@ class EntityRecordBase[
         self.entity.on_delete_record()
 
         self.log.info(t"Entity record {self} has been deleted.")
+
+    # MARK: Revertion
+    _reverted: bool = PrivateAttr(default=False)
+
+    @property
+    def reverted(self) -> bool:
+        return self._reverted
+
+    def revert(self) -> None:
+        if self._reverted:
+            return
+
+        if not self.is_update_allowed(in_commit_only=True, allow_in_abort=True):
+            msg = f"Not allowed to revert {type(self).__name__} instances outside of a session commit or abort."
+            raise RuntimeError(msg)
+
+        if self.entity_log.version >= self.version:
+            msg = f"Cannot revert entity record {self} because its entity log is still tracking it."
+            raise RuntimeError(msg)
+
+        self._reverted = True
 
     # MARK: Instance Name
     PROPAGATE_INSTANCE_NAME_FROM_PARENT: ClassVar[bool] = False
@@ -356,8 +396,12 @@ class EntityRecordBase[
 
     @property
     def entity_or_none(self) -> Entity | None:
-        store = self._get_entity_store()
-        return store.get(self.uid, None)
+        if self._reverted:
+            return None
+
+        from .entity import Entity
+
+        return Entity.by_uid_or_none(self.uid)
 
     @property
     def entity(self) -> Entity:
@@ -395,6 +439,7 @@ class EntityRecordBase[
     @property
     def record_parent(self) -> EntityRecordBase:
         if (parent := self.record_parent_or_none) is None:
+            breakpoint()
             msg = f"{type(self).__name__} instance {self.uid} has no valid entity record parent."
             raise ValueError(msg)
         return parent
@@ -437,7 +482,7 @@ class EntityRecordBase[
     @property
     def superseded(self) -> bool:
         """Indicates whether this entity record instance has been superseded by another instance with an incremented version."""
-        return self.entity_log.version > self.version
+        return self._reverted or self.entity_log.version > self.version
 
     @property
     def superseding_or_none[T: EntityRecordBase](self: T) -> T | None:
@@ -505,32 +550,28 @@ class EntityRecordBase[
         # Return updated entity record
         return new_record
 
-    # MARK: Session / Journal
+    # MARK: Session
     @property
     def session_manager_or_none(self) -> SessionManager | None:
-        from ...journal.session_manager import SessionManager
-
-        return SessionManager.get_global_manager_or_none()
+        return self.entity.session_manager_or_none
 
     @property
     def session_manager(self) -> SessionManager:
-        from ...journal.session_manager import SessionManager
-
-        return SessionManager.get_global_manager()
+        return self.entity.session_manager
 
     @property
     def session_or_none(self) -> Session | None:
-        if (manager := self.session_manager_or_none) is None:
-            return None
-        return manager.session
+        return self.entity.session_or_none
 
     @property
     def session(self) -> Session:
-        if (session := self.session_or_none) is None:
-            msg = "No active session found in the session manager."
-            raise RuntimeError(msg)
-        return session
+        return self.entity.session
 
+    @property
+    def in_session(self) -> bool:
+        return self.entity.in_session
+
+    # MARK: Journal
     get_journal_class = generics.GenericIntrospectionMethod[T_Journal]()
 
     def get_journal(self, *, create: bool = True, fail: bool = True) -> Journal | None:
@@ -587,14 +628,6 @@ class EntityRecordBase[
             return False
         j = self.get_journal(create=False)
         return j.dirty if j is not None else False
-
-    @property
-    def in_session(self) -> bool:
-        try:
-            manager = self.session_manager
-        except (TypeError, AttributeError, KeyError):
-            return False
-        return manager.in_session
 
     def is_journal_field_edited(self, field: str) -> bool:
         journal = self.get_journal(create=False)

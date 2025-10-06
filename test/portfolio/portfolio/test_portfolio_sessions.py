@@ -207,6 +207,49 @@ class TestPortfolioSessions:
         ledger = Ledger.by_uid(ledger_uid)
         assert list(second_record[ledger.uid].transactions) == [t1, t2]
 
+    def test_attach_delete_then_recreate_unattached(self, portfolio_root: PortfolioRoot, session_manager):
+        portfolio = portfolio_root.portfolio
+
+        with session_manager(actor="tester", reason="attach-ledger"):
+            inst = Instrument(ticker="IBM", currency=Currency("USD"))
+            ledger = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(ledger)
+            ledger_uid = ledger.uid
+
+        ledger = Ledger.by_uid(ledger_uid)
+        assert ledger in portfolio.ledgers
+        assert ledger.exists is True
+        assert ledger.deleted is False
+
+        with session_manager(actor="tester", reason="delete-ledger"):
+            portfolio.journal.ledgers.discard(ledger)
+
+        assert ledger.deleted is True
+        assert ledger.exists is False
+        assert ledger.record_or_none is None
+        assert Ledger.by_uid_or_none(ledger_uid) is ledger
+        assert ledger not in portfolio.ledgers
+        assert portfolio_root.entity_store.get_entity_record(ledger_uid) is None
+
+        with session_manager(actor="tester", reason="create-unattached"):
+            orphan = Ledger(instrument=inst)
+            orphan_record = orphan.record
+
+            assert orphan.uid == ledger.uid
+            assert orphan.instance_parent is None
+            assert orphan.exists is True
+            assert orphan.version == 3
+
+        assert orphan.exists is False
+        assert orphan.deleted is True
+        assert orphan_record.exists is False
+        assert orphan_record.deleted is True
+        assert orphan_record.reverted is True
+        assert orphan_record.entity_or_none is None
+        assert Ledger.by_uid_or_none(ledger.uid) is ledger
+        assert ledger.version == 2
+        assert ledger.entity_log.version == 2
+
     def test_reorder_transactions_commit(self, portfolio_root: PortfolioRoot, session_manager):
         portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
         with session_manager(actor="tester", reason="setup-ledger"):

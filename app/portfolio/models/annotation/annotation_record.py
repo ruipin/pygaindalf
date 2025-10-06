@@ -2,9 +2,8 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from typing import TYPE_CHECKING, Any, override
+from typing import Any, override
 
-from ....util.helpers.empty_class import empty_class
 from ..entity import EntityRecord
 from .annotation_impl import AnnotationImpl
 from .annotation_journal import AnnotationJournal
@@ -15,8 +14,8 @@ class AnnotationRecord[
     T_Journal: AnnotationJournal,
 ](
     AnnotationImpl,
-    AnnotationSchema if not TYPE_CHECKING else empty_class(),
     EntityRecord[T_Journal],
+    AnnotationSchema,
     init=False,
     unsafe_hash=True,
 ):
