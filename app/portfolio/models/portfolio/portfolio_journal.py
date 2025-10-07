@@ -23,8 +23,8 @@ class PortfolioJournal(
     # MARK: MutableSet ABC
     @override
     def add(self, value: Ledger | Uid) -> None:
-        self.ledger_uids.add(Ledger.narrow_to_uid(value))
+        self.ledgers.add(Ledger.narrow_to_instance(value))
 
     @override
     def discard(self, value: Ledger | Uid) -> None:
-        self.ledger_uids.discard(Ledger.narrow_to_uid(value))
+        self.ledgers.discard(Ledger.narrow_to_instance(value))

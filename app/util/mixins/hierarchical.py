@@ -10,11 +10,15 @@ from ..helpers import mro
 from .named import FinalNamedProtocol, NamedMixin, NamedMixinMinimal, NamedProtocol
 
 
+# MARK: Type
+type ParentType = HierarchicalProtocol | NamedProtocol
+
+
 # MARK: Hierarchical Protocols
 @runtime_checkable
 class HierarchicalProtocol(Protocol):
     @property
-    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None: ...
+    def instance_parent(self) -> ParentType | None: ...
     @property
     def instance_hierarchy(self) -> str: ...
 
@@ -23,9 +27,9 @@ class HierarchicalProtocol(Protocol):
 class HierarchicalMutableProtocol(HierarchicalProtocol, Protocol):
     @property
     @override
-    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None: ...
+    def instance_parent(self) -> ParentType | None: ...
     @instance_parent.setter
-    def instance_parent(self, new_parent: HierarchicalProtocol | NamedProtocol | None) -> None: ...
+    def instance_parent(self, new_parent: ParentType | None) -> None: ...
 
 
 # MARK: Minimal Mixin for Hierarchical Classes
@@ -119,7 +123,7 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
     HIERARCHICAL_MIXIN_ATTRIBUTE: ClassVar[str] = "__parent"
     ALLOW_CHANGING_INSTANCE_PARENT: ClassVar[bool] = False
 
-    def __init__(self, *args, instance_parent: HierarchicalProtocol | NamedProtocol | None = None, **kwargs) -> None:
+    def __init__(self, *args, instance_parent: ParentType | None = None, **kwargs) -> None:
         """Initialize the mixin and set the instance parent.
 
         Args:
@@ -134,11 +138,11 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
 
     # MARK: Parent
     @property
-    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
+    def instance_parent(self) -> ParentType | None:
         """Get the instance parent.
 
         Returns:
-            HierarchicalProtocol | NamedProtocol | None: The parent object.
+            ParentType: The parent object.
 
         """
         parent = getattr(self, type(self).HIERARCHICAL_MIXIN_ATTRIBUTE, None)
@@ -147,7 +151,7 @@ class HierarchicalMixin(HierarchicalMixinMinimal):
         return parent() if isinstance(parent, weakref.ref) else parent
 
     @instance_parent.setter
-    def instance_parent(self, new_parent: HierarchicalProtocol | NamedProtocol | None) -> None:
+    def instance_parent(self, new_parent: ParentType | None) -> None:
         """Set the instance parent.
 
         Args:

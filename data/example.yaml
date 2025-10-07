@@ -16,3 +16,10 @@ providers:
       traps:
         INEXACT: False
         ROUNDED: False
+
+components:
+- package: agents.hello_world
+  #message: "Foo"
+- package: agents.hello_world
+  title: "foo"
+  message: "Foo"

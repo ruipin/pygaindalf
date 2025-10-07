@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from iso4217 import Currency
 
 from ....util.helpers import instance_lru_cache
-from .. import BaseProviderConfig, ProviderBase, component_entrypoint
+from .. import BaseProvider, BaseProviderConfig, component_entrypoint
 
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ class BaseForexProviderConfig(BaseProviderConfig, metaclass=ABCMeta):
 
 
 # MARK: Provider Base class
-class ForexProviderBase[C: BaseForexProviderConfig](ProviderBase[C], metaclass=ABCMeta):
+class BaseForexProvider[C: BaseForexProviderConfig](BaseProvider[C], metaclass=ABCMeta):
     @instance_lru_cache(maxsize=128)
     @abstractmethod
     def _get_daily_exchange_rate(self, from_currency: Currency, to_currency: Currency, date: datetime.date) -> Decimal:

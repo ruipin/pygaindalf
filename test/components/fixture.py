@@ -6,20 +6,23 @@ from typing import Any
 
 import pytest
 
-from app.components import BaseComponentConfig, ComponentBase
+from app.components import BaseComponent, BaseComponentConfig
+from app.runtime import Runtime
+
+from ..util.config.fixture import ConfigFixture
 
 
 # MARK: Component configuration fixture
 class ComponentConfigFixture[T: BaseComponentConfig]:
     def __init__(self):
-        pass
+        self.config: T | None = None
 
     def create(self, data: dict[str, Any], cls: type[T]) -> T:
         self.config = cls.model_validate(data)
         return self.config
 
     def get(self) -> T:
-        if not hasattr(self, "config"):
+        if self.config is None:
             raise RuntimeError("Configuration not initialized. Call 'create()' first.")
         return self.config
 
@@ -30,9 +33,10 @@ def component_config() -> ComponentConfigFixture:
 
 
 # MARK: Component fixture
-class ComponentFixture[T: ComponentBase]:
+class ComponentFixture[T: BaseComponent]:
     def __init__(self):
-        pass
+        self.config: BaseComponentConfig | None = None
+        self.component: T | None = None
 
     def create(self, data: dict[str, Any], cls: type[T]) -> T:
         self.config = cls.config_class.model_validate(data)
@@ -48,3 +52,26 @@ class ComponentFixture[T: ComponentBase]:
 @pytest.fixture
 def component() -> ComponentFixture:
     return ComponentFixture()
+
+
+# MARK: Runtime
+class RuntimeFixture:
+    def __init__(self, config: ConfigFixture):
+        self.config = config
+        self.runtime: Runtime | None = None
+
+    def create(self, data: dict[str, Any]) -> Runtime:
+        self.config.create(data)
+        self.runtime = Runtime(config=self.config.get())
+        self.runtime.initialize()
+        return self.runtime
+
+    def get(self) -> Runtime:
+        if self.runtime is None:
+            raise RuntimeError("Runtime not initialized.")
+        return self.runtime
+
+
+@pytest.fixture
+def runtime(config: ConfigFixture) -> RuntimeFixture:
+    return RuntimeFixture(config)

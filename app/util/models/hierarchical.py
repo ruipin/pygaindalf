@@ -9,12 +9,12 @@ from typing import override
 from pydantic import Field, field_validator
 
 from ..helpers.weakref import WeakRef
-from ..mixins import HierarchicalProtocol, NamedProtocol
+from ..mixins import HierarchicalProtocol, NamedProtocol, ParentType
 from .hierarchical_root import HierarchicalRootModel
 
 
 class HierarchicalModel(HierarchicalRootModel):
-    instance_parent_weakref: WeakRef[HierarchicalProtocol | NamedProtocol] | None = Field(
+    instance_parent_weakref: WeakRef[ParentType] | None = Field(
         default=None,
         repr=False,
         exclude=True,
@@ -24,7 +24,7 @@ class HierarchicalModel(HierarchicalRootModel):
 
     @field_validator("instance_parent_weakref", mode="after")
     @classmethod
-    def _validate_instance_parent(cls, obj: object | None) -> weakref.ref[HierarchicalProtocol | NamedProtocol] | None:
+    def _validate_instance_parent(cls, obj: object | None) -> weakref.ref[ParentType] | None:
         if obj is None:
             return None
 
@@ -44,12 +44,12 @@ class HierarchicalModel(HierarchicalRootModel):
 
     @property
     @override
-    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
+    def instance_parent(self) -> ParentType | None:
         parent = getattr(self, "instance_parent_weakref", None)
         if parent is None:
             return None
         return parent() if isinstance(parent, weakref.ref) else parent
 
     @instance_parent.setter
-    def instance_parent(self, new_parent: HierarchicalProtocol | NamedProtocol | None) -> None:
+    def instance_parent(self, new_parent: ParentType | None) -> None:
         self.instance_parent_weakref = weakref.ref(new_parent) if new_parent is not None else None

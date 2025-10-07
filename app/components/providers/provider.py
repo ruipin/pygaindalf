@@ -5,7 +5,7 @@ from abc import ABCMeta
 from typing import override
 
 from ...util.helpers import classproperty
-from .. import BaseComponentConfig, ComponentBase
+from ..component import BaseComponent, BaseComponentConfig
 
 
 # MARK: Provider Base Configuration
@@ -17,5 +17,5 @@ class BaseProviderConfig(BaseComponentConfig, metaclass=ABCMeta):
 
 
 # MARK: Provider Base class
-class ProviderBase[C: BaseProviderConfig](ComponentBase[C], metaclass=ABCMeta):
+class BaseProvider[C: BaseProviderConfig](BaseComponent[C], metaclass=ABCMeta):
     pass

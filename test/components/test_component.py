@@ -7,8 +7,8 @@ from typing import override
 import pytest
 
 from app.components.component import (
+    BaseComponent,
     BaseComponentConfig,
-    ComponentBase,
     component_entrypoint,
 )
 
@@ -17,11 +17,11 @@ from app.components.component import (
 class DummyComponentConfig(BaseComponentConfig):
     @classmethod
     @override
-    def get_component_class_for_package(cls, package) -> type[ComponentBase]:
+    def get_component_class_for_package(cls, package) -> type[BaseComponent]:
         return DummyComponent
 
 
-class DummyComponent(ComponentBase[DummyComponentConfig]):
+class DummyComponent(BaseComponent[DummyComponentConfig]):
     def __init__(self, config: DummyComponentConfig):
         super().__init__(config)
         self.events: list[str] = []

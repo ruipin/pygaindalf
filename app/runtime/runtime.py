@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: GPLv3-or-later
+# Copyright © 2025 pygaindalf Rui Pinheiro
+
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
+from frozendict import frozendict
+
+from ..components.providers import BaseProvider
+from ..portfolio.models.root import PortfolioRoot
+from ..util.mixins import LoggableHierarchicalNamedMixin, ParentType
+from .context import DirectContext
+
+
+if TYPE_CHECKING:
+    from ..config import ConfigManager
+
+
+class Runtime(LoggableHierarchicalNamedMixin):
+    initialized: bool
+
+    config: ConfigManager
+    portfolio_root: PortfolioRoot
+    providers: Mapping[str, BaseProvider]
+
+    def __init__(self, *, config: ConfigManager | None = None, instance_parent: ParentType | None = None, instance_name: str | None = None) -> None:
+        super().__init__(instance_parent=instance_parent, instance_name=instance_name)
+
+        self.initialized = False
+
+        if config is None:
+            from ..config import CFG
+
+            config = CFG
+
+        self.config = config
+
+    def initialize(self) -> None:
+        if self.initialized:
+            return
+
+        self._initialize_config()
+        self._initialize_portfolio()
+        self._initialize_providers()
+        self._initialize_context()
+
+        self.initialized = True
+
+    def _initialize_config(self) -> None:
+        self.config.initialize()
+
+    def _initialize_portfolio(self) -> None:
+        self.portfolio_root = PortfolioRoot()
+
+    def _initialize_providers(self) -> None:
+        providers = {}
+        for key, provider in self.config.providers.items():
+            provider = provider.create_component(instance_parent=self)
+            assert isinstance(provider, BaseProvider)
+            providers[key] = provider
+
+        self.providers = frozendict(providers)
+
+    def _initialize_context(self) -> None:
+        self.context = DirectContext(self)
+
+    def run(self) -> None:
+        from .runtime_orchestrator import RuntimeOrchestrator, RuntimeOrchestratorConfig
+
+        if not self.initialized:
+            self.initialize()
+
+        orchestrator_config = RuntimeOrchestratorConfig(package="app.runtime", components=self.config.components)
+        orchestrator = RuntimeOrchestrator(orchestrator_config, instance_name="orchestrator", instance_parent=self)
+        orchestrator.run(self.context)

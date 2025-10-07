@@ -3,12 +3,12 @@
 
 
 # Base provider
-from .. import component_entrypoint
-from .provider import BaseProviderConfig, ProviderBase
+from ..component import component_entrypoint
+from .provider import BaseProvider, BaseProviderConfig
 
 
 __all__ = [
+    "BaseProvider",
     "BaseProviderConfig",
-    "ProviderBase",
     "component_entrypoint",
 ]

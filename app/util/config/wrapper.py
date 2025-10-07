@@ -15,14 +15,21 @@ if TYPE_CHECKING:
     import argparse
 
 
-class ConfigWrapper[C: ConfigBase, A: ArgParserBase]:
+class ConfigManager[C: ConfigBase, A: ArgParserBase]:
+    config_class: type[C]
+    argparser_class: type[A]
+    config: C | None
+
     def __init__(self, config_class: type[C], argparser_class: type[A]) -> None:
         self.config_class = config_class
         self.argparser_class = argparser_class
         self.config = None
 
     def initialize(self) -> C:
-        return self.open(getattr(self.args, "app.paths.config"))
+        if self.config is None:
+            return self.open(getattr(self.args, "app.paths.config"))
+        else:
+            return self.config
 
     @cached_property
     def args(self) -> argparse.Namespace:

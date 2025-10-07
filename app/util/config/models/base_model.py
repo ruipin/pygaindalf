@@ -26,7 +26,7 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
     @override
     def __rich_repr__(self) -> rich.repr.Result:
         for attr, info in type(self).model_fields.items():
-            if info.repr is False:
+            if info.repr is False or attr in ("instance_name",):
                 continue
 
             if self.inherited is not None and attr in self.inherited:

@@ -4,7 +4,7 @@
 
 from .args import ArgParserBase, DefaultArgParser
 from .models import AppInfo, BaseConfigModel, ConfigBase, ConfigFilePath, ConfigLoggingOnly, LoggingConfig
-from .wrapper import ConfigWrapper
+from .wrapper import ConfigManager
 
 
 __all__ = [
@@ -14,7 +14,7 @@ __all__ = [
     "ConfigBase",
     "ConfigFilePath",
     "ConfigLoggingOnly",
-    "ConfigWrapper",
+    "ConfigManager",
     "DefaultArgParser",
     "LoggingConfig",
 ]

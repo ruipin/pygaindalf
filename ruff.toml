@@ -226,10 +226,12 @@ runtime-evaluated-base-classes = [
     "app.portfolio.models.entity.entity_base.EntityBase"             , "app.portfolio.models.entity.EntityBase"      , "app.portfolio.models.EntityBase"      ,
     "app.portfolio.models.entity.entity.Entity"                      , "app.portfolio.models.entity.Entity"          , "app.portfolio.models.Entity"          ,
 
-    # Component pydantic models
-    "app.components.component.BaseComponentConfig"               , "app.components.BaseComponentConfig"                   ,
-    "app.component.providers.provider.BaseProviderConfig"        , "app.component.providers.BaseProviderConfig"           ,
-    "app.component.providers.forex.forex.BaseForexProviderConfig", "app.component.providers.forex.BaseForexProviderConfig",
+    # Component configuration pydantic models
+    "app.components.component.BaseComponentConfig"                    , "app.components.BaseComponentConfig"                         ,
+    "app.components.agents.base.BaseAgentConfig"                      , "app.components.agents.BaseAgentConfig"                      ,
+    "app.components.agents.orchestrators.base.BaseOrchestratorConfig" , "app.components.agents.orchestrators.BaseOrchestratorConfig" ,
+    "app.components.providers.provider.BaseProviderConfig"            , "app.components.providers.BaseProviderConfig"                ,
+    "app.components.providers.forex.forex.BaseForexProviderConfig"    , "app.components.providers.forex.BaseForexProviderConfig"     ,
 ]
 
 # Decorators that require their argument/return type hints to be available at runtime

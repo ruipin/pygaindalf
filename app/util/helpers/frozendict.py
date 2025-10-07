@@ -9,8 +9,10 @@ from pydantic_core import core_schema
 
 if typing.TYPE_CHECKING:
     import pydantic
+    import rich.repr
 
 
+# Add pydantic support for frozendict
 class PydanticFrozenDictAnnotation:
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type: typing.Any, handler: pydantic.GetCoreSchemaHandler) -> core_schema.CoreSchema:
@@ -34,3 +36,11 @@ class PydanticFrozenDictAnnotation:
 _K = typing.TypeVar("_K")
 _V = typing.TypeVar("_V")
 FrozenDict = typing.Annotated[frozendict[_K, _V], PydanticFrozenDictAnnotation]
+
+
+# Add rich repr support to frozendict
+def frozendict_rich_repr(self: frozendict) -> rich.repr.Result:
+    return self.items()
+
+
+frozendict.__rich_repr__ = frozendict_rich_repr  # pyright: ignore[reportAttributeAccessIssue]

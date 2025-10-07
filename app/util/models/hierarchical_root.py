@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 from pydantic import ConfigDict, model_validator
 from pydantic.fields import FieldInfo
 
-from ..mixins import HierarchicalMixinMinimal, HierarchicalMutableProtocol, HierarchicalProtocol, NamedMutableProtocol, NamedProtocol
+from ..mixins import HierarchicalMixinMinimal, HierarchicalMutableProtocol, NamedMutableProtocol, ParentType
 from .single_initialization import SingleInitializationModel
 
 
@@ -32,7 +32,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
     )
 
     @property
-    def instance_parent(self) -> HierarchicalProtocol | NamedProtocol | None:
+    def instance_parent(self) -> ParentType | None:
         return None
 
     # NOTE: We use object.__setattr__ to avoid triggering Pydantic's validation which would raise an error if the object is not

@@ -439,7 +439,6 @@ class EntityRecordBase[
     @property
     def record_parent(self) -> EntityRecordBase:
         if (parent := self.record_parent_or_none) is None:
-            breakpoint()
             msg = f"{type(self).__name__} instance {self.uid} has no valid entity record parent."
             raise ValueError(msg)
         return parent

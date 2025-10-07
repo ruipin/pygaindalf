@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from ...util import Uid
     from ..store.entity_store import EntityStore
     from .entity_log import EntityLog
-    from .entity_record_base import EntityRecordBase
 
 
 class InstanceStoreMixin(metaclass=ABCMeta):

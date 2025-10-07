@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, override
 import requests
 
 from ....util.helpers import instance_lru_cache
-from . import BaseForexProviderConfig, ForexProviderBase
+from . import BaseForexProvider, BaseForexProviderConfig
 
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ class OandaForexProviderConfig(BaseForexProviderConfig):
 
 
 # MARK: Provider
-class OandaForexProvider(ForexProviderBase[OandaForexProviderConfig]):
+class OandaForexProvider(BaseForexProvider[OandaForexProviderConfig]):
     @instance_lru_cache(maxsize=128)
     @override
     def _get_daily_exchange_rate(self, from_currency: Currency, to_currency: Currency, date: datetime.date) -> Decimal:
