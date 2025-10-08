@@ -4,7 +4,7 @@
 
 from typing import TYPE_CHECKING, override
 
-from .context_base import BaseContext
+from .base_context import BaseContext
 
 
 if TYPE_CHECKING:

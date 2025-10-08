@@ -15,6 +15,10 @@ from .transaction_journal import TransactionJournal
 from .transaction_record import TransactionRecord
 
 
+if TYPE_CHECKING:
+    from iso4217 import Currency
+
+
 class Transaction(
     TransactionImpl if TYPE_CHECKING else empty_class(),
     IncrementingUidMixin,
@@ -48,6 +52,13 @@ class Transaction(
             raise ValueError(msg)
 
         return value
+
+    # MARK: Currency
+    def get_currency(self) -> Currency:
+        if (currency := self.currency) is not None:
+            return currency
+        else:
+            return self.instrument.currency
 
 
 TransactionRecord.register_entity_class(Transaction)

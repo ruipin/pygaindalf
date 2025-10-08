@@ -10,7 +10,6 @@ from sybil import Sybil
 from sybil.parsers.rest import DocTestParser, PythonCodeBlockParser
 
 from test.components.fixture import *
-from test.portfolio.conftest import *
 from test.util.config.fixture import *
 
 

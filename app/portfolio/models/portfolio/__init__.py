@@ -2,13 +2,14 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from .portfolio import Portfolio
-from .portfolio_protocol import MutablePortfolioProtocol, PortfolioProtocol
+from .portfolio_protocol import PortfolioProtocol
 from .portfolio_record import PortfolioRecord
+from .portfolio_schema import PortfolioSchema
 
 
 __all__ = [
-    "MutablePortfolioProtocol",
     "Portfolio",
     "PortfolioProtocol",
     "PortfolioRecord",
+    "PortfolioSchema",
 ]

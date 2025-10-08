@@ -9,11 +9,7 @@ from typing import TYPE_CHECKING, dataclass_transform
 from pydantic import Field, PositiveInt
 
 from ...util.uid import Uid
-
-
-@dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
-class EntitySchemaBase:
-    pass
+from .entity_schema_base import EntitySchemaBase
 
 
 # MARK: Fields

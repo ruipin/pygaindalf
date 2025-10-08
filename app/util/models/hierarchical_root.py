@@ -64,6 +64,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             if not getattr(type(obj), "PROPAGATE_INSTANCE_NAME_FROM_PARENT", True):
                 return
             if (current := obj.instance_name) is not None:
+                return
                 if current == name:
                     return
                 msg = f"{type(obj).__name__} {obj} already has a name set: {obj.instance_name}. Cannot overwrite with {name}."
@@ -142,7 +143,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             self._seed_parent_and_name_to_object(obj=fld, name=fldnm, propagate_name=propagate_name, propagate_parent=propagate_parent)
         elif isinstance(fld, (Sequence, AbstractSet)) and not isinstance(fld, (str, bytes, bytearray)):
             for i, item in enumerate(fld):
-                self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}[{i}]", propagate_name=propagate_name, propagate_parent=propagate_parent)
+                self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}.{i}", propagate_name=propagate_name, propagate_parent=propagate_parent)
         elif isinstance(fld, Mapping):
             for key, item in fld.items():
                 self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}.{key}", propagate_name=propagate_name, propagate_parent=propagate_parent)

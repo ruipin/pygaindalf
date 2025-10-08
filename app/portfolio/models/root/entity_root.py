@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+from abc import ABCMeta
 from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import ConfigDict, Field, InstanceOf, field_validator
 from requests import Session
 
+from ....util.helpers import generics
 from ....util.models import LoggableHierarchicalRootModel
 from ...journal.session_manager import SessionManager
 from ..entity import Entity
@@ -14,9 +16,10 @@ from ..store.entity_store import EntityStore
 
 if TYPE_CHECKING:
     from ...journal.session import Session
+    from ...util.uid import Uid
 
 
-class EntityRoot(LoggableHierarchicalRootModel):
+class EntityRoot[E: Entity](LoggableHierarchicalRootModel, metaclass=ABCMeta):
     model_config = ConfigDict(
         extra="forbid",
         frozen=False,
@@ -60,6 +63,8 @@ class EntityRoot(LoggableHierarchicalRootModel):
         EntityRoot._global_root = None
 
     # MARK: Root entity
+    get_entity_type = generics.GenericIntrospectionMethod[E]()
+
     root: InstanceOf[Entity] | None = Field(default=None, validate_default=False, description="The UID of the root entity.")
 
     @override
@@ -68,18 +73,30 @@ class EntityRoot(LoggableHierarchicalRootModel):
 
     @field_validator("root", mode="before")
     @classmethod
-    def _validate_root(cls, root: Any) -> Entity | None:
-        if not isinstance(root, Entity):
-            msg = f"Expected Entity, got {type(root).__name__}"
+    def _validate_root(cls, root: Any) -> E | None:
+        entity_type = cls.get_entity_type(origin=True)
+        if not isinstance(root, entity_type):
+            msg = f"Expected {entity_type.__name__}, got {type(root).__name__}"
             raise TypeError(msg)
-
-        cls._do_validate_root(root)
-
         return root
 
-    @classmethod
-    def _do_validate_root(cls, root: Entity) -> None:
-        pass
+    @property
+    def entity(self) -> E:
+        entity_type = self.get_entity_type(origin=True)
+        if (root := self.root) is None or not isinstance(root, entity_type):
+            msg = "Root entity is not set."
+            raise ValueError(msg)
+        return root
+
+    @entity.setter
+    def entity(self, value: Uid | E) -> None:
+        entity_type = self.get_entity_type()
+        self.root = entity_type.narrow_to_instance(value)
+
+    def create_root_entity(self) -> E:
+        entity_type = self.get_entity_type()
+        self.entity = entity = entity_type(instance_parent=self)
+        return entity
 
     if not TYPE_CHECKING:
 

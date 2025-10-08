@@ -78,7 +78,7 @@ def test_sub_orchestrator_runs_hello_world_agent(runtime: RuntimeFixture, caplog
         {
             "components": [
                 {
-                    "package": "orchestrators.config_orchestrator",
+                    "package": "orchestrators.config",
                     "title": "sub-orchestrator",
                     "components": [
                         {

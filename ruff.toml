@@ -200,7 +200,7 @@ runtime-evaluated-base-classes = [
     "pydantic.BaseModel", "sqlalchemy.orm.DeclarativeBase",
 
     # Custom config pydantic models
-    "app.util.config.models.base_model.BaseConfigModel", "app.util.config.models.BaseConfigModel"  ,
+    "app.util.config.models.base_model.BaseConfigModel", "app.util.config.models.BaseConfigModel"  , "app.util.config.BaseConfigModel" ,
     "app.util.config.models.base.ConfigLoggingOnly"    , "app.util.config.models.ConfigLoggingOnly",
     "app.util.config.models.base.ConfigBase"           , "app.util.config.models.ConfigBase"       , "app.util.config.ConfigBase",
     "app.config.default.DefaultConfig"                 , "app.config.DefaultConfig"                ,

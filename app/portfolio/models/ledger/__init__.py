@@ -3,9 +3,11 @@
 
 from .ledger import Ledger
 from .ledger_record import LedgerRecord
+from .ledger_schema import LedgerSchema
 
 
 __all__ = [
     "Ledger",
     "LedgerRecord",
+    "LedgerSchema",
 ]

@@ -4,7 +4,7 @@
 
 # Base orchestrator
 from .base import BaseOrchestrator, BaseOrchestratorConfig
-from .config_orchestrator import ConfigOrchestrator, ConfigOrchestratorConfig
+from .config import ConfigOrchestrator, ConfigOrchestratorConfig
 
 
 __all__ = [

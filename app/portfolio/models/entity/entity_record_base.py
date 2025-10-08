@@ -594,6 +594,10 @@ class EntityRecordBase[
         return result
 
     @property
+    def j(self) -> T_Journal:
+        return self.journal
+
+    @property
     def has_journal(self) -> bool:
         return self.get_journal(create=False) is not None
 

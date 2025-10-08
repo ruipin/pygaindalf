@@ -22,9 +22,24 @@ if TYPE_CHECKING:
 class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
     package: str = Field(description="Package name of the component to load")
 
-    title: str | None = Field(default=None, description="Logical title of the component instance, to help identification")
-
     decimal: DecimalConfig = FieldInherit(default_factory=DecimalConfig, description="Decimal configuration for provider")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_title(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if (title := data.get("title", None)) is not None:
+            if not isinstance(title, str):
+                msg = f"Expected a string for 'title', got {type(title).__name__} instead."
+                raise TypeError(msg)
+            data["instance_name"] = title
+            del data["title"]
+        return data
+
+    @property
+    def title(self) -> str:
+        return self.final_instance_name
 
     @model_validator(mode="wrap")
     @classmethod

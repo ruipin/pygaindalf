@@ -805,7 +805,7 @@ def get_parent_argument_or_none(
 
     if not isinstance(bound, bool):
         if isinstance(result, typing.ForwardRef):
-            warnings.warn(f"ForwardRef resolution not yet implemented, cannot sanity check {result} arguments against TypeVar bounds", stacklevel=2)
+            warnings.warn(f"ForwardRef resolution not implemented, cannot sanity check {result} arguments against TypeVar bounds", stacklevel=2)
             return result
 
         matched = type_hints.match_type_hint(result, bound)

@@ -3,11 +3,13 @@
 
 from .transaction import Transaction
 from .transaction_record import TransactionRecord
+from .transaction_schema import TransactionSchema
 from .transaction_type import TransactionType
 
 
 __all__ = [
     "Transaction",
     "TransactionRecord",
+    "TransactionSchema",
     "TransactionType",
 ]

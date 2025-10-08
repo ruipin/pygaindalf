@@ -2,11 +2,13 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
+from collections.abc import Generator
 from typing import Any
 
 import pytest
 
 from app.components import BaseComponent, BaseComponentConfig
+from app.portfolio.models.root import PortfolioRoot
 from app.runtime import Runtime
 
 from ..util.config.fixture import ConfigFixture
@@ -73,5 +75,7 @@ class RuntimeFixture:
 
 
 @pytest.fixture
-def runtime(config: ConfigFixture) -> RuntimeFixture:
-    return RuntimeFixture(config)
+def runtime(config: ConfigFixture) -> Generator[RuntimeFixture]:
+    fixture = RuntimeFixture(config)
+    yield fixture
+    PortfolioRoot.clear_global_root()

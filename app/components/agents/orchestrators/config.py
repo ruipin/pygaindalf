@@ -19,10 +19,11 @@ class ConfigOrchestrator(BaseOrchestrator[ConfigOrchestratorConfig]):
     @override
     def _do_run(self) -> None:
         for i, component_config in enumerate(self.config.components):
-            title = f"{i}:{component_config.title}" if component_config.title is not None else f"{i}:<{component_config.package}>"
+            title = f"{i}.{component_config.title}"
             component = component_config.create_component(instance_name=title, instance_parent=self)
             assert isinstance(component, BaseAgent)
-            component.run(self.subcontext)
+            with self.subcontext():
+                component.run(self.subcontext)
 
 
 COMPONENT = ConfigOrchestrator

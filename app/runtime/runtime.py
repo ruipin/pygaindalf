@@ -50,7 +50,10 @@ class Runtime(LoggableHierarchicalNamedMixin):
         self.config.initialize()
 
     def _initialize_portfolio(self) -> None:
-        self.portfolio_root = PortfolioRoot()
+        self.portfolio_root = root = PortfolioRoot()
+        root.set_as_global_root()
+        with root.session_manager(actor=self.instance_hierarchy, reason="Initialize portfolio root"):
+            root.create_root_entity()
 
     def _initialize_providers(self) -> None:
         providers = {}
@@ -72,4 +75,5 @@ class Runtime(LoggableHierarchicalNamedMixin):
 
         orchestrator_config = RuntimeOrchestratorConfig(package="app.runtime", components=self.config.components)
         orchestrator = RuntimeOrchestrator(orchestrator_config, instance_name="orchestrator", instance_parent=self)
-        orchestrator.run(self.context)
+        with self.context():
+            orchestrator.run(self.context)

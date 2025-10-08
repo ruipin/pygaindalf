@@ -9,6 +9,10 @@ from ..component import BaseComponent, BaseComponentConfig, component_entrypoint
 
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
+    from ...portfolio.journal import Session
+    from ...portfolio.models.portfolio import PortfolioProtocol
     from ...runtime.context import BaseContext
 
 
@@ -31,6 +35,16 @@ class BaseAgent[C: BaseAgentConfig](BaseComponent[C], metaclass=ABCMeta):
         self._pre_run()
         self._do_run()
         self._post_run()
+
+    def session(self, reason: str) -> AbstractContextManager[Session]:
+        return self.context.session_manager(actor=self.instance_hierarchy, reason=reason)
+
+    def s(self, reason: str) -> AbstractContextManager[Session]:
+        return self.session(reason=reason)
+
+    @property
+    def portfolio(self) -> PortfolioProtocol:
+        return self.context.portfolio
 
     def _pre_run(self) -> None:
         pass
