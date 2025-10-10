@@ -667,7 +667,7 @@ class EntityBase[
     @final
     @classmethod
     def _is_entity_attribute(cls, attr: str) -> bool:
-        return hasattr(cls, attr) or cls.__cached_type_hints__.get(attr, None) is not None
+        return hasattr(cls, attr) or type_hints.get_type_hint(cls, attr) is not None
 
     if not TYPE_CHECKING:
 

@@ -34,7 +34,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",  # For Google-style docstrings
-    "sphinx_autodoc_typehints",  # For type hints in docstrings
+    # "sphinx_autodoc_typehints",  # For type hints in docstrings
     "sphinx.ext.inheritance_diagram",  # For class inheritance diagrams
     "sphinx.ext.intersphinx",  # For linking to other projects' documentation
     "sphinx.ext.githubpages",  # For GitHub Pages support
@@ -125,6 +125,7 @@ import inspect
 
 
 # sphinx.ext.autodoc
+# Use FORWARDREF format to keep annotations as stringified forward references
 inspect_signature = inspect.signature
 
 
@@ -137,7 +138,30 @@ def patched_inspect_signature(*args, **kwargs):
 
 inspect.signature = patched_inspect_signature
 
+
+# sphinx.ext.autosummary
+# Strip class parameters from autosummary entries to avoid lookup errors
+# e.g. 'Class[Param1, Param2]' -> 'Class'
+import sphinx.ext.autosummary
+
+autosummary_run = sphinx.ext.autosummary.Autosummary.run
+
+
+@functools.wraps(autosummary_run)
+def patched_autosummary_run(self):
+    content = []
+    for name in self.content:
+        content.append(name.split("[")[0])
+    self.content = content
+
+    return autosummary_run(self)
+
+
+sphinx.ext.autosummary.Autosummary.run = patched_autosummary_run
+
+
 # sphinx_autodoc_typehints
+# Use FORWARDREF format to keep annotations as stringified forward references
 from typing import Any, Callable, TypeVar
 
 import sphinx_autodoc_typehints

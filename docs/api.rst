@@ -8,4 +8,3 @@ API Reference
 
    app
    pygaindalf
-   test

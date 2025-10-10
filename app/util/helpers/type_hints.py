@@ -7,6 +7,7 @@ import warnings
 
 from frozendict import frozendict
 
+from . import script_info
 from .classproperty import cached_classproperty
 
 
@@ -44,7 +45,8 @@ class CachedTypeHintsMixin:
 
 # MARK: get_type_hints
 def get_type_hints(obj: typing.Any) -> typing.Mapping[str, typing.Any]:
-    if isinstance(obj, SupportsCachedTypeHints):
+    # Since __cached_type_hints__ is a classproperty, it will not be available during documentation builds
+    if not script_info.is_documentation_build() and isinstance(obj, SupportsCachedTypeHints):
         return obj.__cached_type_hints__
     else:
         return _get_type_hints(obj)
