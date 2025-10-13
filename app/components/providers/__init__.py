@@ -4,11 +4,13 @@
 
 # Base provider
 from ..component import component_entrypoint
-from .provider import BaseProvider, BaseProviderConfig
+from .provider import Provider, ProviderConfig
+from .type_enum import ProviderType
 
 
 __all__ = [
-    "BaseProvider",
-    "BaseProviderConfig",
+    "Provider",
+    "ProviderConfig",
+    "ProviderType",
     "component_entrypoint",
 ]

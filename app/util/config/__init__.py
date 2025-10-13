@@ -3,6 +3,7 @@
 
 
 from .args import ArgParserBase, DefaultArgParser
+from .inherit import FieldInherit
 from .models import AppInfo, BaseConfigModel, ConfigBase, ConfigFilePath, ConfigLoggingOnly, LoggingConfig
 from .wrapper import ConfigManager
 
@@ -16,5 +17,6 @@ __all__ = [
     "ConfigLoggingOnly",
     "ConfigManager",
     "DefaultArgParser",
+    "FieldInherit",
     "LoggingConfig",
 ]

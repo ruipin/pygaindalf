@@ -3,13 +3,13 @@
 
 
 # Base orchestrator
-from .base import BaseOrchestrator, BaseOrchestratorConfig
 from .config import ConfigOrchestrator, ConfigOrchestratorConfig
+from .orchestrator import Orchestrator, OrchestratorConfig
 
 
 __all__ = [
-    "BaseOrchestrator",
-    "BaseOrchestratorConfig",
     "ConfigOrchestrator",
     "ConfigOrchestratorConfig",
+    "Orchestrator",
+    "OrchestratorConfig",
 ]

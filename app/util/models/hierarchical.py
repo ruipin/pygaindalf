@@ -40,7 +40,13 @@ class HierarchicalModel(HierarchicalRootModel):
             msg = f"Expected HierarchicalProtocol | NamedProtocol | None, got {type(obj)}"
             raise TypeError(msg)
 
+        cls._do_validate_instance_parent(_obj)
+
         return typing_cast("weakref.ref", obj)
+
+    @classmethod
+    def _do_validate_instance_parent(cls, parent: ParentType) -> None:
+        pass
 
     @property
     @override

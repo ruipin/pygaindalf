@@ -5,22 +5,21 @@ import datetime
 import re
 
 from decimal import Decimal
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, override
 
 import pytest
 
 from iso4217 import Currency
 
 from app.portfolio.models.entity import EntityRecord
-from app.portfolio.models.entity.dependency_event_handler import (
-    EntityDependencyEventHandlerRecord,
-    EntityDependencyEventType,
-)
-from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.entity.dependency_event_handler import EntityDependencyEventType
+from app.portfolio.models.entity.dependency_event_handler.impl import EntityDependencyEventHandlerImpl
+from app.portfolio.models.entity.dependency_event_handler.model import EntityDependencyEventHandlerModel
+from app.portfolio.models.instrument import Instrument, InstrumentRecord
 from app.portfolio.models.ledger import Ledger, LedgerRecord
 from app.portfolio.models.portfolio.portfolio import Portfolio
 from app.portfolio.models.root.portfolio_root import PortfolioRoot
-from app.portfolio.models.transaction import Transaction, TransactionType
+from app.portfolio.models.transaction import Transaction, TransactionRecord, TransactionType
 from app.portfolio.util.uid import Uid
 
 
@@ -157,19 +156,25 @@ class TestPortfolioDependencies:
         # Capture (event, self_ledger_uid, entity_uid, matched_attributes) # noqa: ERA001
         calls: list[DepEventCall] = []
 
-        def entity_matcher(self: EntityRecord, record: EntityRecord) -> bool:  # noqa: ARG001
+        def entity_matcher(owner: LedgerRecord, record: EntityRecord) -> bool:  # noqa: ARG001
             # Only react to inst_b
             return record.uid == inst_nvda_uid
 
-        def attr_matcher(self: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
+        def attr_matcher(owner: LedgerRecord, record: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
             # Match currency updates only
             return attribute == "currency"
 
-        def handler(self: EntityRecord, event: EntityDependencyEventType, record: EntityRecord, *, matched_attributes: frozenset[str] | None = None) -> None:
-            calls.append(DepEventCall(event=event, self_uid=self.uid, entity_uid=record.uid, matched_attributes=matched_attributes))
+        def handler(
+            owner: LedgerRecord,
+            event: EntityDependencyEventType,
+            record: EntityRecord,
+            *,
+            matched_attributes: frozenset[str] | None = None,
+        ) -> None:
+            calls.append(DepEventCall(event=event, self_uid=owner.uid, entity_uid=record.uid, matched_attributes=matched_attributes))
 
         # Register on LedgerRecord so only Ledgers receive these callbacks
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler,
             on_updated=True,
             on_deleted=True,
@@ -254,21 +259,21 @@ class TestPortfolioDependencies:
         calls: list[tuple[EntityDependencyEventType, str, frozenset[str] | None]] = []
 
         # Two entity matchers (OR). First one matches nothing; second matches inst_b
-        def entity_matcher_noop(self: EntityRecord, record: EntityRecord) -> bool:  # noqa: ARG001
+        def entity_matcher_noop(owner: LedgerRecord, record: EntityRecord) -> bool:  # noqa: ARG001
             return False
 
-        def entity_matcher_target(self: EntityRecord, record: EntityRecord) -> bool:  # noqa: ARG001
+        def entity_matcher_target(owner: LedgerRecord, record: EntityRecord) -> bool:  # noqa: ARG001
             return record.uid == inst_isin_0001.uid
 
         # Two attribute matchers (OR). Match currency and ticker
-        def attr_match_currency(self: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
+        def attr_match_currency(owner: LedgerRecord, record: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
             return attribute == "currency"
 
-        def attr_match_ticker(self: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
+        def attr_match_ticker(owner: LedgerRecord, record: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
             return attribute == "ticker"
 
         def handler(
-            self: EntityRecord,  # noqa: ARG001
+            owner: LedgerRecord,  # noqa: ARG001
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
@@ -276,7 +281,7 @@ class TestPortfolioDependencies:
         ) -> None:
             calls.append((event, str(record.uid), matched_attributes))
 
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler,
             on_updated=True,
             on_deleted=True,
@@ -343,11 +348,17 @@ class TestPortfolioDependencies:
         # Prep: collection to capture handler calls
         calls: list[tuple[EntityDependencyEventType, str, frozenset[str] | None]] = []
 
-        def handler(self: EntityRecord, event: EntityDependencyEventType, record: EntityRecord, *, matched_attributes: frozenset[str] | None = None) -> None:  # noqa: ARG001
+        def handler(
+            owner: LedgerRecord,  # noqa: ARG001
+            event: EntityDependencyEventType,
+            record: EntityRecord,
+            *,
+            matched_attributes: frozenset[str] | None = None,
+        ) -> None:
             calls.append((event, str(record.uid), matched_attributes))
 
         # No entity or attribute filters: should fire for any dependent entity and any attribute
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler,
             on_updated=True,
             on_deleted=True,
@@ -409,33 +420,33 @@ class TestPortfolioDependencies:
         del_calls: list[DepEventCall] = []
 
         def update_handler(
-            self: EntityRecord,
+            owner: LedgerRecord,
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
             matched_attributes: frozenset[str] | None = None,
         ) -> None:
-            update_calls.append(DepEventCall(event=event, self_uid=self.uid, entity_uid=record.uid, matched_attributes=matched_attributes))
+            update_calls.append(DepEventCall(event=event, self_uid=owner.uid, entity_uid=record.uid, matched_attributes=matched_attributes))
 
         def del_handler(
-            self: EntityRecord,
+            owner: LedgerRecord,
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
             matched_attributes: frozenset[str] | None = None,
         ) -> None:
-            del_calls.append(DepEventCall(event=event, self_uid=self.uid, entity_uid=record.uid, matched_attributes=matched_attributes))
+            del_calls.append(DepEventCall(event=event, self_uid=owner.uid, entity_uid=record.uid, matched_attributes=matched_attributes))
 
-        def match_amzn(self: EntityRecord, record: EntityRecord) -> bool:  # noqa: ARG001
+        def match_amzn(owner: LedgerRecord, record: EntityRecord) -> bool:  # noqa: ARG001
             return record.uid == inst_amzn.uid
 
-        def match_currency(self: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
+        def match_currency(owner: LedgerRecord, record: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
             return attribute == "currency"
 
         original_handler_count = len(LedgerRecord.__entity_dependency_event_handler_records__)
 
         # Register: record that only fires on updated
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=update_handler,
             on_updated=True,
             on_deleted=False,
@@ -444,7 +455,7 @@ class TestPortfolioDependencies:
         ).register(LedgerRecord)
 
         # Register: record that only fires on deleted
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=del_handler,
             on_updated=False,
             on_deleted=True,
@@ -501,6 +512,199 @@ class TestPortfolioDependencies:
         assert ledg_appl_record_before_detach.superseded
         assert ledg_appl.record is ledg_appl_record_before_detach.superseding
 
+    def test_dependency_event_handler_impl_updated_and_deleted(self, portfolio_root: PortfolioRoot):
+        # Arrange: seed portfolio and create IMPL instrument with its own ledger
+        _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
+        with portfolio_root.session_manager(actor="tester", reason="create+attach inst_impl"):
+            inst_impl = Instrument(ticker="IMPL", currency=Currency("USD"))
+            ledg_impl = Ledger(instrument=inst_impl)
+            portfolio_root.portfolio.journal.ledgers.add(ledg_impl)
+
+        target_uid = inst_impl.uid
+        calls: list[DepEventCall] = []
+
+        class LedgerDependencyHandler(EntityDependencyEventHandlerImpl[LedgerRecord, InstrumentRecord]):
+            on_updated = True
+            on_deleted = True
+
+            @staticmethod
+            @override
+            def entity_matchers(owner: LedgerRecord, record: InstrumentRecord) -> bool:
+                return record.uid == target_uid
+
+            @staticmethod
+            @override
+            def attribute_matchers(owner: LedgerRecord, record: InstrumentRecord, attribute: str, value: Any) -> bool:
+                return attribute in {"currency"}
+
+            @staticmethod
+            @override
+            def handler(
+                owner: LedgerRecord,
+                event: EntityDependencyEventType,
+                record: InstrumentRecord,
+                *,
+                matched_attributes: frozenset[str] | None = None,
+            ) -> None:
+                calls.append(DepEventCall(event=event, self_uid=owner.uid, entity_uid=record.uid, matched_attributes=matched_attributes))
+
+        LedgerDependencyHandler().register(LedgerRecord)
+
+        # Attach IMPL as an extra dependency of the AAPL ledger to observe multiple owners
+        ledg_appl_record_before_extra = ledg_appl.record
+        with portfolio_root.session_manager(actor="tester", reason="attach impl extra dep"):
+            ledg_appl.journal.extra_dependencies.add(inst_impl)
+        assert ledg_appl_record_before_extra.superseded
+        assert ledg_appl.record is ledg_appl_record_before_extra.superseding
+
+        # Act: update IMPL instrument by changing currency and ticker
+        inst_impl_record = inst_impl.record
+        with portfolio_root.session_manager(actor="tester", reason="update inst_impl"):
+            jb = inst_impl.journal
+            jb.currency = Currency("JPY")
+        assert inst_impl_record.superseded
+        assert inst_impl.record is inst_impl_record.superseding
+
+        update_calls = [c for c in calls if c.event == EntityDependencyEventType.UPDATED]
+        assert len(update_calls) == 2
+        ledg_impl_current = portfolio_root.portfolio[inst_impl]
+        assert {c.self_uid for c in update_calls} == {ledg_impl_current.uid, ledg_appl.uid}
+        assert all(c.entity_uid == inst_impl.uid for c in update_calls)
+        assert all(c.matched_attributes == frozenset({"currency"}) for c in update_calls)
+
+        # Act+Assert: deletion while attached should fail and produce no handler invocations
+        calls.clear()
+        inst_impl_instance_name = inst_impl.instance_name
+        with (
+            pytest.raises(
+                Exception,
+                match=re.escape(
+                    f"Entity record <IR {inst_impl_instance_name} v2> is a child of <LR {inst_impl_instance_name} v1> and therefore the latter cannot be deleted."
+                ),
+            ),
+            portfolio_root.session_manager(actor="tester", reason="delete inst_impl (should fail)"),
+        ):
+            inst_impl.delete()
+
+        assert inst_impl.superseded is False
+        assert inst_impl.deleted is False
+        assert inst_impl.marked_for_deletion is False
+
+        # Act: detach ledger and delete successfully
+        ledg_impl_current_uid = portfolio_root.portfolio[inst_impl].uid
+        ledg_appl_record_before_detach = ledg_appl.record
+        with portfolio_root.session_manager(actor="tester", reason="detach inst_impl"):
+            ledg_impl_attached = portfolio_root.portfolio[inst_impl]
+            portfolio_root.portfolio.journal.ledgers.discard(ledg_impl_attached)
+            inst_impl.delete()
+
+        assert inst_impl.superseded is True
+        assert inst_impl.deleted is True
+        assert inst_impl.record_or_none is None
+        with pytest.raises(
+            ValueError,
+            match=re.escape(f"Entity <I {inst_impl.instance_name} v3 (D)> does not currently have a record. It may have been deleted."),
+        ):
+            _ = inst_impl.record
+
+        deleted_calls = [c for c in calls if c.event == EntityDependencyEventType.DELETED]
+        assert deleted_calls
+        assert {c.entity_uid for c in deleted_calls} == {inst_impl.uid}
+        assert all(c.matched_attributes is None for c in deleted_calls)
+        assert {c.self_uid for c in deleted_calls}.issubset({ledg_impl_current_uid, ledg_appl.uid})
+
+        assert ledg_appl_record_before_detach.superseded
+        assert ledg_appl.record is ledg_appl_record_before_detach.superseding
+        assert inst_impl.uid not in ledg_appl.extra_dependency_uids
+
+    def test_dependency_event_handler_record_generic_filtering_and_union(self, portfolio_root: PortfolioRoot):
+        # Arrange: seed baseline portfolio with instrument and transactions
+        _portfolio, inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
+
+        # Arrange: create a ledger whose transaction will become a non-instrument dependency of ledg_appl
+        with portfolio_root.session_manager(actor="tester", reason="create non-instrument dependency"):
+            inst_dep = Instrument(ticker="NFLX", currency=Currency("USD"))
+            tx_dep = Transaction(
+                type=TransactionType.SELL,
+                date=datetime.date(2025, 2, 1),
+                quantity=Decimal(1),
+                consideration=Decimal(100),
+            )
+            ledg_dep = Ledger(instrument=inst_dep, transactions={tx_dep})
+            portfolio_root.portfolio.journal.ledgers.add(ledg_dep)
+
+        with portfolio_root.session_manager(actor="tester", reason="attach non-instrument dependency"):
+            ledg_appl.journal.extra_dependencies.add(tx_dep)
+
+        inst_calls: list[tuple[Uid, EntityDependencyEventType, type[EntityRecord], frozenset[str] | None]] = []
+        union_calls: list[tuple[Uid, EntityDependencyEventType, type[EntityRecord], frozenset[str] | None]] = []
+
+        def instrument_only_handler(
+            owner: LedgerRecord,
+            event: EntityDependencyEventType,
+            record: InstrumentRecord,
+            *,
+            matched_attributes: frozenset[str] | None = None,
+        ) -> None:
+            inst_calls.append((owner.uid, event, type(record), matched_attributes))
+
+        def union_handler(
+            owner: LedgerRecord,
+            event: EntityDependencyEventType,
+            record: InstrumentRecord | TransactionRecord,
+            *,
+            matched_attributes: frozenset[str] | None = None,
+        ) -> None:
+            union_calls.append((owner.uid, event, type(record), matched_attributes))
+
+        EntityDependencyEventHandlerModel[LedgerRecord, InstrumentRecord](
+            handler=instrument_only_handler,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=None,
+            attribute_matchers=None,
+        ).register(LedgerRecord)
+
+        EntityDependencyEventHandlerModel[LedgerRecord, InstrumentRecord | TransactionRecord](
+            handler=union_handler,
+            on_updated=True,
+            on_deleted=False,
+            entity_matchers=None,
+            attribute_matchers=None,
+        ).register(LedgerRecord)
+
+        # Act: update instrument -> should notify both handlers
+        inst_appl_record = inst_appl.record
+        with portfolio_root.session_manager(actor="tester", reason="update instrument (generics filter)"):
+            inst_appl.journal.currency = Currency("EUR")
+        assert inst_appl_record.superseded
+        assert inst_appl.record is inst_appl_record.superseding
+
+        assert inst_calls, "Instrument-specific handler should receive instrument updates"
+        assert {owner_uid for owner_uid, _event, record_cls, _matched in inst_calls} == {ledg_appl.uid}
+        assert all(record_cls is InstrumentRecord for _owner_uid, _event, record_cls, _matched in inst_calls)
+
+        assert union_calls, "Union handler should receive instrument updates"
+        assert any(record_cls is InstrumentRecord for _owner_uid, _event, record_cls, _matched in union_calls)
+
+        instrument_calls_count = len(inst_calls)
+        union_calls_before_transaction = len(union_calls)
+
+        # Act: update non-instrument dependency -> only union handler should match due to record generics
+        tx_dep_record = tx_dep.record
+        with portfolio_root.session_manager(actor="tester", reason="update transaction dependency (generics filter)"):
+            tx_dep.journal.consideration = tx_dep.journal.consideration + Decimal(5)
+        assert tx_dep_record.superseded
+        assert tx_dep.record is tx_dep_record.superseding
+
+        assert len(inst_calls) == instrument_calls_count, "Instrument-only handler should ignore non-instrument dependencies"
+
+        assert len(union_calls) > union_calls_before_transaction
+        union_transaction_calls = union_calls[union_calls_before_transaction:]
+        assert all(event == EntityDependencyEventType.UPDATED for _owner_uid, event, _record_cls, _matched in union_transaction_calls)
+        assert {owner_uid for owner_uid, _event, _record_cls, _matched in union_transaction_calls} == {ledg_dep.uid, ledg_appl.uid}
+        assert all(record_cls is TransactionRecord for _owner_uid, _event, record_cls, _matched in union_transaction_calls)
+
     def test_multiple_records_same_class_with_distinct_attribute_filters(self, portfolio_root: PortfolioRoot):
         # Arrange: seed portfolio
         _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
@@ -520,17 +724,17 @@ class TestPortfolioDependencies:
         calls_currency: list[frozenset[str] | None] = []
         calls_ticker: list[frozenset[str] | None] = []
 
-        def entity_match(self: EntityRecord, record: EntityRecord) -> bool:  # noqa: ARG001
+        def entity_match(owner: LedgerRecord, record: EntityRecord) -> bool:  # noqa: ARG001
             return record.uid == target_uid
 
-        def match_currency(self: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
+        def match_currency(owner: LedgerRecord, record: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
             return attribute == "currency"
 
-        def match_ticker(self: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
+        def match_ticker(owner: LedgerRecord, record: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
             return attribute == "ticker"
 
         def handler_currency(
-            self: EntityRecord,  # noqa: ARG001
+            owner: LedgerRecord,  # noqa: ARG001
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
@@ -540,7 +744,7 @@ class TestPortfolioDependencies:
                 calls_currency.append(matched_attributes)
 
         def handler_ticker(
-            self: EntityRecord,  # noqa: ARG001
+            owner: LedgerRecord,  # noqa: ARG001
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
@@ -549,7 +753,7 @@ class TestPortfolioDependencies:
             if event == EntityDependencyEventType.UPDATED and record.uid == target_uid:
                 calls_ticker.append(matched_attributes)
 
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler_currency,
             on_updated=True,
             on_deleted=False,
@@ -557,7 +761,7 @@ class TestPortfolioDependencies:
             attribute_matchers=match_currency,
         ).register(LedgerRecord)
 
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler_ticker,
             on_updated=True,
             on_deleted=False,
@@ -598,11 +802,11 @@ class TestPortfolioDependencies:
         target_uid = inst_isin_2222.uid
         calls: list[tuple[EntityDependencyEventType, frozenset[str] | None]] = []
 
-        def entity_match(self: EntityRecord, record: EntityRecord) -> bool:  # noqa: ARG001
+        def entity_match(owner: LedgerRecord, record: EntityRecord) -> bool:  # noqa: ARG001
             return record.uid == target_uid
 
         def handler_str(
-            self: EntityRecord,  # noqa: ARG001
+            owner: LedgerRecord,  # noqa: ARG001
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
@@ -611,7 +815,7 @@ class TestPortfolioDependencies:
             if record.uid == target_uid:
                 calls.append((event, matched_attributes))
 
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler_str,
             on_updated=True,
             on_deleted=False,
@@ -644,7 +848,7 @@ class TestPortfolioDependencies:
         calls_seq: list[frozenset[str] | None] = []
 
         def handler_seq(
-            self: EntityRecord,  # noqa: ARG001
+            owner: LedgerRecord,  # noqa: ARG001
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
@@ -653,7 +857,7 @@ class TestPortfolioDependencies:
             if event == EntityDependencyEventType.UPDATED and record.uid == target_uid:
                 calls_seq.append(matched_attributes)
 
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler_seq,
             on_updated=True,
             on_deleted=False,
@@ -693,14 +897,14 @@ class TestPortfolioDependencies:
         target_uid = inst_isin_3333.uid
         calls: list[frozenset[str] | None] = []
 
-        def entity_match(self: EntityRecord, record: EntityRecord) -> bool:  # noqa: ARG001
+        def entity_match(owner: LedgerRecord, record: EntityRecord) -> bool:  # noqa: ARG001
             return record.uid == target_uid
 
-        def match_ticker(self: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
+        def match_ticker(owner: LedgerRecord, record: EntityRecord, attribute: str, value: Any) -> bool:  # noqa: ARG001
             return attribute == "ticker"
 
         def handler(
-            self: EntityRecord,  # noqa: ARG001
+            owner: LedgerRecord,  # noqa: ARG001
             event: EntityDependencyEventType,
             record: EntityRecord,
             *,
@@ -709,7 +913,7 @@ class TestPortfolioDependencies:
             if event == EntityDependencyEventType.UPDATED and record.uid == target_uid:
                 calls.append(matched_attributes)
 
-        EntityDependencyEventHandlerRecord(
+        EntityDependencyEventHandlerModel[LedgerRecord, EntityRecord](
             handler=handler,
             on_updated=True,
             on_deleted=False,

@@ -97,7 +97,7 @@ class TestTypeHints:
         assert result is int
 
     def test_match_type_hint_with_forward_ref_raises_not_implemented(self) -> None:
-        with pytest.warns(UserWarning, match=r"ForwardRef\('Missing'\) type hint matching not implemented"):
+        with pytest.warns(UserWarning, match=r"Cannot match ForwardRef\('Missing'\) type hints, returning as-is"):
             match_type_hint(int, typing.ForwardRef("Missing"))
 
     def test_validate_type_hint_true_when_type_matches(self) -> None:

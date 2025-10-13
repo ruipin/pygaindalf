@@ -2,7 +2,6 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from collections.abc import Sequence
 from typing import override
 
 from pydantic import Field
@@ -11,7 +10,7 @@ from ....portfolio.models.instrument import Instrument, InstrumentSchema
 from ....portfolio.models.ledger import Ledger
 from ....portfolio.models.transaction import Transaction, TransactionSchema
 from ....util.config import BaseConfigModel
-from .base import BaseImporter, BaseImporterConfig
+from .importer import Importer, ImporterConfig
 
 
 # MARK: Configuration
@@ -25,15 +24,15 @@ class TransactionImportSchema(BaseConfigModel, TransactionSchema):
 
 class LedgerImportSchema(BaseConfigModel):
     instrument: InstrumentImportSchema = Field(description="The instrument associated with the ledger")
-    transactions: Sequence[TransactionImportSchema] = Field(default_factory=list, description="The transactions to import into the ledger")
+    transactions: tuple[TransactionImportSchema, ...] = Field(default_factory=tuple, description="The transactions to import into the ledger")
 
 
-class ConfigImporterConfig(BaseImporterConfig):
-    ledgers: Sequence[LedgerImportSchema] = Field(default_factory=list, description="The ledgers to import")
+class ConfigImporterConfig(ImporterConfig):
+    ledgers: tuple[LedgerImportSchema, ...] = Field(default_factory=tuple, description="The ledgers to import")
 
 
 # MARK: Importer
-class ConfigImporter(BaseImporter[ConfigImporterConfig]):
+class ConfigImporter(Importer[ConfigImporterConfig]):
     @override
     def _do_run(self) -> None:
         with self.session(reason="Import data from configuration"):
@@ -42,7 +41,7 @@ class ConfigImporter(BaseImporter[ConfigImporterConfig]):
 
                 transactions = set()
                 for transaction_data in ledger_data.transactions:
-                    transaction = Transaction(**transaction_data.get_schema_field_values())
+                    transaction = Transaction(**transaction_data.get_schema_field_values(by_alias=True))
                     transactions.add(transaction)
 
                 ledger = Ledger(instrument=instrument, transactions=transactions)

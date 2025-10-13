@@ -3,6 +3,7 @@
 
 from typing import TYPE_CHECKING
 
+from ....util.helpers import generics
 from .entity_record_base import EntityRecordBase
 
 
@@ -18,3 +19,6 @@ class EntityRecord[
     unsafe_hash=True,
 ):
     pass
+
+
+generics.register_type(EntityRecord)

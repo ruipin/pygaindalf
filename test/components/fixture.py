@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from app.components import BaseComponent, BaseComponentConfig
+from app.components import Component, ComponentConfig
 from app.portfolio.models.root import PortfolioRoot
 from app.runtime import Runtime
 
@@ -15,7 +15,7 @@ from ..util.config.fixture import ConfigFixture
 
 
 # MARK: Component configuration fixture
-class ComponentConfigFixture[T: BaseComponentConfig]:
+class ComponentConfigFixture[T: ComponentConfig]:
     def __init__(self):
         self.config: T | None = None
 
@@ -35,9 +35,9 @@ def component_config() -> ComponentConfigFixture:
 
 
 # MARK: Component fixture
-class ComponentFixture[T: BaseComponent]:
+class ComponentFixture[T: Component]:
     def __init__(self):
-        self.config: BaseComponentConfig | None = None
+        self.config: ComponentConfig | None = None
         self.component: T | None = None
 
     def create(self, data: dict[str, Any], cls: type[T]) -> T:

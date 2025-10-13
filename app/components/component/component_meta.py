@@ -14,11 +14,11 @@ from app.util.mixins import LoggableHierarchicalNamedMixin
 
 from ...util.callguard import CALLGUARD_ENABLED
 from ...util.helpers import generics
-from .component_config import BaseComponentConfig
+from .component_config import ComponentConfig
 
 
 # MARK: Component subclassing mechanism
-class ComponentMeta[C: BaseComponentConfig](LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
+class ComponentMeta[C: ComponentConfig](LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
     config: C
     config_class: type[C]
 

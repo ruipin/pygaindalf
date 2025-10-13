@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import logging
+
 from collections.abc import Iterable, Mapping, MutableSet, Sequence
 from collections.abc import Set as AbstractSet
 from functools import cached_property
@@ -11,6 +13,7 @@ from frozendict import frozendict
 from pydantic import ConfigDict, Field, InstanceOf, PrivateAttr, field_validator
 
 from ...util.callguard import CallguardClassOptions
+from ...util.helpers import generics
 from ...util.models import LoggableHierarchicalModel
 from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet
 from ..collections.ordered_view import OrderedViewSet
@@ -27,7 +30,10 @@ if TYPE_CHECKING:
     from .session import Session
 
 
-class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
+class Journal(
+    LoggableHierarchicalModel,
+    EntityImpl[InstanceOf[MutableSet["Annotation"]], MutableSet[Uid]],
+):
     __callguard_class_options__ = CallguardClassOptions["Journal"](
         decorator=superseded_check,
         decorate_public_methods=True,
@@ -35,6 +41,7 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
             "superseded",
             "_marked_superseded",
             "dirty",
+            "has_diff",
             "deleted",
             "marked_for_deletion",
             "uid",
@@ -97,8 +104,14 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
         return self.record.entity_or_none
 
     @property
+    @override
     def entity(self) -> Entity:
         return self.record.entity
+
+    @property
+    @override
+    def is_journal(self) -> bool:
+        return True
 
     @override
     def __str__(self) -> str:
@@ -138,6 +151,10 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
     def dirty(self) -> bool:
         if self._dirty_children:
             return True
+        return self.has_diff
+
+    @property
+    def has_diff(self) -> bool:
         if self._marked_for_deletion:
             return True
         for value in self._updates.values():
@@ -335,6 +352,10 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
         # Otherwise set attribute on the journal
         return self.set_field(name, value)
 
+    def update(self, **kwargs: Any) -> None:
+        for k, v in kwargs.items():
+            self.set_field(k, v)
+
     def on_journalled_collection_edit(self, collection: JournalledCollection) -> None:
         if self._frozen:
             msg = f"Cannot modify field '{collection.instance_name}' of frozen journal {self}."
@@ -436,7 +457,7 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
 
         self._notified_dependents = True
 
-        if not self.dirty:
+        if not self.has_diff:
             return
 
         deletion = self._marked_for_deletion
@@ -470,7 +491,7 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
         assert not self._committed, f"Journal {self} has already been committed."
         self.freeze()
 
-        if not self.dirty:
+        if not self.has_diff:
             self.mark_superseded()
             return self.record
 
@@ -503,7 +524,9 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
         if not updates:
             return self.record
 
-        self.log.debug("Updates to apply: %s", updates)
+        if self.log.isEnabledFor(logging.DEBUG):
+            updates_gen = ", ".join(f"'{k}': {v!s}" for k, v in updates.items())
+            self.log.debug(t"Updates to apply: {{{updates_gen}}}")
 
         # Update the entity
         new_record = self._new_entity = self.record.update(**updates)
@@ -533,15 +556,6 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
     def _reset_children_uids_cache(self) -> None:
         self.__dict__.pop("children_uids", None)
 
-    # MARK: Annotations
-    @property
-    def annotations(self) -> UidProxyMutableSet[Annotation]:
-        from ..collections import UidProxyMutableSet
-        from ..models.annotation import Annotation
-
-        klass = UidProxyMutableSet[Annotation]
-        return klass(instance=self, field="annotation_uids", source=klass)
-
     # MARK: Dependencies
     @property
     def extra_dependencies(self) -> UidProxyMutableSet[Entity]:
@@ -561,3 +575,6 @@ class Journal(LoggableHierarchicalModel, EntityImpl[MutableSet[Uid]]):
         if uid not in self.extra_dependency_uids:
             return
         self.extra_dependency_uids.discard(uid)
+
+
+generics.register_type(Journal)

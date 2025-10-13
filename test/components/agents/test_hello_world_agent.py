@@ -14,7 +14,7 @@ def test_hello_world_agent_logs_configured_message(runtime: RuntimeFixture, capl
 
     runtime_instance = runtime.create(
         {
-            "components": [
+            "agents": [
                 {
                     "package": "hello_world",
                     "title": "hello-world",
@@ -43,7 +43,7 @@ def test_multiple_hello_world_agents_log_their_messages(runtime: RuntimeFixture,
 
     runtime_instance = runtime.create(
         {
-            "components": [
+            "agents": [
                 {
                     "package": "hello_world",
                     "title": "first-agent",
@@ -76,7 +76,7 @@ def test_sub_orchestrator_runs_hello_world_agent(runtime: RuntimeFixture, caplog
 
     runtime_instance = runtime.create(
         {
-            "components": [
+            "agents": [
                 {
                     "package": "orchestrators.config",
                     "title": "sub-orchestrator",

@@ -2,9 +2,12 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
+from pydantic import Field
+
+from ..context import ContextConfig
 from ..util.config.models.default import BaseDefaultConfig
 
 
 # MARK: Main Config
 class DefaultConfig(BaseDefaultConfig):
-    pass
+    context: ContextConfig = Field(default=ContextConfig(), description="Default context configuration")

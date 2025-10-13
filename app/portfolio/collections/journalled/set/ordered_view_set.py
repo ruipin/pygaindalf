@@ -11,12 +11,13 @@ if TYPE_CHECKING:
 
     from ...ordered_view.protocols import SortKeyProtocol
 
+from .....util.mixins import LoggableMixin
 from ...ordered_view import OrderedViewMutableSet, OrderedViewSet
 from .generic_set import GenericJournalledSet, JournalledSetEditType
 
 
 class JournalledOrderedViewSet[T: Any, T_Mutable: OrderedViewMutableSet, T_Immutable: OrderedViewSet](
-    GenericJournalledSet[T, T_Immutable, T_Mutable, T_Immutable]
+    LoggableMixin, GenericJournalledSet[T, T_Immutable, T_Mutable, T_Immutable]
 ):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -57,6 +58,8 @@ class JournalledOrderedViewSet[T: Any, T_Mutable: OrderedViewMutableSet, T_Immut
 
         if original_sort_key != new_sort_key:
             from ....journal import Journal
+
+            self.log.debug(t"Item updated with different sort key: {old_item} -> {new_item}")
 
             # If the new item is actually a journal, we log the entity as modified instead
             if isinstance(new_item, Journal):

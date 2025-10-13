@@ -3,7 +3,7 @@
 
 from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 
 if TYPE_CHECKING:
@@ -40,3 +40,6 @@ class PortfolioProtocol(Protocol):
     def __contains__(self, value: object) -> bool: ...
     def __iter__(self) -> Iterator[Ledger]: ...
     def __len__(self) -> int: ...
+
+    # MARK: Dumping
+    def model_dump(self, *args, **kwargs) -> dict[str, Any]: ...

@@ -219,19 +219,23 @@ runtime-evaluated-base-classes = [
     "app.util.models.combined.LoggableHierarchicalNamedModel"    , "app.util.models.LoggableHierarchicalNamedModel"    ,
 
     # Portfolio
-    "app.portfolio.models.entity.entity_schema.EntitySchemaBase"     , "app.portfolio.models.entity.EntitySchemaBase", "app.portfolio.models.EntitySchemaBase",
-    "app.portfolio.models.entity.entity_schema.EntitySchema"         , "app.portfolio.models.entity.EntitySchema"    , "app.portfolio.models.EntitySchema"    ,
-    "app.portfolio.models.entity.entity_record_base.EntityRecordBase", "app.portfolio.models.entity.EntityRecordBase", "app.portfolio.models.EntityRecordBase",
-    "app.portfolio.models.entity.entity_record.EntityRecord"         , "app.portfolio.models.entity.EntityRecord"    , "app.portfolio.models.EntityRecord"    ,
-    "app.portfolio.models.entity.entity_base.EntityBase"             , "app.portfolio.models.entity.EntityBase"      , "app.portfolio.models.EntityBase"      ,
-    "app.portfolio.models.entity.entity.Entity"                      , "app.portfolio.models.entity.Entity"          , "app.portfolio.models.Entity"          ,
+    "app.portfolio.models.entity.entity_schema.EntitySchemaBase"        , "app.portfolio.models.entity.EntitySchemaBase"     , "app.portfolio.models.EntitySchemaBase" ,
+    "app.portfolio.models.entity.entity_schema.EntitySchema"            , "app.portfolio.models.entity.EntitySchema"         , "app.portfolio.models.EntitySchema"     ,
+    "app.portfolio.models.entity.entity_record_base.EntityRecordBase"   , "app.portfolio.models.entity.EntityRecordBase"     , "app.portfolio.models.EntityRecordBase" ,
+    "app.portfolio.models.entity.entity_record.EntityRecord"            , "app.portfolio.models.entity.EntityRecord"         , "app.portfolio.models.EntityRecord"     ,
+    "app.portfolio.models.entity.entity_base.EntityBase"                , "app.portfolio.models.entity.EntityBase"           , "app.portfolio.models.EntityBase"       ,
+    "app.portfolio.models.entity.entity.Entity"                         , "app.portfolio.models.entity.Entity"               , "app.portfolio.models.Entity"           ,
+    "app.portfolio.models.annotation.annotation_schema.AnnotationSchema", "app.portfolio.models.annotation.AnnotationSchema" , "app.portfolio.models.AnnotationSchema" ,
 
     # Component configuration pydantic models
-    "app.components.component.BaseComponentConfig"                    , "app.components.BaseComponentConfig"                         ,
-    "app.components.agents.base.BaseAgentConfig"                      , "app.components.agents.BaseAgentConfig"                      ,
-    "app.components.agents.orchestrators.base.BaseOrchestratorConfig" , "app.components.agents.orchestrators.BaseOrchestratorConfig" ,
-    "app.components.providers.provider.BaseProviderConfig"            , "app.components.providers.BaseProviderConfig"                ,
-    "app.components.providers.forex.forex.BaseForexProviderConfig"    , "app.components.providers.forex.BaseForexProviderConfig"     ,
+    "app.components.component.ComponentConfig"                           , "app.components.ComponentConfig"                         ,
+    "app.components.agents.agent.AgentConfig"                            , "app.components.agents.AgentConfig"                      ,
+    "app.components.agents.orchestrators.orchestrator.OrchestratorConfig", "app.components.agents.orchestrators.OrchestratorConfig" ,
+    "app.components.agents.importers.importer.ImporterConfig"            , "app.components.agents.importers.ImporterConfig"         ,
+    "app.components.agents.exporters.exporter.ExporterConfig"            , "app.components.agents.exporters.ExporterConfig"         ,
+    "app.components.providers.provider.ProviderConfig"                   , "app.components.providers.ProviderConfig"                ,
+    "app.components.providers.forex.forex.ForexProviderConfig"           , "app.components.providers.forex.ForexProviderConfig"     ,
+    "app.components.agents.transformers.transformer.TransformerConfig"   , "app.components.agents.transformers.TransformerConfig"   ,
 ]
 
 # Decorators that require their argument/return type hints to be available at runtime

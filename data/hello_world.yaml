@@ -4,22 +4,17 @@ logging:
     tty: INFO
 
 default:
-  decimal:
-    precision: 9
-    rounding: HALF_DOWN
+  context:
+    decimal:
+      precision: 9
+      rounding: HALF_DOWN
 
 providers:
   oanda:
     package: forex.oanda
-    decimal:
-      precision: 20
-      traps:
-        INEXACT: False
-        ROUNDED: False
 
-components:
-- package: agents.hello_world
-  #message: "Foo"
-- package: agents.hello_world
+agents:
+- package: hello_world
+- package: hello_world
   title: "foo"
   message: "Foo"

@@ -4,14 +4,14 @@
 
 from typing import TYPE_CHECKING, override
 
-from .base_context import BaseContext
+from .base_context import Context
 
 
 if TYPE_CHECKING:
     from ...portfolio.models.portfolio import Portfolio
 
 
-class DirectContext(BaseContext):
+class SubContext(Context):
     @property
     @override
     def portfolio(self) -> Portfolio:

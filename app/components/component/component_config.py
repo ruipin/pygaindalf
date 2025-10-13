@@ -9,9 +9,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import Field, ModelWrapValidatorHandler, model_validator
 
 from ...util.config import BaseConfigModel
-from ...util.config.inherit import FieldInherit
 from ...util.helpers import classproperty
-from ...util.helpers.decimal import DecimalConfig
 
 
 if TYPE_CHECKING:
@@ -19,10 +17,8 @@ if TYPE_CHECKING:
 
 
 # MARK: Base Component Configuration
-class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
+class ComponentConfig(BaseConfigModel, metaclass=ABCMeta):
     package: str = Field(description="Package name of the component to load")
-
-    decimal: DecimalConfig = FieldInherit(default_factory=DecimalConfig, description="Decimal configuration for provider")
 
     @model_validator(mode="before")
     @classmethod
@@ -43,7 +39,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
 
     @model_validator(mode="wrap")
     @classmethod
-    def _coerce_to_concrete_class[Child: BaseComponentConfig](cls: type[Child], data: Any, handler: ModelWrapValidatorHandler) -> Child:
+    def _coerce_to_concrete_class[Child: ComponentConfig](cls: type[Child], data: Any, handler: ModelWrapValidatorHandler) -> Child:
         # Already instantiated
         if isinstance(data, cls):
             return data
@@ -95,7 +91,7 @@ class BaseComponentConfig(BaseConfigModel, metaclass=ABCMeta):
         if config_cls is None:
             msg = f"Configuration class for {package} does not define 'config_class'."
             raise ImportError(msg)
-        if not issubclass(config_cls, BaseComponentConfig):
+        if not issubclass(config_cls, ComponentConfig):
             msg = f"Expected configuration class {cls.__name__}, got {config_cls.__name__} instead."
             raise TypeError(msg)
 

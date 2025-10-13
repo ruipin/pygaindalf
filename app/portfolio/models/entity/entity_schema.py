@@ -3,17 +3,45 @@
 
 
 from abc import ABCMeta
+from collections.abc import Mapping, MutableSet
 from collections.abc import Set as AbstractSet
-from typing import TYPE_CHECKING, dataclass_transform
+from typing import TYPE_CHECKING
 
-from pydantic import Field, PositiveInt
+from pydantic import BaseModel, Field, InstanceOf, PositiveInt
 
 from ...util.uid import Uid
 from .entity_schema_base import EntitySchemaBase
 
 
+if TYPE_CHECKING:
+    from ..annotation import Annotation
+
+
+ENTITY_SCHEMA_SUBCLASSES: MutableSet[type[EntitySchema]] = set()
+
+
 # MARK: Fields
-class EntitySchema[T_Uid_Set: AbstractSet[Uid]](EntitySchemaBase, metaclass=ABCMeta):
+class EntitySchema[
+    T_Annotation_Set: InstanceOf[AbstractSet[Annotation]],
+    T_Uid_Set: AbstractSet[Uid],
+](
+    EntitySchemaBase,
+    metaclass=ABCMeta,
+):
+    # MARK: Metaclass
+    def __init_subclass__(cls, *args, **kwargs) -> None:
+        super().__init_subclass__(*args, **kwargs)
+        ENTITY_SCHEMA_SUBCLASSES.add(cls)
+
+    @staticmethod
+    def resolve_forward_references(namespace: Mapping[str, type] | None = None) -> None:
+        if namespace is not None:
+            globals().update(namespace)
+
+        for subclass in ENTITY_SCHEMA_SUBCLASSES:
+            if issubclass(subclass, BaseModel):
+                subclass.model_rebuild(_types_namespace=namespace)
+
     # TODO: These should all be marked Final, but pydantic is broken here, see https://github.com/pydantic/pydantic/issues/10474#issuecomment-2478666651
 
     # MARK: Basic Attributes
@@ -38,12 +66,12 @@ class EntitySchema[T_Uid_Set: AbstractSet[Uid]](EntitySchemaBase, metaclass=ABCM
     # MARK: Uid Sets
     # TODO: Fix annotations and dependencies
     if TYPE_CHECKING:
-        annotation_uids: T_Uid_Set = Field(default=...)
+        annotations: T_Annotation_Set = Field(default=...)
         extra_dependency_uids: T_Uid_Set = Field(default=...)
     else:
-        annotation_uids: frozenset[Uid] = Field(
+        annotations: InstanceOf[frozenset[Annotation]] = Field(
             default_factory=frozenset,
-            description="The UIDs of annotations associated with this entity.",
+            description="The annotations associated with this entity.",
         )
 
         extra_dependency_uids: frozenset[Uid] = Field(

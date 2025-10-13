@@ -57,11 +57,20 @@ class JournalledMapping[K, V](JournalledCollection[V, Mapping[K, V], dict[K, V],
 
     @override
     def __setitem__(self, key: K, value: V) -> None:
+        try:
+            if self._get_container()[key] == value:
+                return
+        except KeyError:
+            pass
+
         self._get_mut_container()[key] = value
         self._append_journal(JournalledMappingEditType.SETITEM, key, value)
 
     @override
     def __delitem__(self, key: K) -> None:
+        if key not in self._get_container():
+            return
+
         del self._get_mut_container()[key]
         self._append_journal(JournalledMappingEditType.DELITEM, key, None)
 

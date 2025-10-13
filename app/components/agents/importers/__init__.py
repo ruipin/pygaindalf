@@ -3,10 +3,10 @@
 
 
 # Base orchestrator
-from .base import BaseImporter, BaseImporterConfig
+from .importer import Importer, ImporterConfig
 
 
 __all__ = [
-    "BaseImporter",
-    "BaseImporterConfig",
+    "Importer",
+    "ImporterConfig",
 ]

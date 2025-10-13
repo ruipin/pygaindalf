@@ -3,13 +3,13 @@
 
 
 # Base orchestrator
-from .base import BaseAgent, BaseAgentConfig
-from .orchestrators import BaseOrchestrator, BaseOrchestratorConfig
+from .agent import Agent, AgentConfig
+from .orchestrators import Orchestrator, OrchestratorConfig
 
 
 __all__ = [
-    "BaseAgent",
-    "BaseAgentConfig",
-    "BaseOrchestrator",
-    "BaseOrchestratorConfig",
+    "Agent",
+    "AgentConfig",
+    "Orchestrator",
+    "OrchestratorConfig",
 ]

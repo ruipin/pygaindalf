@@ -7,6 +7,7 @@ from typing import Any, dataclass_transform
 
 from frozendict import frozendict
 from pydantic import Field
+from pydantic.fields import FieldInfo
 
 from ....util.helpers import type_hints
 
@@ -27,10 +28,15 @@ class EntitySchemaBase:
 
         return type_hints.get_type_hints(mro)
 
-    def iter_schema_field_values(self) -> Generator[tuple[str, Any]]:
+    def iter_schema_field_values(self, *, by_alias: bool = False) -> Generator[tuple[str, Any]]:
         annotations = self.get_schema_field_annotations()
         for key in annotations:
-            yield key, getattr(self, key)
+            val = getattr(self, key, None)
+            if by_alias:
+                fld = getattr(type(self), key, None)
+                if isinstance(fld, FieldInfo) and fld.alias is not None:
+                    key = fld.alias
+            yield key, val
 
-    def get_schema_field_values(self) -> Mapping[str, Any]:
-        return frozendict(self.iter_schema_field_values())
+    def get_schema_field_values(self, *, by_alias: bool = False) -> Mapping[str, Any]:
+        return frozendict(self.iter_schema_field_values(by_alias=by_alias))

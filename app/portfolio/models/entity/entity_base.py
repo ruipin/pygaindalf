@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from ...journal.session import Session
     from ...journal.session_manager import SessionManager
     from ..store import EntityStore
+    from .entity import Entity
 
 
 class EntityBase[
@@ -318,6 +319,18 @@ class EntityBase[
         # Done
         return data
 
+    # MARK: Entity
+    @property
+    def entity_or_none(self) -> Entity | None:
+        return self.entity
+
+    @property
+    def entity(self) -> Entity:
+        from .entity import Entity
+
+        assert isinstance(self, Entity), f"Expected self to be an instance of Entity, got {type(self).__name__} instead."
+        return self
+
     # MARK: Uid
     uid: Uid = Field(
         json_schema_extra={"readOnly": True},
@@ -534,11 +547,8 @@ class EntityBase[
 
     @property
     def in_session(self) -> bool:
-        try:
-            manager = self.session_manager
-        except (TypeError, AttributeError, KeyError):
-            return False
-        return manager.in_session
+        manager = self.session_manager_or_none
+        return False if manager is None else manager.in_session
 
     # MARK: Update
     def update(self, **kwargs) -> Self:

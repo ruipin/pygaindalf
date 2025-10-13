@@ -6,16 +6,16 @@ from typing import override
 
 from pydantic import Field
 
-from .base import BaseAgent, BaseAgentConfig
+from .agent import Agent, AgentConfig
 
 
 # MARK: Configuration
-class HelloWorldAgentConfig(BaseAgentConfig):
+class HelloWorldAgentConfig(AgentConfig):
     message: str = Field(default="Hello, World!", description="The message to print")
 
 
 # MARK: Orchestrator
-class HelloWorldAgent(BaseAgent[HelloWorldAgentConfig]):
+class HelloWorldAgent(Agent[HelloWorldAgentConfig]):
     @override
     def _do_run(self) -> None:
         self.log.info(self.config.message)

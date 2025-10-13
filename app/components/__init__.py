@@ -3,20 +3,20 @@
 
 
 # Base provider
-from .agents import BaseAgent, BaseAgentConfig
-from .agents.orchestrators import BaseOrchestrator, BaseOrchestratorConfig
-from .component import BaseComponent, BaseComponentConfig, component_entrypoint
-from .providers import BaseProvider, BaseProviderConfig
+from .agents import Agent, AgentConfig
+from .agents.orchestrators import Orchestrator, OrchestratorConfig
+from .component import Component, ComponentConfig, component_entrypoint
+from .providers import Provider, ProviderConfig
 
 
 __all__ = [
-    "BaseAgent",
-    "BaseAgentConfig",
-    "BaseComponent",
-    "BaseComponentConfig",
-    "BaseOrchestrator",
-    "BaseOrchestratorConfig",
-    "BaseProvider",
-    "BaseProviderConfig",
+    "Agent",
+    "AgentConfig",
+    "Component",
+    "ComponentConfig",
+    "Orchestrator",
+    "OrchestratorConfig",
+    "Provider",
+    "ProviderConfig",
     "component_entrypoint",
 ]

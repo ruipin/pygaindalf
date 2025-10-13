@@ -2,11 +2,11 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from ...component import component_entrypoint
-from .forex import BaseForexProvider, BaseForexProviderConfig
+from .forex import ForexProvider, ForexProviderConfig
 
 
 __all__ = [
-    "BaseForexProvider",
-    "BaseForexProviderConfig",
+    "ForexProvider",
+    "ForexProviderConfig",
     "component_entrypoint",
 ]

@@ -2,6 +2,15 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
+from .dependency_event_handler import (
+    EntityDependencyEventAttributeMatcher,
+    EntityDependencyEventEntityMatcher,
+    EntityDependencyEventHandler,
+    EntityDependencyEventHandlerBase,
+    EntityDependencyEventType,
+)
+from .dependency_event_handler.impl import EntityDependencyEventHandlerImpl
+from .dependency_event_handler.model import EntityDependencyEventHandlerModel
 from .entity import Entity
 from .entity_base import EntityBase
 from .entity_impl import EntityImpl
@@ -17,6 +26,13 @@ from .instance_store import InstanceStoreMixin, NamedInstanceStoreMixin
 __all__ = [
     "Entity",
     "EntityBase",
+    "EntityDependencyEventAttributeMatcher",
+    "EntityDependencyEventEntityMatcher",
+    "EntityDependencyEventHandler",
+    "EntityDependencyEventHandlerBase",
+    "EntityDependencyEventHandlerImpl",
+    "EntityDependencyEventHandlerModel",
+    "EntityDependencyEventType",
     "EntityImpl",
     "EntityLog",
     "EntityLogEntry",

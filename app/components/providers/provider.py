@@ -5,11 +5,11 @@ from abc import ABCMeta
 from typing import override
 
 from ...util.helpers import classproperty
-from ..component import BaseComponent, BaseComponentConfig
+from ..component import Component, ComponentConfig
 
 
 # MARK: Provider Base Configuration
-class BaseProviderConfig(BaseComponentConfig, metaclass=ABCMeta):
+class ProviderConfig(ComponentConfig, metaclass=ABCMeta):
     @classproperty
     @override
     def package_root(cls) -> str:
@@ -17,5 +17,8 @@ class BaseProviderConfig(BaseComponentConfig, metaclass=ABCMeta):
 
 
 # MARK: Provider Base class
-class BaseProvider[C: BaseProviderConfig](BaseComponent[C], metaclass=ABCMeta):
-    pass
+class Provider[C: ProviderConfig](Component[C], metaclass=ABCMeta):
+    @classproperty
+    def default_key(cls) -> str:
+        msg = "Subclasses must implement the 'default_key' class property."
+        raise NotImplementedError(msg)

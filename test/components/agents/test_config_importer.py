@@ -12,16 +12,13 @@ from ..fixture import RuntimeFixture
 @pytest.mark.components
 @pytest.mark.agents
 @pytest.mark.runtime
-@pytest.mark.portfolio
-@pytest.mark.transaction
-@pytest.mark.ledger
 @pytest.mark.importers
 class TestConfigImporter:
     @staticmethod
     def _run_import_and_validate(runtime: RuntimeFixture, ledgers_data: list[dict[str, Any]]) -> None:
         runtime_instance = runtime.create(
             {
-                "components": [
+                "agents": [
                     {
                         "package": "importers.config",
                         "title": "import-ledgers",
@@ -62,11 +59,13 @@ class TestConfigImporter:
                 transactions_data.remove(transaction_data)
 
                 for field, expected_value in transaction_data.items():
+                    if field == "currency":
+                        field = "txn_currency"
                     actual_value = getattr(transaction, field)
 
                     if field in {"quantity", "consideration", "fees"}:
                         expected_value = Decimal(str(expected_value))
-                    elif field == "currency":
+                    elif field == "txn_currency":
                         actual_value = actual_value.code if actual_value is not None else None
                     elif field == "type":
                         actual_value = actual_value.value
@@ -74,6 +73,8 @@ class TestConfigImporter:
                         actual_value = actual_value.isoformat()
 
                     assert actual_value == expected_value
+
+                assert transaction.currency == transaction.txn_currency if transaction.txn_currency is not None else ledger.instrument.currency
 
     def test_config_importer_single_instrument(self, runtime: RuntimeFixture) -> None:
         ledgers_data = [

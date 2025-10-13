@@ -6,6 +6,7 @@ import sys
 
 from abc import ABCMeta
 from collections.abc import Callable, Iterable, MutableMapping, MutableSet
+from collections.abc import Set as AbstractSet
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 from typing import cast as typing_cast
@@ -19,7 +20,8 @@ from ....util.mixins import HierarchicalMixinMinimal, HierarchicalProtocol, Name
 from ....util.models import LoggableHierarchicalRootModel
 from ...util.superseded import superseded_check
 from ...util.uid import Uid, UidProtocol
-from .dependency_event_handler import EntityDependencyEventHandlerRecord, EntityDependencyEventType
+from .dependency_event_handler.base import EntityDependencyEventHandlerBase
+from .dependency_event_handler.type_enum import EntityDependencyEventType
 from .entity_dependents import EntityDependents
 from .entity_impl import EntityImpl
 from .entity_log import EntityLog, EntityModificationType
@@ -33,7 +35,7 @@ if TYPE_CHECKING:
     from ...journal.journal import Journal
     from ...journal.session import Session
     from ...journal.session_manager import SessionManager
-    from ..annotation import Annotation, AnnotationRecord
+    from ..annotation import AnnotationRecord
     from ..store.entity_store import EntityStore
     from .entity import Entity
 
@@ -91,18 +93,6 @@ class EntityRecordBase[
         super().__init_subclass__()
 
         ENTITY_RECORD_SUBCLASSES.add(cls)
-
-        # Collect field aliases into a single collection
-        aliases: dict[str, str] = {}
-        reverse: dict[str, str] = {}
-
-        for name, info in cls.model_fields.items():
-            if info.alias:
-                aliases[info.alias] = name
-                reverse[name] = info.alias
-
-        cls.model_field_aliases = frozendict(aliases)
-        cls.model_field_reverse_aliases = frozendict(reverse)
 
         # Initialise dependencies
         cls.__init_dependencies__()
@@ -404,6 +394,7 @@ class EntityRecordBase[
         return Entity.by_uid_or_none(self.uid)
 
     @property
+    @override
     def entity(self) -> Entity:
         if (entity := self.entity_or_none) is None:
             msg = f"Entity record with UID {self.uid} is not associated with any Entity instance."
@@ -573,6 +564,11 @@ class EntityRecordBase[
     # MARK: Journal
     get_journal_class = generics.GenericIntrospectionMethod[T_Journal]()
 
+    @property
+    @override
+    def is_journal(self) -> bool:
+        return False
+
     def get_journal(self, *, create: bool = True, fail: bool = True) -> Journal | None:
         session = self.session if fail else self.session_or_none
 
@@ -606,16 +602,44 @@ class EntityRecordBase[
         return hasattr(EntityRecordBase, name) or name in EntityRecordBase.model_fields or name in EntityRecordBase.model_computed_fields
 
     @classmethod
+    def get_model_field_aliases(cls) -> frozendict[str, str]:
+        aliases = getattr(cls, "model_field_aliases", None)
+        if aliases is None:
+            aliases = {}
+
+            for name, info in cls.model_fields.items():
+                if info.alias:
+                    aliases[info.alias] = name
+
+            aliases = frozendict(aliases)
+            setattr(cls, "model_field_aliases", aliases)
+        return aliases
+
+    @classmethod
     def is_model_field_alias(cls, alias: str) -> bool:
-        return cls.model_field_aliases.get(alias, None) is not None
+        return cls.get_model_field_aliases().get(alias, None) is not None
 
     @classmethod
     def resolve_field_alias(cls, alias: str) -> str:
-        return cls.model_field_aliases.get(alias, alias)
+        return cls.get_model_field_aliases().get(alias, alias)
+
+    @classmethod
+    def get_model_field_reverse_aliases(cls) -> frozendict[str, str]:
+        reverse = getattr(cls, "model_field_reverse_aliases", None)
+        if reverse is None:
+            reverse = {}
+
+            for name, info in cls.model_fields.items():
+                if info.alias:
+                    reverse[name] = info.alias
+
+            reverse = frozendict(reverse)
+            setattr(cls, "model_field_reverse_aliases", reverse)
+        return reverse
 
     @classmethod
     def reverse_field_alias(cls, name: str) -> str:
-        return cls.model_field_reverse_aliases.get(name, name)
+        return cls.get_model_field_reverse_aliases().get(name, name)
 
     @classmethod
     def is_model_field(cls, field: str) -> bool:
@@ -632,17 +656,23 @@ class EntityRecordBase[
         j = self.get_journal(create=False)
         return j.dirty if j is not None else False
 
+    @property
+    def has_diff(self) -> bool:
+        if not self.in_session:
+            return False
+        j = self.get_journal(create=False)
+        return j.has_diff if j is not None else False
+
     def is_journal_field_edited(self, field: str) -> bool:
         journal = self.get_journal(create=False)
         return journal.is_field_edited(field) if journal is not None else False
 
-    def get_journal_field(self, field: str, *, create: bool = True, wrap: bool = True) -> Any:
+    def get_journal_field(self, field: str, *, create: bool = False) -> Any:
         journal = self.get_journal(create=create)
-        if journal is None or (not wrap and not journal.is_field_edited(field)):
+        if journal is None or not journal.is_field_edited(field):
             return getattr(self, field)
         else:
-            assert wrap, f"Requested unwrapped journal field for '{field}', but journal is dirty."
-            return journal.get_field(field, wrap=True)
+            return getattr(journal, field)
 
     _PROTECTED_FIELD_TYPES: ClassVar[tuple[type, ...]]
 
@@ -770,34 +800,25 @@ class EntityRecordBase[
         return self.entity.is_reachable(recursive=recursive, use_journal=use_journal)
 
     # MARK: Annotations
-    @property
-    def annotations(self) -> UidProxySet[Annotation]:
-        from ...collections import UidProxySet
-        from ..annotation.annotation import Annotation
-
-        klass = UidProxySet[Annotation]
-        return klass(instance=self, field="annotation_uids", source=klass)
-
-    @property
-    def annotation_records(self) -> UidProxySet[AnnotationRecord]:
-        from ...collections import UidProxySet
-        from ..annotation.annotation_record import AnnotationRecord
-
-        klass = UidProxySet[AnnotationRecord]
-        return klass(instance=self, field="annotation_uids", source=klass)
-
     def on_annotation_record_created(self, annotation_or_uid: AnnotationRecord | Uid) -> None:
-        if not self.is_update_allowed(in_commit_only=False, force_session=True):
+        if not self.is_update_allowed(in_commit_only=False):
             msg = f"Not allowed to modify annotations of {type(self).__name__} instances outside of a session."
             raise RuntimeError(msg)
 
-        from ..annotation import AnnotationRecord
+        from ..annotation import Annotation
 
-        uid = AnnotationRecord.narrow_to_uid(annotation_or_uid)
-        if uid in self.journal.annotation_uids:
-            return
+        annotation = Annotation.narrow_to_instance(annotation_or_uid)
 
-        self.journal.annotation_uids.add(uid)
+        if not self.in_session:
+            assert script_info.is_unit_test(), f"Unexpected non-session annotation addition to {self} outside of unit test."
+            annotations = set(self.annotations)
+            annotations.add(annotation)
+            self.update(annotations=annotations)
+        else:
+            if annotation in self.journal.annotations:
+                return
+
+            self.journal.annotations.add(annotation)
 
     def on_annotation_record_deleted(self, annotation_or_uid: AnnotationRecord | Uid) -> None:
         self.log.debug(t"Entity record {self} received deletion notice for annotation {annotation_or_uid}.")
@@ -806,13 +827,35 @@ class EntityRecordBase[
             msg = f"Not allowed to modify annotations of {type(self).__name__} instances outside of a session."
             raise RuntimeError(msg)
 
-        from ..annotation import AnnotationRecord
+        from ..annotation import Annotation
 
-        uid = AnnotationRecord.narrow_to_uid(annotation_or_uid)
-        if uid not in self.journal.annotation_uids:
+        annotation = Annotation.narrow_to_instance(annotation_or_uid)
+        if annotation not in self.journal.annotations:
             return
 
-        self.journal.annotation_uids.discard(uid)
+        self.journal.annotations.discard(annotation)
+
+    @field_validator("annotations", mode="before")
+    @classmethod
+    def _validate_annotations_before(cls, annotations: Any) -> frozenset:
+        from ..annotation import Annotation
+
+        if annotations is None:
+            return frozenset()
+
+        if not isinstance(annotations, AbstractSet):
+            msg = f"Expected 'annotations' to be an AbstractSet, got {type(annotations).__name__}."
+            raise TypeError(msg)
+
+        for item in annotations:
+            if not isinstance(item, Annotation):
+                msg = f"Expected items in 'annotations' to be of type Annotation or Uid, got {type(item).__name__}."
+                raise TypeError(msg)
+
+        if not isinstance(annotations, frozenset):
+            annotations = frozenset(annotations)
+
+        return annotations
 
     # MARK: Dependents
     if TYPE_CHECKING:
@@ -840,14 +883,14 @@ class EntityRecordBase[
         return UidProxySet[EntityRecordBase](instance=self, field="extra_dependency_uids")
 
     # MARK: Dependency Events
-    __entity_dependency_event_handler_records__: ClassVar[MutableSet[EntityDependencyEventHandlerRecord]]
+    __entity_dependency_event_handler_records__: ClassVar[MutableSet[EntityDependencyEventHandlerBase]]
 
     @classmethod
     def __init_dependencies__(cls) -> None:
         cls.__entity_dependency_event_handler_records__ = set()
 
     @classmethod
-    def register_dependency_event_handler(cls, record: EntityDependencyEventHandlerRecord) -> None:
+    def register_dependency_event_handler(cls, record: EntityDependencyEventHandlerBase) -> None:
         cls.__entity_dependency_event_handler_records__.add(record)
 
     if script_info.is_unit_test():
@@ -865,7 +908,7 @@ class EntityRecordBase[
                         t.__init_dependencies__()
 
     @classmethod
-    def iter_dependency_event_handlers(cls) -> Iterable[EntityDependencyEventHandlerRecord]:
+    def iter_dependency_event_handlers(cls) -> Iterable[EntityDependencyEventHandlerBase]:
         for subclass in cls.__mro__:
             if not issubclass(subclass, EntityRecordBase):
                 continue

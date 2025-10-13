@@ -3,14 +3,14 @@
 
 from abc import ABCMeta
 
-from .. import BaseAgent, BaseAgentConfig
+from .. import Agent, AgentConfig
 
 
 # MARK: Importer Base Configuration
-class BaseImporterConfig(BaseAgentConfig, metaclass=ABCMeta):
+class ImporterConfig(AgentConfig, metaclass=ABCMeta):
     pass
 
 
 # MARK: Importer Base class
-class BaseImporter[C: BaseImporterConfig](BaseAgent[C], metaclass=ABCMeta):
+class Importer[C: ImporterConfig](Agent[C], metaclass=ABCMeta):
     pass

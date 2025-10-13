@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, override
 import requests
 
 from ....util.helpers import instance_lru_cache
-from . import BaseForexProvider, BaseForexProviderConfig
+from . import ForexProvider, ForexProviderConfig
 
 
 if TYPE_CHECKING:
@@ -20,21 +20,21 @@ if TYPE_CHECKING:
 
 
 # MARK: Configuration
-class OandaForexProviderConfig(BaseForexProviderConfig):
+class OandaForexProviderConfig(ForexProviderConfig):
     pass
 
 
 # MARK: Provider
-class OandaForexProvider(BaseForexProvider[OandaForexProviderConfig]):
+class OandaForexProvider(ForexProvider[OandaForexProviderConfig]):
     @instance_lru_cache(maxsize=128)
     @override
-    def _get_daily_exchange_rate(self, from_currency: Currency, to_currency: Currency, date: datetime.date) -> Decimal:
+    def _get_daily_exchange_rate(self, *, source: Currency, target: Currency, date: datetime.date) -> Decimal:
         """Get the daily exchange rate."""
         url = "https://fxds-public-exchange-rates-api.oanda.com/cc-api/currencies"
         #         ?base=USD&quote=GBP&data_type=general_currency_pair&start_date=2025-08-05&end_date=2025-08-06'
         params: dict[str, Any] = {
-            "base": from_currency.code.upper(),
-            "quote": to_currency.code.upper(),
+            "base": source.code.upper(),
+            "quote": target.code.upper(),
             "data_type": "general_currency_pair",
             "start_date": (date - datetime.timedelta(days=1)).strftime("%Y-%m-%d"),
             "end_date": date.strftime("%Y-%m-%d"),
@@ -44,7 +44,7 @@ class OandaForexProvider(BaseForexProvider[OandaForexProviderConfig]):
 
         if response.status_code != HTTPStatus.OK:
             self.log.error(t"Failed to fetch exchange rate ({response.status_code}): {response.text}")
-            msg = f"Failed to fetch exchange rate for {from_currency} to {to_currency} on {date}"
+            msg = f"Failed to fetch exchange rate for {source} to {target} on {date}"
             raise ValueError(msg)
 
         # We pick the average bid for the given date
@@ -54,13 +54,13 @@ class OandaForexProvider(BaseForexProvider[OandaForexProviderConfig]):
             rate: str = str(json["response"][0]["average_bid"])
         except (KeyError, IndexError) as err:
             self.log.exception(t"Error parsing exchange rate data", exc_info=err)
-            msg = f"Invalid response format for {from_currency} to {to_currency} on {date}: {json}"
+            msg = f"Invalid response format for {source} to {target} on {date}: {json}"
             raise ValueError(msg) from err
 
         # Convert to Decimal
         result = self.decimal(rate)
 
-        self.log.debug(t"Exchange rate for {from_currency} to {to_currency} on {date}: {result}")
+        self.log.debug(t"Exchange rate for {source} to {target} on {date}: {result}")
         return result
 
 

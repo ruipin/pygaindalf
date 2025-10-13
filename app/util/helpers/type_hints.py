@@ -74,8 +74,10 @@ def iterate_type_hints(
             raise TypeError(msg)
 
     if isinstance(hint, typing.ForwardRef):
-        warnings.warn(f"{hint!s} type hint iteration not implemented, returning as-is", category=UserWarning, stacklevel=2)
-        return hint
+        hint = hint.evaluate(format=annotationlib.Format.FORWARDREF)
+        if isinstance(hint, typing.ForwardRef):
+            warnings.warn(f"Cannot iterate {hint!s} type hints, returning as-is", category=UserWarning, stacklevel=2)
+            return hint
 
     if not isinstance(hint, typing.Union):
         if origin:
@@ -104,8 +106,10 @@ def match_type_hint(
     assert isinstance(typ_origin, type), f"typ_origin must be a type, got {type(typ_origin).__name__}"
 
     if isinstance(hint, typing.ForwardRef):
-        warnings.warn(f"{hint!s} type hint matching not implemented, returning as-is", category=UserWarning, stacklevel=2)
-        return hint
+        hint = hint.evaluate(format=annotationlib.Format.FORWARDREF)
+        if isinstance(hint, typing.ForwardRef):
+            warnings.warn(f"Cannot match {hint!s} type hints, returning as-is", category=UserWarning, stacklevel=2)
+            return hint
 
     for arg in iterate_type_hints(hint):
         arg_origin = get_origin(arg, passthrough=True)
@@ -116,6 +120,16 @@ def match_type_hint(
         if issubclass(typ_origin, arg_origin):
             return arg
 
+    return None
+
+
+def match_type_hints(
+    hint_a: TypeHint,
+    hint_b: TypeHint,
+) -> ResolvedType | None:
+    for a in iterate_type_hints(hint_a):
+        if match_type_hint(a, hint_b) is not None:
+            return a
     return None
 
 

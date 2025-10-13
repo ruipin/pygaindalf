@@ -34,6 +34,27 @@ Examples
         >>> generics.get_concrete_parent_argument(Child, Parent, "T")
         list[int]
 
+    If you rely on forward references, note that this library might not be able to resolve them:
+
+        >>> class SomeClass(Parent["AnotherClass"]): ...
+        >>> generics.get_concrete_parent_argument(SomeClass, Parent, "T", bound=False)
+        Traceback (most recent call last):
+          ...
+        GenericsError: Could not resolve ForwardRef('AnotherClass') to a concrete type. Consider using `register_forwardref_type`.
+
+    In order to automatically resolve forward references, you may register types with the library:
+
+        >>> def another_scope():
+        ...     class AnotherClass: ...
+        ...
+        ...     generics.register_type(AnotherClass)
+
+    Now the library can resolve the forward reference:
+
+        >>> another_scope()
+        >>> generics.get_concrete_parent_argument(SomeClass, Parent, "T")
+        <class '...AnotherClass'>
+
 *2. Class descriptors for generic type parameter introspection*
 
     Classes can expose reusable introspection class methods by using
@@ -68,7 +89,7 @@ Examples
         >>> AnimalRepository.animal_type()
         <class 'app.util.helpers.generics.Animal'>
         >>> class IntRepository(AnimalRepository[int]): ...
-        >>> IntRepository.animal_type()  # doctest: +IGNORE_EXCEPTION_DETAIL
+        >>> IntRepository.animal_type()
         Traceback (most recent call last):
           ...
         GenericsError: IntRepository.T type argument <class 'int'> is not a subclass of <class '__main__.Animal'>
@@ -143,7 +164,7 @@ class ParameterInfo(typing.NamedTuple):
     #: The declared ``TypeVar`` for the parameter, if known.
     raw_value: typing.TypeVar | typing.TypeAliasType | None
     #: The originating generic class or alias where the parameter was declared.
-    origin: type | GenericAlias
+    owner: type | GenericAlias
 
     @property
     def known(self) -> bool:
@@ -160,21 +181,31 @@ class ParameterInfo(typing.NamedTuple):
         return str(self.position) if value is None else value.__name__
 
     @property
+    def owner_origin(self) -> type:
+        """Return the typing origin for the originating class or alias."""
+        return get_origin(self.owner, passthrough=True)
+
+    @property
     def value(self) -> ArgType:
         """Return the evaluated value currently bound to the parameter."""
-        if (evaluate_value := getattr(self.raw_value, "evaluate_value", None)) is not None:
-            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
-        else:
+        if (evaluate_value := getattr(self.raw_value, "evaluate_value", None)) is None:
             return self.raw_value
+        else:
+            result = annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF, owner=self.owner_origin)
+            if isinstance(result, typing.ForwardRef):
+                result = evaluate_forwardref(result, owner=self.owner_origin)
+            return result
 
     @property
     def bound(self) -> BoundType:
         """Return the evaluated bound of the underlying ``TypeVar`` or ``TypeAlias`` if present."""
         if (evaluate_bound := getattr(self.value, "evaluate_bound", None)) is None:
             return None
-        arg = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        arg = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF, owner=self.owner_origin)
         if (evaluate_value := getattr(arg, "evaluate_value", None)) is not None:
-            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+            arg = annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF, owner=self.owner_origin)
+        if isinstance(arg, typing.ForwardRef):
+            arg = evaluate_forwardref(arg, owner=self.owner_origin)
         return arg
 
     @classmethod
@@ -195,11 +226,11 @@ class ParameterInfo(typing.NamedTuple):
 
     def get_argument_info(self) -> ArgumentInfo:
         """Return the currently bound argument metadata for this parameter."""
-        return get_argument_info(self.origin, self)
+        return get_argument_info(self.owner, self)
 
     def get_argument(self) -> ArgType:
         """Return the raw argument bound to this parameter for the originating class."""
-        return get_argument(self.origin, self)
+        return get_argument(self.owner, self)
 
     @typing.override
     def __str__(self) -> str:
@@ -232,21 +263,37 @@ class ArgumentInfo(typing.NamedTuple):
         return not isinstance(self.value, typing.TypeVar)
 
     @property
+    def owner(self) -> type | GenericAlias:
+        """Return the originating class or alias where the parameter was declared."""
+        return self.parameter.owner
+
+    @property
+    def owner_origin(self) -> type:
+        """Return the typing origin for the originating class or alias."""
+        return self.parameter.owner_origin
+
+    @property
     def value(self) -> ArgType:
         """Return the evaluated value currently bound to the parameter."""
-        if (evaluate_value := getattr(self.raw_value, "evaluate_value", None)) is not None:
-            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+        if (evaluate_value := getattr(self.raw_value, "evaluate_value", None)) is None:
+            result = self.raw_value
         else:
-            return self.raw_value
+            result = annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF, owner=self.owner_origin)
+
+        if isinstance(result, typing.ForwardRef):
+            result = evaluate_forwardref(result, owner=self.owner_origin)
+        return result
 
     @property
     def bound(self) -> BoundType:
         """Return the evaluated bound for the underlying ``TypeVar`` argument."""
         if (evaluate_bound := getattr(self.value, "evaluate_bound", None)) is None:
             return None
-        arg = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        arg = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF, owner=self.owner_origin)
         if (evaluate_value := getattr(arg, "evaluate_value", None)) is not None:
-            return annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF)
+            arg = annotationlib.call_evaluate_function(evaluate_value, format=annotationlib.Format.FORWARDREF, owner=self.owner_origin)
+        if isinstance(arg, typing.ForwardRef):
+            arg = evaluate_forwardref(arg, owner=self.owner_origin)
         return arg
 
     @property
@@ -262,6 +309,71 @@ class ArgumentInfo(typing.NamedTuple):
     def __str__(self) -> str:
         """Return a human-friendly representation of the argument."""
         return self.name
+
+
+# MARK: ForwardRef helpers
+REGISTERED_TYPES: dict[str, type] = {}
+
+
+def register_type(cls: type, *, name: str | None = None) -> None:
+    """Add a named class to the generics types namespace.
+
+    This namespace is used to resolve ``ForwardRef`` arguments during generic introspection.
+
+    Args:
+        cls: The class to register.
+        name: The name to use for the class in the ``ForwardRef`` namespace.
+              If ``None``, the class's ``__name__`` is used.
+
+    """
+    name = cls.__name__ if name is None else name
+    REGISTERED_TYPES[name] = cls
+
+
+def unregister_type(target: type | str) -> None:
+    """Remove a named class from the generics types namespace.
+
+    This namespace is used to resolve ``ForwardRef`` arguments during generic introspection.
+
+    Args:
+        target: The class or name to unregister.
+
+    """
+    name = target if isinstance(target, str) else target.__name__
+    REGISTERED_TYPES.pop(name, None)
+
+
+def evaluate_forwardref(ref: typing.ForwardRef, *, owner: type | None = None, namespace: dict[str, type] | None = None) -> type | typing.ForwardRef:
+    # Try a direct evaluation with the default namespace
+    result = ref.evaluate(format=annotationlib.Format.FORWARDREF)
+
+    if not isinstance(result, typing.ForwardRef):
+        assert isinstance(result, type), f"Expected evaluated ForwardRef to be a type, got {type(result).__name__}"
+        return result
+
+    # Try an evaluation with the passed owner
+    if owner is not None:
+        result = result.evaluate(format=annotationlib.Format.FORWARDREF, owner=owner)
+        if not isinstance(ref, typing.ForwardRef):
+            assert isinstance(result, type), f"Expected evaluated ForwardRef to be a type, got {type(result).__name__}"
+            return result
+
+    # Try an evaluation with the custom namespace
+    if namespace is not None:
+        result = result.evaluate(format=annotationlib.Format.FORWARDREF, locals=namespace)
+        if not isinstance(ref, typing.ForwardRef):
+            assert isinstance(result, type), f"Expected evaluated ForwardRef to be a type, got {type(result).__name__}"
+            return result
+
+    # Try an evaluation with the generics namespace
+    if REGISTERED_TYPES:
+        result = result.evaluate(format=annotationlib.Format.FORWARDREF, locals=REGISTERED_TYPES)
+        if not isinstance(ref, typing.ForwardRef):
+            assert isinstance(result, type), f"Expected evaluated ForwardRef to be a type, got {type(result).__name__}"
+            return result
+
+    # Give up
+    return result
 
 
 # MARK: Pydantic helpers
@@ -400,7 +512,7 @@ def iter_parameter_infos(cls: type | GenericAlias, *, fail: bool = True) -> typi
         yield ParameterInfo(
             position=pos,
             raw_value=param,
-            origin=cls,
+            owner=cls,
         )
 
 
@@ -447,7 +559,7 @@ def get_parameter_info_or_none(
         return ParameterInfo(
             position=pos,
             raw_value=None,
-            origin=cls,
+            owner=cls,
         )
 
     return None
@@ -477,8 +589,10 @@ def has_parameter(cls: type | GenericAlias, param: str | typing.TypeVar) -> bool
 def _sanity_check_arg_bound(*, param: ParameterInfo, arg: ArgType) -> None:
     """Ensure ``arg`` respects the bound defined on *param*."""
     if isinstance(arg, typing.ForwardRef):
-        warnings.warn(f"Cannot sanity check {arg} arguments against TypeVar bounds", stacklevel=3)
-        return
+        arg = evaluate_forwardref(arg, owner=param.owner_origin)
+        if isinstance(arg, typing.ForwardRef):
+            warnings.warn(f"Cannot sanity check {arg} arguments against TypeVar bounds. Consider using `register_forwardref_type`.", stacklevel=3)
+            return
 
     arg_origin = get_origin(arg, passthrough=True)
     if not isinstance(arg_origin, type):
@@ -490,7 +604,7 @@ def _sanity_check_arg_bound(*, param: ParameterInfo, arg: ArgType) -> None:
 
     matched = type_hints.match_type_hint(arg, bound)
     if matched is None:
-        msg = f"{param.origin.__name__}.{param.name} type argument <{arg.__name__}> is not a subclass of its bound <{bound_to_str(bound)}>"
+        msg = f"{param.owner.__name__}.{param.name} type argument <{arg.__name__}> is not a subclass of its bound <{bound_to_str(bound)}>"
         raise TypeError(msg)
 
 
@@ -805,10 +919,10 @@ def get_parent_argument_or_none(
 
     if not isinstance(bound, bool):
         if isinstance(result, typing.ForwardRef):
-            warnings.warn(f"ForwardRef resolution not implemented, cannot sanity check {result} arguments against TypeVar bounds", stacklevel=2)
+            warnings.warn(f"ForwardRef {result} arguments cannot be checked against TypeVar bounds. Consider using `register_forwardref_type`.", stacklevel=2)
             return result
 
-        matched = type_hints.match_type_hint(result, bound)
+        matched = type_hints.match_type_hints(result, bound)
         if matched is None:
             msg = f"{cls.__name__}.{param} type argument {result} is not a subclass of {bound}"
             raise GenericsError(msg)
@@ -856,8 +970,10 @@ def get_concrete_parent_argument(
         msg = f"Could not resolve {cls.__name__}.{param} type argument to a concrete type, got <{arg}>"
         raise GenericsError(msg)
     if isinstance(arg, typing.ForwardRef):
-        msg = "ForwardRef resolution not yet implemented"
-        raise NotImplementedError(msg)
+        arg = evaluate_forwardref(arg)
+        if isinstance(arg, typing.ForwardRef):
+            msg = f"Could not resolve {arg!s} to a concrete type, consider using `register_forwardref_type`."
+            raise GenericsError(msg)
 
     if kwargs.get("origin", False):
         return get_origin(arg, passthrough=True)
@@ -904,10 +1020,12 @@ class GenericIntrospectionMethod[R: object](classmethod[typing.Any, ..., type[R]
         """Return the concrete bound declared on the stored ``TypeVar`` if any."""
         if (evaluate_bound := getattr(self._param, "evaluate_bound", None)) is None:
             return None
-        bound = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF)
+        bound = annotationlib.call_evaluate_function(evaluate_bound, format=annotationlib.Format.FORWARDREF, owner=self._parent)
+        if isinstance(bound, typing.ForwardRef):
+            bound = evaluate_forwardref(bound, owner=self._parent)
         if isinstance(bound, typing.ForwardRef):
             warnings.warn(
-                f"{self.__name__}: ForwardRef resolution not yet implemented, {self._parent.__name__ if self._parent is not None else '<unknown>'}.{self._param} bounds {bound} will not be enforced",
+                f"{self.__name__}: ForwardRef {self._parent.__name__ if self._parent is not None else '<unknown>'}.{self._param} bounds {bound} will not be enforced. Consider using `register_forwardref_type`.",
                 stacklevel=2,
             )
             return None
@@ -922,11 +1040,11 @@ class GenericIntrospectionMethod[R: object](classmethod[typing.Any, ..., type[R]
         self._kwargs = kwargs
         super().__init__(self.introspect)
 
-    def __set_name__(self, owner: type, name: str) -> None:
-        """Attach the descriptor to *owner* and record metadata for introspection."""
-        self._parent = owner
+    def __set_name__(self, origin: type, name: str) -> None:
+        """Attach the descriptor to *origin* and record metadata for introspection."""
+        self._parent = origin
         self.__name__ = name
-        self.__qualname__ = f"{owner.__qualname__}.{name}"
+        self.__qualname__ = f"{origin.__qualname__}.{name}"
 
     def _update_kwargs(self, kwargs: GetConcreteParentArgumentKwargs) -> GetConcreteParentArgumentKwargs:
         """Merge instance defaults and enforce ``TypeVar`` bounds on *kwargs*."""

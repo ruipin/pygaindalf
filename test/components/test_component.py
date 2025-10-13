@@ -6,24 +6,24 @@ from typing import override
 
 import pytest
 
-from app.components.component import (
-    BaseComponent,
-    BaseComponentConfig,
-    component_entrypoint,
-)
+from app.components.agents.agent import Agent, AgentConfig
+from app.components.component import component_entrypoint
+from app.context import SubContext
+
+from .fixture import RuntimeFixture
 
 
 # Dummy component and config for testing entrypoint behavior
-class DummyComponentConfig(BaseComponentConfig):
+class DummyAgentConfig(AgentConfig):
     @classmethod
     @override
-    def get_component_class_for_package(cls, package) -> type[BaseComponent]:
-        return DummyComponent
+    def get_component_class_for_package(cls, package) -> type[Agent]:
+        return DummyAgent
 
 
-class DummyComponent(BaseComponent[DummyComponentConfig]):
-    def __init__(self, config: DummyComponentConfig):
-        super().__init__(config)
+class DummyAgent(Agent[DummyAgentConfig]):
+    def __init__(self, config: DummyAgentConfig, *, instance_parent=None, instance_name: str | None = None):
+        super().__init__(config, instance_parent=instance_parent, instance_name=instance_name)
         self.events: list[str] = []
 
     @override
@@ -59,40 +59,52 @@ class DummyComponent(BaseComponent[DummyComponentConfig]):
 
 
 @pytest.fixture
-def dummy_component() -> DummyComponent:
-    # Configure precision and relax traps to avoid Inexact exceptions
-    cfg = DummyComponentConfig.model_validate(
+def dummy_agent(runtime: RuntimeFixture) -> DummyAgent:
+    runtime_instance = runtime.create({})
+
+    cfg = DummyAgentConfig.model_validate(
         {
             "package": "dummy",
-            "decimal": {
-                "precision": 4,
-                "rounding": "HALF_UP",
-                "traps": {
-                    "INEXACT": False,
-                    "ROUNDED": False,
+            "context": {
+                "decimal": {
+                    "precision": 4,
+                    "rounding": "HALF_UP",
+                    "traps": {
+                        "INEXACT": False,
+                        "ROUNDED": False,
+                    },
                 },
             },
         },
-        context={"concrete_class": DummyComponentConfig},
+        context={"concrete_class": DummyAgentConfig},
     )
-    return DummyComponent(cfg)
+
+    return DummyAgent(cfg, instance_parent=runtime_instance, instance_name="dummy-agent")
 
 
 @pytest.mark.components
+@pytest.mark.agents
 class TestComponentEntrypoint:
-    def test_non_entrypoint_method_raises_when_called_directly(self, dummy_component):
+    def test_non_entrypoint_method_raises_when_called_directly(self, dummy_agent: DummyAgent):
         with pytest.raises(RuntimeError) as ei:
-            dummy_component.helper()
+            dummy_agent.helper()
         assert "not a component entrypoint" in str(ei.value)
 
-    def test_entrypoint_applies_decimal_context_and_calls_hooks(self, dummy_component):
-        # Compute inside entrypoint; with precision=4 we expect "0.3333"
-        result = dummy_component.compute()
+    def test_entrypoint_applies_decimal_context_and_calls_hooks(self, runtime: RuntimeFixture, dummy_agent: DummyAgent):
+        agent = dummy_agent
+
+        root_context = runtime.get().context
+        agent_context = SubContext(parent=root_context, config=agent.config.context)
+
+        with root_context, agent_context:
+            # Compute inside entrypoint; with precision=4 we expect "0.3333"
+            result = agent.compute()
+
         assert isinstance(result, Decimal)
         assert str(result) == "0.3333"
 
         # Hooks should have been called in order while inside_entrypoint
-        assert dummy_component.events == [
+        assert agent.events == [
             "before:compute",
             "wrap:compute:before",
             "wrap:compute:after",
@@ -100,4 +112,4 @@ class TestComponentEntrypoint:
         ]
 
         # After the entrypoint completes, we're no longer inside an entrypoint
-        assert dummy_component.inside_entrypoint is False
+        assert agent.inside_entrypoint is False

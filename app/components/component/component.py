@@ -5,6 +5,7 @@ import functools
 
 from abc import ABCMeta
 from collections.abc import Callable
+from contextvars import ContextVar
 from typing import (
     TYPE_CHECKING,
     Concatenate,
@@ -13,13 +14,22 @@ from typing import (
 )
 
 from ...util.callguard import CallguardOptions, CallguardWrapped, callguard_class
-from ...util.helpers.decimal import DecimalFactory
-from .component_config import BaseComponentConfig
+from .component_config import ComponentConfig
 from .component_meta import ComponentMeta
 
 
 if TYPE_CHECKING:
+    from ...context import Context
+    from ...portfolio.models.portfolio import PortfolioProtocol
+    from ...util.helpers.decimal import DecimalFactory
     from .entrypoint import Entrypoint
+
+
+# MARK: Current entrypoint context
+CURRENT_COMPONENT: ContextVar[Component | None] = ContextVar("CURRENT_COMPONENT", default=None)
+
+# MARK: Local configuration
+HIDE_TRACEBACK = True
 
 
 # MARK: Component Base Class
@@ -27,23 +37,22 @@ if TYPE_CHECKING:
     decorate_public_methods=True,
     ignore_patterns=("inside_entrypoint"),
 )
-class BaseComponent[C: BaseComponentConfig](ComponentMeta[C], metaclass=ABCMeta):
-    # Decimal factory for precise calculations
-    decimal: DecimalFactory
+class Component[C: ComponentConfig](ComponentMeta[C], metaclass=ABCMeta):
+    # MARK: Construction
+    @staticmethod
+    def get_current() -> Component | None:
+        """Get the current component being executed in an entrypoint, if any."""
+        return CURRENT_COMPONENT.get()
 
     def __init__(self, config: C, *args, **kwargs) -> None:
         super().__init__(config, *args, **kwargs)
         self._inside_entrypoint = False
 
-        self.decimal = DecimalFactory(self.config.decimal)
-
-    @classmethod
-    def component_entrypoint_decorator[**P, R](cls, entrypoint: Entrypoint[Self, P, R]) -> Entrypoint[Self, P, R]:
-        entrypoint.__dict__["__component_entrypoint__"] = True
-        return entrypoint
-
+    # MARK: Entrypoints
     @classmethod
     def _handle_entrypoint[**P, R](cls, entrypoint: Entrypoint[Self, P, R], self: Self, /, *args: P.args, **kwargs: P.kwargs) -> R:
+        __tracebackhide__ = HIDE_TRACEBACK
+
         # If we are already inside an entrypoint, call it directly
         if self.inside_entrypoint:
             return entrypoint(self, *args, **kwargs)
@@ -65,11 +74,18 @@ class BaseComponent[C: BaseComponentConfig](ComponentMeta[C], metaclass=ABCMeta)
         return result
 
     @classmethod
+    def component_entrypoint_decorator[**P, R](cls, entrypoint: Entrypoint[Self, P, R]) -> Entrypoint[Self, P, R]:
+        entrypoint.__dict__["__component_entrypoint__"] = True
+        return entrypoint
+
+    @classmethod
     def __callguard_decorator__[**P, R](
         cls, method: CallguardWrapped[Self, P, R], **options: Unpack[CallguardOptions[Self, P, R]]
     ) -> CallguardWrapped[Self, P, R]:
         @functools.wraps(method)
         def _wrapper(self: Self, *args: P.args, **kwargs: P.kwargs) -> R:
+            __tracebackhide__ = HIDE_TRACEBACK
+
             # When inside an entrypoint all calls are allowed
             if self.inside_entrypoint:
                 return method(self, *args, **kwargs)
@@ -115,16 +131,49 @@ class BaseComponent[C: BaseComponentConfig](ComponentMeta[C], metaclass=ABCMeta)
 
     def _before_entrypoint(self, entrypoint_name: str, *args, **kwargs) -> None:
         self._assert_inside_entrypoint("Must not call '_before_entrypoint' outside an entrypoint method.")
+        __tracebackhide__ = HIDE_TRACEBACK
 
-        self.log.debug(t"Entering entrypoint '{entrypoint_name}'...")
+        # self.log.debug(t"Entering entrypoint '{entrypoint_name}'...")
+        self._ctx_token = CURRENT_COMPONENT.set(self)
 
-    def _wrap_entrypoint[S: BaseComponent, **P, T](self: S, entrypoint: Callable[Concatenate[S, P], T], *args: P.args, **kwargs: P.kwargs) -> T:
+    def _wrap_entrypoint[S: Component, **P, T](self: S, entrypoint: Callable[Concatenate[S, P], T], *args: P.args, **kwargs: P.kwargs) -> T:
         self._assert_inside_entrypoint("Must not call '_wrap_entrypoint' outside an entrypoint method.")
+        __tracebackhide__ = HIDE_TRACEBACK
 
-        with self.decimal.context_manager():
-            return entrypoint(self, *args, **kwargs)
+        assert self.get_current() is self, "The current component does not match the executing component."
+        return entrypoint(self, *args, **kwargs)
 
     def _after_entrypoint(self, entrypoint_name: str) -> None:
         self._assert_inside_entrypoint("Must not call '_after_entrypoint' outside an entrypoint method.")
+        __tracebackhide__ = HIDE_TRACEBACK
 
-        self.log.debug(t"Exiting entrypoint '{entrypoint_name}'.")
+        # self.log.debug(t"Exiting entrypoint '{entrypoint_name}'.")
+        CURRENT_COMPONENT.reset(self._ctx_token)
+
+    # MARK: Context helpers
+    @property
+    def context_or_none(self) -> Context | None:
+        if (context := self.__dict__.get("context", None)) is not None:
+            return context
+
+        from ...context import Context
+
+        return Context.get_current_or_none()
+
+    @property
+    def context(self) -> Context:
+        if (context := self.context_or_none) is None:
+            msg = f"No active Context found for component '{self.instance_name}'. Please ensure you are inside a component entrypoint."
+            raise RuntimeError(msg)
+        return context
+
+    @property
+    def decimal(self) -> DecimalFactory:
+        if (decimal := self.__dict__.get("decimal", None)) is not None:
+            return decimal
+
+        return self.context.decimal
+
+    @property
+    def portfolio(self) -> PortfolioProtocol:
+        return self.context.portfolio

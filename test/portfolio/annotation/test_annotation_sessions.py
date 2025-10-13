@@ -32,8 +32,8 @@ class TestAnnotationSessions:
 
         # After commit, annotations exist on the same entity instance
         assert host.dirty is False
-        assert len(host.annotation_uids) == 2
-        assert a1.uid in host.annotation_uids and a2.uid in host.annotation_uids
+        assert len(host.annotations) == 2
+        assert a1 in host.annotations and a2 in host.annotations
         assert a1.uid in host.children_uids and a2.uid in host.children_uids
 
         # Remove one annotation in a new session
