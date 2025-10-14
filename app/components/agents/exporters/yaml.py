@@ -21,7 +21,7 @@ class YamlExporterConfig(ExporterConfig):
 class YamlExporter(Exporter[YamlExporterConfig]):
     @override
     def _do_run(self) -> None:
-        dump = self.portfolio.model_dump(mode="python")
+        dump = self.portfolio.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
 
         with self.config.filepath.open("w", encoding="utf-8") as f:
             yaml.safe_dump(dump, f, sort_keys=False, allow_unicode=True)

@@ -104,11 +104,23 @@ class OrderedViewCollection[T: Hashable](Collection[T], metaclass=ABCMeta):
         raise NotImplementedError(msg)
 
     @classmethod
+    @abstractmethod
+    def serialize(cls, value: Self) -> Any:
+        msg = "Subclasses must implement serialize method."
+        raise NotImplementedError(msg)
+
+    @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
         schema = cls.get_core_schema(source, handler)
         return core_schema.no_info_plain_validator_function(
-            function=functools.partial(cls.validate_and_coerce, source=source),
+            function=functools.partial(
+                cls.validate_and_coerce,
+                source=source,
+            ),
             json_schema_input_schema=schema,
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                function=cls.serialize,
+            ),
         )
 
     @classmethod

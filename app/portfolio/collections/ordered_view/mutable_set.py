@@ -56,6 +56,11 @@ class OrderedViewMutableSet[T: Hashable](OrderedViewSet[T], MutableSet[T]):
     def get_core_schema(cls, source, handler) -> CoreSchema:  # noqa: ANN001
         return core_schema.set_schema(core_schema.is_instance_schema(cls.get_content_type(source)))
 
+    @classmethod
+    @override
+    def serialize(cls, value: Self) -> tuple[T, ...]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return tuple(value.sorted)
+
     # MARK: JournalledOrderedViewSet
     @classmethod
     @override

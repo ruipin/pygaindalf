@@ -40,7 +40,7 @@ class Agent[C: AgentConfig](Component[C], metaclass=ABCMeta):
         self._post_run()
 
     def _pre_run(self) -> None:
-        pass
+        self.log.info(t"Running {self.instance_name}...")
 
     def _do_run(self) -> None:
         msg = f"{type(self).__name__} must implement the _do_run method."

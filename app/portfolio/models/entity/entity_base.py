@@ -10,7 +10,17 @@ from collections.abc import Iterable, Mapping, MutableMapping
 from typing import TYPE_CHECKING, Any, ClassVar, Self, final, override
 from typing import cast as typing_cast
 
-from pydantic import ConfigDict, Field, PrivateAttr, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    ValidationInfo,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from ....util.callguard import CallguardClassOptions
 from ....util.helpers import generics, type_hints
@@ -744,6 +754,21 @@ class EntityBase[
             return True
         else:
             return parent.is_reachable(use_journal=use_journal, recursive=True)
+
+    # MARK: Serialization
+    @model_serializer(mode="wrap")
+    def _serialize_model(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict[str, Any]:
+        result = handler(self)
+        record_dump = self.record.model_dump(
+            mode=info.mode,
+            context=info.context,
+            exclude_computed_fields=info.exclude_computed_fields,
+            exclude_none=info.exclude_none,
+            exclude_unset=info.exclude_unset,
+            exclude_defaults=info.exclude_defaults,
+        )
+        result.update(record_dump)
+        return result
 
     # MARK: Utilities
     def sort_key(self) -> SupportsRichComparison:

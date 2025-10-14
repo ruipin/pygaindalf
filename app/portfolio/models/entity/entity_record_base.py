@@ -12,7 +12,15 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 from typing import cast as typing_cast
 
 from frozendict import frozendict
-from pydantic import ConfigDict, PositiveInt, PrivateAttr, ValidationInfo, computed_field, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    PositiveInt,
+    PrivateAttr,
+    ValidationInfo,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from ....util.callguard import CallguardClassOptions
 from ....util.helpers import generics, script_info, type_hints
@@ -79,6 +87,7 @@ class EntityRecordBase[
             "entity_or_none",
             "entity",
             "entity_log",
+            "instance_name",
         ),
     )
 
@@ -249,7 +258,6 @@ class EntityRecordBase[
     PROPAGATE_INSTANCE_NAME_FROM_PARENT: ClassVar[bool] = False
     STRICT_INSTANCE_NAME_VALIDATION: ClassVar[bool] = True
 
-    @computed_field(description="The instance name, or class name if not set.")
     @property
     @override
     def instance_name(self) -> str:
@@ -468,7 +476,6 @@ class EntityRecordBase[
             raise ValueError(msg)
         return self.version > other.version
 
-    @computed_field(description="Indicates whether this entity record instance has been superseded by another instance with an incremented version.")
     @property
     def superseded(self) -> bool:
         """Indicates whether this entity record instance has been superseded by another instance with an incremented version."""
@@ -1025,6 +1032,12 @@ class EntityRecordBase[
         # If the source record is in our extra dependencies, we remove it
         if record.uid in self.extra_dependency_uids:
             self.journal.remove_dependency(record.uid)
+
+    # MARK: Serialization
+    @field_serializer("annotations", mode="plain")
+    @classmethod
+    def _serialize_annotations(cls, annotations: frozenset) -> tuple[Any, ...]:
+        return tuple(annotations)
 
     # MARK: Utilities
     def sort_key(self) -> SupportsRichComparison:

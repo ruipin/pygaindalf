@@ -56,6 +56,7 @@ class EntitySchema[
         default_factory=lambda: None,
         validate_default=True,
         ge=1,
+        exclude=True,
         json_schema_extra={"readOnly": True},
         description="The version of this entity. Incremented when the entity is cloned as part of an update action.",
     )
@@ -71,6 +72,7 @@ class EntitySchema[
     else:
         annotations: InstanceOf[frozenset[Annotation]] = Field(
             default_factory=frozenset,
+            exclude_if=lambda v: not v,
             description="The annotations associated with this entity.",
         )
 

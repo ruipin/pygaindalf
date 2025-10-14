@@ -30,3 +30,8 @@ class OrderedViewSet[T: Hashable](OrderedViewCollection[T], AbstractSet[T]):
     @override
     def get_core_schema(cls, source, handler) -> CoreSchema:  # noqa: ANN001
         return core_schema.set_schema(core_schema.is_instance_schema(cls.get_content_type(source=source)))
+
+    @classmethod
+    @override
+    def serialize(cls, value: Self) -> tuple[T, ...]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return tuple(value.sorted)

@@ -57,6 +57,7 @@ class LoggingManager:
         self._configure_tty_handler()
         self._configure_exit_handler()
         self._configure_custom_levels()
+        self._configure_exception_handler()
 
     def _configure_root_logger(self) -> None:
         """Configure root logger."""
@@ -112,6 +113,22 @@ class LoggingManager:
 
         self.eh = ExitHandler(self)
         logging.root.addHandler(self.eh)
+
+    def _configure_exception_handler(self) -> None:
+        if self.config.rich:
+            from rich.traceback import install
+
+            from app.util import callguard
+
+            install(
+                extra_lines=1,
+                suppress=(callguard,),
+                code_width=160,
+                width=200,
+                show_locals=True,
+                locals_hide_dunder=True,
+                word_wrap=False,
+            )
 
     def _configure_custom_levels(self) -> None:
         """Configure custom loggers with the specified levels."""

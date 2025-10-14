@@ -2,11 +2,11 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from collections.abc import Iterator
-from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any, Protocol
 
 
 if TYPE_CHECKING:
+    from ...collections import OrderedViewSet
     from ...journal import Session, SessionManager
     from ...util import Uid
     from ..instrument import Instrument, InstrumentRecord
@@ -35,7 +35,7 @@ class PortfolioProtocol(Protocol):
 
     # MARK: Ledgers
     @property
-    def ledgers(self) -> AbstractSet[Ledger]: ...
+    def ledgers(self) -> OrderedViewSet[Ledger]: ...
     def __getitem__(self, index: int | Uid | InstrumentRecord | Instrument) -> Ledger: ...
     def __contains__(self, value: object) -> bool: ...
     def __iter__(self) -> Iterator[Ledger]: ...

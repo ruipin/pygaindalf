@@ -7,7 +7,10 @@ import sys
 
 from collections.abc import Hashable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar, Protocol, Self, override, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, Self, override, runtime_checkable
+
+from pydantic import GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
 
 from ...util.helpers import script_info
 
@@ -117,6 +120,15 @@ class Uid:
     @override
     def __repr__(self) -> str:
         return f"<Uid: {self!s}>"
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
+        return core_schema.is_instance_schema(
+            cls,
+            serialization=core_schema.to_string_ser_schema(
+                when_used="always",
+            ),
+        )
 
 
 # MARK: Incrementing Uid Factory

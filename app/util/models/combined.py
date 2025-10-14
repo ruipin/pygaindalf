@@ -21,14 +21,14 @@ class HierarchicalNamedModel(HierarchicalModel, NamedMixinMinimal):
     PROPAGATE_INSTANCE_NAME_FROM_PARENT: ClassVar[bool] = True
     PROPAGATE_INSTANCE_NAME_TO_CHILDREN: ClassVar[bool] = True
 
-    instance_name: str | None = Field(default=None, min_length=1, description="Name of the instance.")
+    instance_name: str | None = Field(default=None, exclude=True, min_length=1, description="Name of the instance.")
 
 
 class HierarchicalRootNamedModel(HierarchicalRootModel, NamedMixinMinimal):
     PROPAGATE_INSTANCE_NAME_FROM_PARENT: ClassVar[bool] = True
     PROPAGATE_INSTANCE_NAME_TO_CHILDREN: ClassVar[bool] = True
 
-    instance_name: str | None = Field(default=None, min_length=1, description="Name of the instance.")
+    instance_name: str | None = Field(default=None, exclude=True, min_length=1, description="Name of the instance.")
 
 
 # Loggable + Hierarchical
