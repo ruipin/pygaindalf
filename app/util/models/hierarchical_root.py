@@ -19,6 +19,8 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
     model_config = ConfigDict(
         extra="forbid",
         validate_assignment=True,
+        validate_by_alias=True,
+        serialize_by_alias=True,
     )
 
     # These class variables can be overridden in subclasses to control propagation behavior

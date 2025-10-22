@@ -3,7 +3,7 @@
 
 from abc import ABCMeta
 
-from .. import Agent, AgentConfig
+from .... import Agent, AgentConfig
 
 
 # MARK: Importer Base Configuration

@@ -1,0 +1,108 @@
+uid: Portfolio:1
+ledgers:
+- uid: Ledger:APPL
+  instrument:
+    uid: Instrument:APPL
+    ticker: APPL
+    currency: USD
+  transactions:
+  - uid: Transaction:1
+    type: buy
+    date: '2023-01-01'
+    quantity: '10000'
+    consideration: '20000'
+    annotations:
+    - uid: ForexAnnotation:Transaction-1
+      exchange_rates:
+        GBP: '0.826125'
+        EUR: '0.933838'
+        JPY: '131.058'
+      considerations:
+        GBP: '16522.500000'
+        EUR: '18676.760000'
+        JPY: '2621160.000'
+      class: portfolio.models.annotation.forex.forex_annotation.ForexAnnotation
+  - uid: Transaction:2
+    type: sell
+    date: '2023-01-02'
+    quantity: '50'
+    consideration: '15000'
+    fees: '10'
+    annotations:
+    - uid: ForexAnnotation:Transaction-2
+      exchange_rates:
+        GBP: '0.826158'
+        EUR: '0.933853'
+        JPY: '131.048'
+      considerations:
+        GBP: '12392.370000'
+        EUR: '14007.795000'
+        JPY: '1965720.000'
+      class: portfolio.models.annotation.forex.forex_annotation.ForexAnnotation
+  - uid: Transaction:3
+    type: sell
+    date: '2023-01-03'
+    quantity: '9950'
+    consideration: '5000'
+    fees: '5'
+    annotations:
+    - uid: ForexAnnotation:Transaction-3
+      exchange_rates:
+        GBP: '0.828791'
+        EUR: '0.936187'
+        JPY: '130.810'
+      considerations:
+        GBP: '4143.955000'
+        EUR: '4680.935000'
+        JPY: '654050.000'
+      class: portfolio.models.annotation.forex.forex_annotation.ForexAnnotation
+  - uid: Transaction:4
+    type: buy
+    date: '2023-01-04'
+    quantity: '100'
+    consideration: '3000'
+    annotations:
+    - uid: ForexAnnotation:Transaction-4
+      exchange_rates:
+        GBP: '0.833223'
+        EUR: '0.944166'
+        JPY: '130.504'
+      considerations:
+        GBP: '2499.669000'
+        EUR: '2832.498000'
+        JPY: '391512.000'
+      class: portfolio.models.annotation.forex.forex_annotation.ForexAnnotation
+  - uid: Transaction:5
+    type: sell
+    date: '2023-01-05'
+    quantity: '1000'
+    consideration: '20000'
+    fees: '10'
+    annotations:
+    - uid: ForexAnnotation:Transaction-5
+      exchange_rates:
+        GBP: '0.830802'
+        EUR: '0.943760'
+        JPY: '131.299'
+      considerations:
+        GBP: '16616.040000'
+        EUR: '18875.200000'
+        JPY: '2625980.000'
+      class: portfolio.models.annotation.forex.forex_annotation.ForexAnnotation
+  - uid: Transaction:6
+    type: fee
+    date: '2023-01-06'
+    quantity: '1'
+    consideration: '10'
+    currency: GBP
+    annotations:
+    - uid: ForexAnnotation:Transaction-6
+      exchange_rates:
+        USD: '1.19790'
+        EUR: '1.13253'
+        JPY: '159.130'
+      considerations:
+        USD: '11.97900'
+        EUR: '11.32530'
+        JPY: '1591.300'
+      class: portfolio.models.annotation.forex.forex_annotation.ForexAnnotation
