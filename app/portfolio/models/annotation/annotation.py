@@ -4,7 +4,9 @@
 import weakref
 
 from abc import ABCMeta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, override
+
+from pydantic import SerializationInfo, SerializerFunctionWrapHandler, model_serializer
 
 from ....util.helpers import generics
 from ....util.helpers.empty_class import empty_class
@@ -23,6 +25,14 @@ class Annotation[
     metaclass=ABCMeta,
     init=False,
 ):
+    @model_serializer(mode="wrap")
+    @override
+    def _serialize_model(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict[str, Any]:
+        serialized = super()._serialize_model(handler, info)
+        klass = type(self)
+        serialized["class"] = klass.__module__.removeprefix("app.") + "." + klass.__name__
+        return serialized
+
     # MARK: Construction / Initialization
     @classmethod
     def create[T: Annotation](cls: type[T], entity_or_uid: Entity | EntityRecord | Uid, /, **kwargs) -> T:

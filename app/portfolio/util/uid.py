@@ -130,6 +130,32 @@ class Uid:
             ),
         )
 
+    @classmethod
+    def from_string(cls, value: str) -> Uid:
+        if UID_SEPARATOR not in value:
+            msg = f"Invalid UID string: '{value}'"
+            raise ValueError(msg)
+
+        namespace, id_str = value.split(UID_SEPARATOR, maxsplit=1)
+
+        # Try to parse id_str as an integer (hex), otherwise keep as string
+        try:
+            id_value: Hashable = int(id_str, 16)
+        except ValueError:
+            id_value = id_str
+
+        return Uid(namespace=namespace, id=id_value)
+
+    @classmethod
+    def from_value(cls, value: Any) -> Uid:
+        if isinstance(value, Uid):
+            return value
+        elif isinstance(value, str):
+            return cls.from_string(value)
+        else:
+            msg = f"Cannot create Uid from value of type '{type(value).__name__}'"
+            raise TypeError(msg)
+
 
 # MARK: Incrementing Uid Factory
 class IncrementingUidFactory:
