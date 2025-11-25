@@ -2,19 +2,19 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from pathlib import Path
 from typing import override
 
 import yaml
 
 from pydantic import Field
 
+from ....util.config.models.env_path import EnvForceNewPath
 from .exporter import Exporter, ExporterConfig
 
 
 # MARK: Configuration
 class YamlExporterConfig(ExporterConfig):
-    filepath: Path = Field(description="The YAML file to export the portfolio data to")
+    filepath: EnvForceNewPath = Field(description="The YAML file to export the portfolio data to")
 
 
 # MARK: Exporter

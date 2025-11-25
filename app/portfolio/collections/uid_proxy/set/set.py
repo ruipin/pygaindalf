@@ -4,7 +4,7 @@
 from collections.abc import MutableSet
 from collections.abc import Set as AbstractSet
 
-from ....util.uid import Uid
+from .....util.models.uid import Uid
 from ...proxy import ProxyMutableSet, ProxySet
 from ..collection import T_ProxyBase
 from .generic_set import GenericUidProxyMutableSet, GenericUidProxySet

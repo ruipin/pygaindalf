@@ -1,0 +1,9 @@
+logging: !include ../_include/logging/runtime_debug.yaml
+
+agents:
+- !include ../_include/importer_config/simple.yaml
+
+- package: transformers.s104.matcher
+  title: S104 Matcher
+
+- !include ../_include/exporter/yaml.yaml

@@ -13,8 +13,8 @@ from app.portfolio.collections.uid_proxy import UidProxyMutableMapping
 from app.portfolio.collections.uid_proxy.mapping import UidProxyMapping
 from app.portfolio.journal.journal import Journal
 from app.portfolio.models.entity import Entity, EntityImpl, EntityRecord, EntitySchemaBase, IncrementingUidMixin
-from app.portfolio.util.uid import Uid
 from app.util.helpers.empty_class import empty_class
+from app.util.models.uid import Uid
 
 
 class ItemSchema(EntitySchemaBase, metaclass=ABCMeta):

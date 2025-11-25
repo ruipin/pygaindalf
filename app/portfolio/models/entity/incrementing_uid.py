@@ -7,7 +7,7 @@ from collections.abc import Mapping, MutableMapping
 from typing import TYPE_CHECKING, Any
 
 from ....util.helpers import mro
-from ...util.uid import Uid
+from ....util.models.uid import Uid
 from .entity import Entity
 
 

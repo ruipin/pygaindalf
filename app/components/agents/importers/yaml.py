@@ -6,13 +6,14 @@ from typing import override
 
 import yaml
 
-from pydantic import FilePath
+from pydantic import Field
 
+from ....util.config.models.env_path import EnvFilePath
 from .importer import PortfolioImportData, SchemaImporter, SchemaImporterConfig
 
 
 class YamlImporterConfig(SchemaImporterConfig):
-    filepath: FilePath
+    filepath: EnvFilePath = Field(description="The YAML file to import the portfolio data from")
 
 
 # MARK: Importer

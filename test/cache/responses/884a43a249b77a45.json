@@ -1,0 +1,40 @@
+{
+  "_content": "dm?gWb8v5Nb7dkrTYDm6VRL0)V|8+JWo~16B03^RLQo<sB5`$ZbY)*-b#iiLZew{OIwDn5L?SFAV{C78WnXk@ZDk@lA~G;CH7zhWEi*AxGBY|gIXX2tS|ThWVRmJ5VP|DuVrgU|IwCPHGc-9kGa@V^VRmJ5VP|DuVRLIDIwCPHGc_?WFd{4>XlZ9?Ut(!wB03^5E;BVSHa8+HB4}x6XkTG-Ya%)#F)lMTF*z_IEFx@gcVA*@WFk5uF)lMSIWsdNEFx@gcVA(1Ya%)#F)lMTFflSBeO-MD",
+  "created_at": "2025-11-26T05:08:31.485360+00:00",
+  "elapsed": 0.06492,
+  "encoding": "utf-8",
+  "headers": {
+    "Date": "Wed, 26 Nov 2025 05:08:31 GMT",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Connection": "keep-alive",
+    "Content-Encoding": "gzip",
+    "Cache-Control": "public, max-age=86400",
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+    "access-control-allow-origin": "*",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-methods": "GET, PUT, POST, DELETE, PATCH, OPTIONS",
+    "access-control-allow-headers": "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization",
+    "access-control-max-age": "1728000",
+    "Last-Modified": "Tue, 25 Nov 2025 22:48:10 GMT",
+    "CF-Cache-Status": "HIT",
+    "Age": "22821",
+    "Expires": "Thu, 27 Nov 2025 05:08:31 GMT",
+    "Vary": "Accept-Encoding",
+    "Server": "cloudflare"
+  },
+  "reason": "OK",
+  "request": {
+    "body": "",
+    "headers": {
+      "User-Agent": "python-requests/2.32.5",
+      "Accept-Encoding": "gzip, deflate, zstd",
+      "Accept": "*/*",
+      "Connection": "keep-alive"
+    },
+    "method": "GET",
+    "url": "https://fxds-public-exchange-rates-api.oanda.com/cc-api/currencies?base=GBP&quote=USD&data_type=general_currency_pair&start_date=2025-08-31&end_date=2025-09-01"
+  },
+  "status_code": 200,
+  "url": "https://fxds-public-exchange-rates-api.oanda.com/cc-api/currencies?base=GBP&quote=USD&data_type=general_currency_pair&start_date=2025-08-31&end_date=2025-09-01"
+}

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import functools
 import logging
 
 from typing import Any, override
@@ -44,7 +45,11 @@ logging.setLoggerClass(Logger)
 
 # Helper for class constructors to obtain a logger object
 # Returns a logger object
-def getLogger(obj: object, parent: Any = None, name: str | None = None) -> Logger:
+original_logging_getLogger = logging.getLogger  # noqa: N816
+
+
+def _getLogger(obj: object, parent: Any = None, name: str | None = None) -> logging.Logger:  # noqa: N802
+    # Determine the logger name
     if name is None:
         if isinstance(obj, str):
             name = obj
@@ -56,15 +61,42 @@ def getLogger(obj: object, parent: Any = None, name: str | None = None) -> Logge
                 msg = f"Cannot determine logger name from object: {obj}"
                 raise TypeError(msg)
 
+    # Create or get the logger
     logger = None
     if parent is None or not isinstance(parent, LoggableProtocol):
-        logger = logging.getLogger(name)
+        logger = original_logging_getLogger(name)
     elif isinstance(parent, logging.Logger):
         logger = parent.getChild(name)
     else:
         logger = parent.log.getChild(name)
 
+    # Try to apply the logging level from the manager
+    from .manager import LoggingManager
+
+    manager = LoggingManager()
+    if manager.initialized:
+        manager.apply_logging_level(logger)
+
+    # Done
+    return logger
+
+
+def getLogger(obj: object, parent: Any = None, name: str | None = None) -> Logger:
+    logger = _getLogger(obj, parent=parent, name=name)
+
     if not isinstance(logger, Logger):
         msg = f"Expected a Logger instance, got: {type(logger)}"
         raise TypeError(msg)
+
     return logger
+
+
+@functools.wraps(logging.getLogger)
+def logging_getLogger_wrapper(name: str | None = None) -> logging.Logger:  # noqa: N802
+    if name is None:
+        return logging.root
+    else:
+        return _getLogger(name)
+
+
+logging.getLogger = logging_getLogger_wrapper

@@ -3,8 +3,8 @@
 
 import pytest
 
-from app.portfolio.util.superseded import superseded_check
 from app.util.callguard import CALLGUARD_ENABLED, callguard_class
+from app.util.models.superseded import superseded_check
 
 
 @pytest.mark.helpers

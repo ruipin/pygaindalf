@@ -3,7 +3,7 @@
 
 from collections.abc import MutableSequence, Sequence
 
-from ...util.uid import Uid
+from ....util.models.uid import Uid
 from ..proxy import ProxyMutableSequence, ProxySequence
 from .collection import T_ProxyBase, UidProxyCollection, UidProxyMutableCollection
 

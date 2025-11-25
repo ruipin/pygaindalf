@@ -8,8 +8,11 @@ from decimal import Decimal
 
 import pytest
 
+from iso4217 import Currency
+
 from app.components.providers.forex.oanda import OandaForexProvider, OandaForexProviderConfig
 from app.util.helpers.decimal import DecimalFactory
+from app.util.helpers.decimal_currency import DecimalCurrency
 
 
 @pytest.fixture
@@ -67,8 +70,9 @@ class TestOandaForexProvider:
         amount = Decimal(100)
 
         converted = oanda_provider.convert_currency(amount, source="USD", target="EUR", date=test_date)
-        assert isinstance(converted, Decimal)
-        assert converted == Decimal(250)
+        assert isinstance(converted, DecimalCurrency)
+        assert converted.currency == Currency("EUR")
+        assert converted == 250
 
     def test_error_on_invalid_response(self, oanda_provider, requests_mock):
         requests_mock.get(

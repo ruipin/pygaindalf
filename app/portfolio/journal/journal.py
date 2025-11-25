@@ -3,23 +3,23 @@
 
 import logging
 
-from collections.abc import Iterable, Mapping, MutableSet, Sequence
+from collections.abc import Mapping, MutableSet, Sequence
 from collections.abc import Set as AbstractSet
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, override
 from typing import cast as typing_cast
 
 from frozendict import frozendict
-from pydantic import ConfigDict, Field, InstanceOf, PrivateAttr, field_validator
+from pydantic import ConfigDict, Field, InstanceOf, PrivateAttr
 
 from ...util.callguard import CallguardClassOptions
 from ...util.helpers import generics
-from ...util.models import LoggableHierarchicalModel
+from ...util.models import LoggableHierarchicalModel, NonChild
+from ...util.models.superseded import SupersededError, superseded_check
+from ...util.models.uid import Uid
 from ..collections.journalled import JournalledCollection, JournalledMapping, JournalledSequence, JournalledSet
 from ..collections.ordered_view import OrderedViewSet
 from ..models.entity import Entity, EntityImpl, EntityRecord
-from ..util.superseded import SupersededError, superseded_check
-from ..util.uid import Uid
 
 
 if TYPE_CHECKING:
@@ -28,6 +28,9 @@ if TYPE_CHECKING:
     from ..collections import UidProxyMutableSet
     from ..models.annotation import Annotation
     from .session import Session
+
+# Sentinel for default parameters
+DEFAULT = object()
 
 
 class Journal(
@@ -39,6 +42,14 @@ class Journal(
         decorate_public_methods=True,
         decorate_ignore_patterns=(
             "superseded",
+            "_record",
+            "_version",
+            "version",
+            "model_post_init",
+            "record_or_none",
+            "record",
+            "entity_or_none",
+            "entity",
             "_marked_superseded",
             "dirty",
             "has_diff",
@@ -68,45 +79,97 @@ class Journal(
     def __init_subclass__(cls, *, init: bool = False, unsafe_hash: bool = False) -> None:
         super().__init_subclass__()
 
-    # MARK: EntityRecord
-    record: InstanceOf[EntityRecord] = Field(description="The entity record associated with this journal entry.")
-
-    @property
+    # MARK: Initialization
     @override
-    def uid(self) -> Uid:  # pyright: ignore[reportIncompatibleVariableOverride]
-        return self.record.uid
+    def model_post_init(self, context: Any) -> None:
+        super().model_post_init(context)
 
-    if not TYPE_CHECKING:
+        record = self._record = EntityRecord.by_uid_or_none(self.uid)
 
-        @property
-        def version(self) -> int:
-            return self.record.version
+        if record is None:
+            entity = Entity.by_uid_or_none(self.uid)
+            if entity is None:
+                msg = f"Entity with UID '{self.uid}' not found for Journal '{self}'."
+                raise RuntimeError(msg)
+            if entity.exists:
+                msg = f"Entity with UID '{self.uid}' has a record for Journal '{self}', but record is None."
+                raise RuntimeError(msg)
 
-    @override
-    def __hash__(self) -> int:
-        return hash((type(self).__name__, hash(self.record)))
+            self._version = entity.version
+            return
 
-    @field_validator("record", mode="before")
-    @classmethod
-    def _validate_record(cls, record: Any) -> EntityRecord:
         if not isinstance(record, EntityRecord):
-            msg = f"Expected EntityRecordBase, got {type(record).__name__}"
+            msg = f"Expected EntityRecord, got {type(record).__name__}"
             raise TypeError(msg)
 
         if record.superseded:
             msg = f"EntityJournal.record '{record}' is superseded."
             raise SupersededError(msg)
 
+        self._version = record.version
+
+    # MARK: EntityRecord
+    if not TYPE_CHECKING:
+        uid: Uid = Field(description="The unique identifier of the entity/record associated with this journal entry.")
+
+    _record: NonChild[EntityRecord] | None = PrivateAttr(default=None)
+    _version: int = PrivateAttr(default=-1)
+
+    @property
+    def record_or_none(self) -> EntityRecord | None:
+        return getattr(self, "_record", None)
+
+    @property
+    def record(self) -> EntityRecord:
+        if (record := self.record_or_none) is None:
+            msg = f"EntityRecord with uid '{self.uid}' not found for Journal '{self}'."
+            raise RuntimeError(msg)
         return record
+
+    @cached_property
+    def record_type(self) -> type[EntityRecord]:
+        if (record := self.record_or_none) is None:
+            return self.entity.get_record_type()
+        else:
+            return type(record)
+
+    @property
+    def has_record(self) -> bool:
+        return self.record_or_none is not None
+
+    if not TYPE_CHECKING:
+
+        @property
+        def version(self) -> int:
+            result = getattr(self, "_version", -1)
+            assert result >= 0, f"Journal {self} has invalid version {result}."
+            return result
+
+    @property
+    def is_new_record(self) -> bool:
+        return not self.has_record
 
     @property
     def entity_or_none(self) -> Entity | None:
-        return self.record.entity_or_none
+        return Entity.by_uid_or_none(self.uid)
 
     @property
     @override
     def entity(self) -> Entity:
-        return self.record.entity
+        if (entity := self.entity_or_none) is None:
+            msg = f"Entity with uid '{self.uid}' not found for Journal '{self}'."
+            raise RuntimeError(msg)
+        return entity
+
+    if not TYPE_CHECKING:
+
+        @property
+        def version(self) -> int:
+            return self.entity.version
+
+    @override
+    def __hash__(self) -> int:
+        return hash((type(self).__name__, hash(self.uid)))
 
     @property
     @override
@@ -115,20 +178,20 @@ class Journal(
 
     @override
     def __str__(self) -> str:
-        return f"{type(self).__name__}({self.record!s})"
+        return f"{type(self).__name__}({self.uid!s})"
 
     @override
     def __repr__(self) -> str:
-        return f"<{type(self).__name__}:{self.record!r}>"
+        return f"<{type(self).__name__}:{self.uid!r}>"
 
     @property
     @override
     def instance_name(self) -> str:
-        return f"{type(self).__name__}({self.record.uid})"
+        return f"{type(self).__name__}({self.uid})"
 
     def sort_key(self) -> SupportsRichComparison:
         # Delegate to entity sort key, but we pretend to be the entity for this call
-        return type(self.record).sort_key(typing_cast("EntityRecord", self))
+        return self.entity.get_record_type().sort_key(typing_cast("EntityRecord", self))
 
     # MARK: Superseded
     _marked_superseded: bool = PrivateAttr(default=False)
@@ -145,13 +208,26 @@ class Journal(
         except (TypeError, AttributeError, KeyError):
             pass
 
-        return self.deleted or self.record.superseded
+        if self.deleted:
+            return True
+
+        entity = self.entity_or_none
+        if entity is None:
+            return True
+        if entity.version != self.version:
+            return True
+
+        if (record := self.record_or_none) is not None and record.superseded:  # noqa: SIM103
+            return True
+
+        return False
 
     @property
     def dirty(self) -> bool:
-        if self._dirty_children:
+        if self.record_or_none is None or self._dirty_children:
             return True
-        return self.has_diff
+        else:
+            return self.has_diff
 
     @property
     def has_diff(self) -> bool:
@@ -166,7 +242,6 @@ class Journal(
         return False
 
     def _on_dirtied(self) -> None:
-        self._reset_children_uids_cache()
         self._propagate_dirty()
         self._reset_notified_dependents()
 
@@ -201,24 +276,24 @@ class Journal(
     # MARK: Fields API
     _updates: dict[str, Any] = PrivateAttr(default_factory=dict)
 
-    @staticmethod
-    def _is_journal_attribute(name: str) -> bool:
-        return hasattr(Journal, name) or name in Journal.model_fields or name in Journal.model_computed_fields
+    @classmethod
+    def _is_journal_attribute(cls, name: str) -> bool:
+        return hasattr(cls, name) or name in cls.model_fields or name in cls.model_computed_fields
 
     def is_computed_field(self, field: str) -> bool:
-        return self.record.is_computed_field(field)
+        return self.record_type.is_computed_field(field)
 
     def is_field_alias(self, field: str) -> bool:
-        return self.record.is_model_field_alias(field)
+        return self.record_type.is_model_field_alias(field)
 
     def is_model_field(self, field: str) -> bool:
-        return self.record.is_model_field(field)
+        return self.record_type.is_model_field(field)
 
     def has_field(self, field: str) -> bool:
         return self.is_model_field(field) or self.is_computed_field(field)
 
     def can_modify(self, field: str) -> bool:
-        info = type(self.record).model_fields.get(field, None)
+        info = self.record_type.model_fields.get(field, None)
         if info is None:
             return False
 
@@ -228,16 +303,35 @@ class Journal(
         return not extra.get("readOnly", False)
 
     def is_field_edited(self, field: str) -> bool:
-        value = self._updates.get(field, None)
-        if value is None:
+        if field not in self._updates:
             return False
+        value = self._updates.get(field, None)
         return value.edited if isinstance(value, JournalledCollection) else True
 
-    def get_original_field(self, field: str) -> Any:
-        if not self.has_field(field):
-            msg = f"EntityRecord of type {type(self.record).__name__} does not have field '{field}'."
+    def get_field_default(self, field: str, *, default: Any = DEFAULT) -> Any:
+        field_info = self.record_type.model_fields.get(field, None)
+        if field_info is None:
+            msg = f"EntityRecord of type {self.record_type.__name__} does not have field '{field}'."
             raise AttributeError(msg)
-        return super(EntityRecord, self.record).__getattribute__(field)
+
+        if not field_info.is_required():
+            return field_info.get_default(call_default_factory=True, validated_data=self.get_fields())
+
+        if default is not DEFAULT:
+            return default
+        else:
+            msg = f"Field '{field}' of record type {self.record_type.__name__} has no default value."
+            raise AttributeError(msg)
+
+    def get_original_field(self, field: str, default: Any = DEFAULT) -> Any:
+        if not self.has_field(field):
+            msg = f"EntityRecord of type {self.record_type.__name__} does not have field '{field}'."
+            raise AttributeError(msg)
+
+        if (record := self.record_or_none) is None:
+            return self.get_field_default(field, default=default)
+        else:
+            return super(EntityRecord, record).__getattribute__(field)
 
     def _wrap_field(self, field: str, original: Any) -> Any:
         if field in self._updates:
@@ -268,18 +362,20 @@ class Journal(
         return new
 
     def set_field[T](self, field: str, value: T) -> T:
-        field = self.record.resolve_field_alias(field)
+        field = self.record_type.resolve_field_alias(field)
 
         has_update = field in self._updates
         if not has_update and not self.has_field(field):
-            msg = f"EntityRecord of type {type(self.record).__name__} does not have field '{field}'."
+            msg = f"EntityRecord of type {self.record_type.__name__} does not have field '{field}'."
             raise AttributeError(msg)
 
-        if not self.can_modify(field):
-            msg = f"Field '{field}' of entity type {type(self.record).__name__} is read-only."
+        is_new_record = self.is_new_record
+
+        if not is_new_record and not self.can_modify(field):
+            msg = f"Field '{field}' of entity type {self.record_type.__name__} is read-only."
             raise AttributeError(msg)
 
-        current = self.get_field(field, wrap=False)
+        current = self.get_field(field, wrap=False, default=None if is_new_record else DEFAULT)
         if value is current:
             return value
 
@@ -287,14 +383,14 @@ class Journal(
             msg = f"Cannot modify field '{field}' of frozen journal {self}."
             raise RuntimeError(msg)
 
-        original = self.get_original_field(field)
+        original = None if is_new_record else self.get_original_field(field)
 
-        if value is original:
+        if not is_new_record and value is original:
             if has_update:
                 del self._updates[field]
         else:
-            if self.record.is_protected_field_type(field):
-                msg = f"Field '{field}' of record type {type(self.record).__name__} is protected and cannot be modified. Use the collection's methods to modify it instead."
+            if not is_new_record and self.record_type.is_protected_field_type(field):
+                msg = f"Field '{field}' of record type {self.record_type.__name__} is protected and cannot be modified. Use the collection's methods to modify it instead."
                 raise AttributeError(msg)
             self._updates[field] = value
 
@@ -302,18 +398,29 @@ class Journal(
 
         return value
 
-    def get_field(self, field: str, *, wrap: bool = True) -> Any:
+    def get_field(self, field: str, *, wrap: bool = True, default: Any = DEFAULT) -> Any:
         if self.superseded:
             msg = "Cannot get field from a superseded journal."
             raise SupersededError(msg)
 
-        field = self.record.resolve_field_alias(field)
+        field = self.record_type.resolve_field_alias(field)
 
         if field in self._updates:
             return self._updates[field]
 
-        original = self.get_original_field(field)
+        original = self.get_original_field(field, default=default)
         return self._wrap_field(field, original) if wrap else original
+
+    def get_fields(self) -> dict[str, Any]:
+        result = None
+
+        if (record := self.record_or_none) is not None:
+            result = record.__dict__.copy()
+            result.update(self._updates)
+        else:
+            result = self._updates.copy()
+
+        return result
 
     if not TYPE_CHECKING:
 
@@ -322,7 +429,7 @@ class Journal(
             # Short-circuit cases
             if (
                 # Short-circuit private and 'EntityRecord' attributes
-                (name.startswith("_") or Journal._is_journal_attribute(name))
+                (name.startswith("_") or type(self)._is_journal_attribute(name))  # noqa: SLF001
                 or
                 # If this is not a model field
                 (not self.is_model_field(name))
@@ -339,7 +446,7 @@ class Journal(
     def __setattr__(self, name: str, value: Any) -> None:
         if (
             # Short-circuit private and 'EntityRecord' attributes
-            (name.startswith("_") or Journal._is_journal_attribute(name))
+            (name.startswith("_") or type(self)._is_journal_attribute(name))  # noqa: SLF001
             or
             # If this is not a model field
             (not self.is_model_field(name))
@@ -404,7 +511,7 @@ class Journal(
             return
 
         # Propagate to parent journal
-        if (parent := self.record.record_parent_or_none) is None:
+        if (parent := self.entity.record_parent_or_none) is None:
             return
 
         parent_journal = parent.journal
@@ -441,7 +548,8 @@ class Journal(
 
         # Delete all children recursively
         self._propagate_dirty()
-        self.record.propagate_deletion()
+        if (record := self.record_or_none) is not None:
+            record.propagate_deletion()
 
     # MARK: Dependent Notifications
     _notified_dependents: bool = PrivateAttr(default=False)
@@ -451,11 +559,18 @@ class Journal(
         return self._notified_dependents
 
     def notify_dependents(self) -> None:
+        if not self.session.in_commit:
+            msg = f"Cannot notify dependents of journal {self} outside of session commit."
+            raise RuntimeError(msg)
+
         if self._notified_dependents:
             msg = f"Journal {self} has already notified its dependents of changes."
             raise RuntimeError(msg)
 
         self._notified_dependents = True
+
+        if self.is_new_record:
+            return
 
         if not self.has_diff:
             return
@@ -487,50 +602,53 @@ class Journal(
         return self._committed
 
     def commit(self) -> EntityRecord | None:
-        assert self._notified_dependents, f"Cannot commit journal {self} before notifying dependents."
+        if not self.session.in_commit:
+            msg = f"Cannot commit journal {self} outside of session commit."
+            raise RuntimeError(msg)
+
+        assert self.is_new_record or self._notified_dependents, f"Cannot commit journal {self} before notifying dependents."
         assert not self._committed, f"Journal {self} has already been committed."
         self.freeze()
 
-        if not self.has_diff:
+        if (record := self.record_or_none) is not None and not self.has_diff:
             self.mark_superseded()
-            return self.record
-
-        deletion = self._marked_for_deletion
-        self.log.debug(t"Committing entity {'deletion' if deletion else 'update'}...")
+            return record
 
         if self._marked_for_deletion:
             self._commit_delete()
             result = None
         else:
-            result = self._commit_update()
+            result = self._commit_new_or_update()
 
         self._committed = True
         self.mark_superseded()
         return result
 
-    def _commit_update(self) -> EntityRecord:
-        self.log.debug("Committing update")
+    def _commit_new_or_update(self) -> EntityRecord:
+        self.log.debug(t"Committing {'new record' if self.is_new_record else 'update'}...")
 
         # Collect all updates
-        updates = {}
 
-        for attr, update in self._updates.items():
-            if isinstance(update, (JournalledSequence, JournalledMapping, JournalledSet)):
-                if not update.edited:
-                    continue
+        if self.is_new_record:
+            updates = self.get_fields()
+        else:
+            updates = {}
+            for attr, update in self._updates.items():
+                if isinstance(update, (JournalledSequence, JournalledMapping, JournalledSet)):
+                    if not update.edited:
+                        continue
 
-            updates[attr] = update
+                updates[attr] = update
 
-        if not updates:
-            return self.record
+        if (record := self.record_or_none) is not None and not updates:
+            return record
 
         if self.log.isEnabledFor(logging.DEBUG):
             updates_gen = ", ".join(f"'{k}': {v!s}" for k, v in updates.items())
             self.log.debug(t"Updates to apply: {{{updates_gen}}}")
 
-        # Update the entity
-        new_record = self._new_entity = self.record.update(**updates)
-
+        # Create the new entity record
+        new_record = self.entity.create_record(**updates)
         self.log.debug("New entity record created: %s version %d", new_record, new_record.version)
 
         # Done
@@ -542,19 +660,9 @@ class Journal(
 
         self.log.debug("Committing deletion")
 
-        self.record.apply_deletion()
+        if (record := self.record_or_none) is not None:
+            record.apply_deletion()
         self._deleted = True
-
-    # MARK: Children
-    def iter_children_uids(self) -> Iterable[Uid]:
-        yield from self.record.iter_children_uids(use_journal=True)
-
-    @cached_property
-    def children_uids(self) -> Iterable[Uid]:
-        return frozenset(self.iter_children_uids())
-
-    def _reset_children_uids_cache(self) -> None:
-        self.__dict__.pop("children_uids", None)
 
     # MARK: Dependencies
     @property

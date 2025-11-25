@@ -7,16 +7,12 @@ import sys
 
 from collections.abc import Hashable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, Self, override, runtime_checkable
+from typing import Any, ClassVar, Protocol, Self, override, runtime_checkable
 
-from pydantic import GetCoreSchemaHandler
+from pydantic import GetCoreSchemaHandler, PlainSerializer
 from pydantic_core import CoreSchema, core_schema
 
-from ...util.helpers import script_info
-
-
-if TYPE_CHECKING:
-    from ..models.entity import Entity, EntityRecord
+from ..helpers import script_info
 
 
 UID_SEPARATOR = ":"
@@ -88,30 +84,6 @@ class Uid:
         if not isinstance(other, Uid):
             return NotImplemented
         return self.as_tuple() >= other.as_tuple()
-
-    @property
-    def entity_or_none(self) -> Entity | None:
-        from ..models.entity import Entity
-
-        return Entity.by_uid_or_none(self)
-
-    @property
-    def entity(self) -> Entity:
-        from ..models.entity import Entity
-
-        return Entity.by_uid(self)
-
-    @property
-    def record_or_none(self) -> EntityRecord | None:
-        from ..models.entity import EntityRecord
-
-        return EntityRecord.by_uid_or_none(self)
-
-    @property
-    def record(self) -> EntityRecord:
-        from ..models.entity import EntityRecord
-
-        return EntityRecord.by_uid(self)
 
     @override
     def __str__(self) -> str:
@@ -192,3 +164,23 @@ class IncrementingUidFactory:
 class UidProtocol(Protocol):
     @property
     def uid(self) -> Uid: ...
+
+
+@runtime_checkable
+class VersionedUidProtocol(UidProtocol, Protocol):
+    @property
+    def version(self) -> int: ...
+
+
+# MARK: Uid Serializer
+def serialize_as_uid(v: Any) -> str:
+    if isinstance(v, Uid):
+        return str(v)
+    if isinstance(v, UidProtocol):
+        return str(v.uid)
+
+    msg = f"Cannot serialize object of type {type(v)} as Uid."
+    raise TypeError(msg)
+
+
+AsUidSerializer = PlainSerializer(serialize_as_uid)

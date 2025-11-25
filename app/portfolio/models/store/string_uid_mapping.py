@@ -10,7 +10,7 @@ from app.portfolio.models.store.entity_store import EntityStore
 from ....util.callguard import callguard_class
 from ....util.helpers import script_info
 from ....util.mixins import LoggableHierarchicalMixin
-from ...util.uid import Uid
+from ....util.models.uid import Uid
 from ..entity import Entity
 
 

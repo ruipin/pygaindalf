@@ -63,6 +63,7 @@ class RuntimeFixture:
         self.runtime: Runtime | None = None
 
     def create(self, data: dict[str, Any]) -> Runtime:
+        PortfolioRoot.clear_global_root()
         self.config.create(data)
         self.runtime = Runtime(config=self.config.get())
         self.runtime.initialize()

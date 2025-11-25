@@ -2,6 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
+import os
 import pathlib
 import sys
 
@@ -77,15 +78,23 @@ class ConfigFileLoader[C: ConfigBase](LoggableMixin):
 
         self.path = path
 
-        with self.path.open() as f:
-            # Load the YAML file
-            data = yaml.load(f, IncludeLoader)  # noqa: S506 as IncludeLoader extends yaml.SafeLoader
+        try:
+            if not isinstance(path, ConfigFilePath) or not path.is_stdin:
+                os.environ["CFG_PATH"] = str(path.parent)
 
-        if not isinstance(data, dict):
-            msg = f"Invalid configuration file format. Expected a dictionary, got {type(self.data).__name__}"
-            raise TypeError(msg)
+            with self.path.open() as f:
+                # Load the YAML file
+                data = yaml.load(f, IncludeLoader)  # noqa: S506 as IncludeLoader extends yaml.SafeLoader
 
-        return self.load(data)
+            if not isinstance(data, dict):
+                msg = f"Invalid configuration file format. Expected a dictionary, got {type(self.data).__name__}"
+                raise TypeError(msg)
+
+            return self.load(data)
+
+        finally:
+            if "CFG_PATH" in os.environ:
+                del os.environ["CFG_PATH"]
 
     def load(self, data: dict[str, Any] | str) -> C:
         if self.config is not None:

@@ -129,11 +129,11 @@ class Component[C: ComponentConfig](ComponentMeta[C], metaclass=ABCMeta):
             msg = f"An entrypoint for '{self.instance_name}' is already being executed.{msg}"
             raise RuntimeError(msg)
 
-    def _before_entrypoint(self, entrypoint_name: str, *args, **kwargs) -> None:
+    def _before_entrypoint(self, entrypoint_name: str, *args, **kwargs) -> None:  # noqa: ARG002
         self._assert_inside_entrypoint("Must not call '_before_entrypoint' outside an entrypoint method.")
         __tracebackhide__ = HIDE_TRACEBACK
 
-        # self.log.debug(t"Entering entrypoint '{entrypoint_name}'...")
+        # self.log.debug(t"Entering entrypoint '{entrypoint_name}'...") # noqa: ERA001
         self._ctx_token = CURRENT_COMPONENT.set(self)
 
     def _wrap_entrypoint[S: Component, **P, T](self: S, entrypoint: Callable[Concatenate[S, P], T], *args: P.args, **kwargs: P.kwargs) -> T:
@@ -143,11 +143,11 @@ class Component[C: ComponentConfig](ComponentMeta[C], metaclass=ABCMeta):
         assert self.get_current() is self, "The current component does not match the executing component."
         return entrypoint(self, *args, **kwargs)
 
-    def _after_entrypoint(self, entrypoint_name: str) -> None:
+    def _after_entrypoint(self, entrypoint_name: str) -> None:  # noqa: ARG002
         self._assert_inside_entrypoint("Must not call '_after_entrypoint' outside an entrypoint method.")
         __tracebackhide__ = HIDE_TRACEBACK
 
-        # self.log.debug(t"Exiting entrypoint '{entrypoint_name}'.")
+        # self.log.debug(t"Exiting entrypoint '{entrypoint_name}'.") # noqa: ERA001
         CURRENT_COMPONENT.reset(self._ctx_token)
 
     # MARK: Context helpers

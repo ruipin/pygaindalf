@@ -3,7 +3,7 @@
 
 
 # MARK: Logger
-from ..logging import getLogger
+from logging import getLogger
 
 
 # MARK: Configuration

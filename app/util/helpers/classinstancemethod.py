@@ -19,6 +19,7 @@ class ClassInstanceMethodDescriptor[T: Any](property):
     def __get__(self, obj: Any, cls: type | None = None) -> Callable[..., T]:  # pyright: ignore[reportIncompatibleMethodOverride] as we know we are not compatible with property
         @functools.wraps(self.method)
         def _wrapper(*args: Any, **kwargs: Any) -> T:
+            __tracebackhide__ = True
             if obj is not None:
                 return self.method(obj, *args, **kwargs)
             else:

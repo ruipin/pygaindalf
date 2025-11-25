@@ -17,7 +17,7 @@ class Entity[  # pyright: ignore[reportIncompatibleMethodOverride, reportIncompa
     T_Record: EntityRecord,
     T_Journal: Journal,
 ](
-    EntityBase[T_Record],
+    EntityBase[T_Record, T_Journal],
     EntityRecordBase[T_Journal] if TYPE_CHECKING else empty_class(),
     init=False,
     unsafe_hash=True,

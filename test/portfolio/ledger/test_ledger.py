@@ -11,8 +11,10 @@ from iso4217 import Currency
 
 from app.portfolio.models.entity.entity_log import EntityLog, EntityModificationType
 from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.transaction import Transaction, TransactionType
+from app.util.helpers.decimal_currency import DecimalCurrency
 
 
 @pytest.mark.portfolio
@@ -21,6 +23,7 @@ class TestLedgerEntity:
     def test_entity_initialization_sets_instance_name_and_audit(self):
         instrument = Instrument(
             ticker="AAPL",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
         ledger = Ledger(instrument=instrument)
@@ -37,6 +40,7 @@ class TestLedgerEntity:
     def test_entity_reuses_instance_per_instrument(self):
         instrument = Instrument(
             ticker="MSFT",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
 
@@ -49,13 +53,14 @@ class TestLedgerEntity:
     def test_entity_wraps_record_and_exposes_transactions(self):
         instrument = Instrument(
             ticker="AAPL",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
         txn = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
             quantity=Decimal(1),
-            consideration=Decimal(100),
+            consideration=DecimalCurrency(100, currency="USD"),
         )
 
         ledger = Ledger(
@@ -72,19 +77,20 @@ class TestLedgerEntity:
     def test_entity_accepts_iterable_transaction_input(self):
         instrument = Instrument(
             ticker="NFLX",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
         t1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 4, 1),
             quantity=Decimal(1),
-            consideration=Decimal(500),
+            consideration=DecimalCurrency(500, currency="USD"),
         )
         t2 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 4, 2),
             quantity=Decimal(2),
-            consideration=Decimal(1000),
+            consideration=DecimalCurrency(1000, currency="USD"),
         )
 
         ledger = Ledger(instrument=instrument, transactions=(t1, t2))
@@ -95,13 +101,14 @@ class TestLedgerEntity:
     def test_entity_refreshes_after_superseding_record(self):
         instrument = Instrument(
             ticker="MSFT",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
         txn1 = Transaction(
             type=TransactionType.BUY,
             date=datetime.date(2025, 2, 1),
             quantity=Decimal(2),
-            consideration=Decimal(200),
+            consideration=DecimalCurrency(200, currency="USD"),
         )
         ledger = Ledger(
             instrument=instrument,
@@ -114,7 +121,7 @@ class TestLedgerEntity:
             type=TransactionType.SELL,
             date=datetime.date(2025, 2, 3),
             quantity=Decimal(1),
-            consideration=Decimal(150),
+            consideration=DecimalCurrency(150, currency="USD"),
         )
         ledger.update(transactions={txn1, txn2})
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from iso4217 import Currency
 
 from ....util.helpers import classproperty, instance_lru_cache
+from ....util.helpers.decimal_currency import DecimalCurrency
 from .. import Provider, ProviderConfig, ProviderType, component_entrypoint
 
 
@@ -50,8 +51,33 @@ class ForexProvider[C: ForexProviderConfig](Provider[C], metaclass=ABCMeta):
         return self._get_daily_exchange_rate(source=source, target=target, date=date)
 
     @component_entrypoint
-    def convert_currency(self, amount: Decimal, *, source: Currency | str, target: Currency | str, date: datetime.date) -> Decimal:
-        source = self._validate_currency(source)
+    def convert_currency(
+        self,
+        amount: Decimal | DecimalCurrency,
+        *,
+        source: Currency | str | None = None,
+        target: Currency | str,
+        date: datetime.date,
+    ) -> DecimalCurrency:
         target = self._validate_currency(target)
+
+        if amount.is_zero():
+            return DecimalCurrency("0", currency=target)
+
+        if isinstance(amount, DecimalCurrency):
+            if source is None:
+                source = amount.currency
+        assert source is not None, "Source currency must be specified for non-zero amounts."
+
+        if isinstance(amount, DecimalCurrency):
+            source = self._validate_currency(source)
+            if amount.currency != source:
+                msg = "Currency mismatch between amount and specified source currency."
+                raise ValueError(msg)
+            amount = amount.decimal()
+        else:
+            source = self._validate_currency(source)
+
         rate = self._get_daily_exchange_rate(source=source, target=target, date=date)
-        return amount * rate
+
+        return DecimalCurrency(amount * rate, currency=target)

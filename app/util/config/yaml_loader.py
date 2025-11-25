@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import os
 import pathlib
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -29,8 +30,10 @@ class IncludeLoader(yaml.SafeLoader):
 
     def include(self, node: Any) -> Any:
         filename = self._root / self.construct_scalar(node)
+        filename = pathlib.Path(os.path.expandvars(filename))
+        filename = filename.expanduser()
 
-        with pathlib.Path(filename).open(encoding="UTF-8") as f:
+        with filename.open(encoding="UTF-8") as f:
             return yaml.load(f, IncludeLoader)  # noqa: S506 as IncludeLoader extends yaml.SafeLoader
 
 

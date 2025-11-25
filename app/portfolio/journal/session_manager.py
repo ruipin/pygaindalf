@@ -11,7 +11,7 @@ from pydantic import ConfigDict, PrivateAttr, computed_field, field_validator
 
 from ...util.models import LoggableHierarchicalModel
 from .protocols import SessionManagerHookLiteral, SessionManagerHooksProtocol
-from .session import Session, SessionParams
+from .session import Session, SessionOptions
 
 
 class SessionManager(LoggableHierarchicalModel):
@@ -49,22 +49,24 @@ class SessionManager(LoggableHierarchicalModel):
             raise TypeError(msg)
         return v
 
-    def _get_owner(self) -> SessionManagerHooksProtocol | None:
+    @property
+    def owner(self) -> SessionManagerHooksProtocol:
         if not isinstance((parent := self.instance_parent), SessionManagerHooksProtocol):
-            return None
+            msg = f"SessionManager owner {parent} does not implement SessionManagerHooksProtocol."
+            raise TypeError(msg)
         return parent
 
     def call_owner_hook(self, hook_name: SessionManagerHookLiteral, *args: Any, **kwargs: Any) -> None:
-        if (owner := self._get_owner()) is not None:
-            getattr(owner, f"on_session_{hook_name}")(*args, **kwargs)
+        getattr(self.owner, f"on_session_{hook_name}")(*args, **kwargs)
 
     # MARK: Session
-    def _start(self, **kwargs: Unpack[SessionParams]) -> Session:
+    def _start(self, **kwargs: Unpack[SessionOptions]) -> Session:
         if self.in_session:
             msg = "A session is already active."
             raise RuntimeError(msg)
 
         session = self._session = Session(instance_parent=weakref.ref(self), **kwargs)
+        assert session.instance_parent is self, "Session instance parent mismatch."
         return session
 
     def _commit(self) -> None:
@@ -83,7 +85,7 @@ class SessionManager(LoggableHierarchicalModel):
         self._session = None
 
     @contextlib.contextmanager
-    def __call__(self, *, reuse: bool = False, **kwargs: Unpack[SessionParams]) -> Iterator[Session]:
+    def __call__(self, *, reuse: bool = False, **kwargs: Unpack[SessionOptions]) -> Iterator[Session]:
         if reuse and (session := self._session) is not None and not session.ended:
             yield session
             return

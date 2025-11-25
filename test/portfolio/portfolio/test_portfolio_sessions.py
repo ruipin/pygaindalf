@@ -24,10 +24,12 @@ from iso4217 import Currency
 from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
 from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
 from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.root.portfolio_root import PortfolioRoot
 from app.portfolio.models.transaction import Transaction, TransactionType
+from app.util.helpers.decimal_currency import DecimalCurrency
 
 
 @pytest.mark.portfolio
@@ -41,10 +43,10 @@ class TestPortfolioSessions:
         assert Portfolio(uid=initial_record.uid) is portfolio
 
         with session_manager(actor="tester", reason="test_add_ledgers_commit") as s:
-            inst1 = Instrument(ticker="AAPL", currency=Currency("USD"))
+            inst1 = Instrument(ticker="AAPL", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg1 = Ledger(instrument=inst1)
 
-            inst2 = Instrument(ticker="MSFT", currency=Currency("USD"))
+            inst2 = Instrument(ticker="MSFT", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg2 = Ledger(instrument=inst2)
 
             from app.portfolio.models.portfolio.portfolio_journal import PortfolioJournal
@@ -73,7 +75,7 @@ class TestPortfolioSessions:
         initial_record = portfolio.record
 
         with session_manager(actor="tester", reason="setup-ledger") as s:
-            inst = Instrument(ticker="GOOGL", currency=Currency("USD"))
+            inst = Instrument(ticker="GOOGL", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledger = Ledger(instrument=inst)
 
             ledgers_set = portfolio.journal.ledgers
@@ -93,7 +95,7 @@ class TestPortfolioSessions:
         initial_record = portfolio.record
 
         with session_manager(actor="tester", reason="setup-ledger"):
-            inst = Instrument(ticker="ORCL", currency=Currency("USD"))
+            inst = Instrument(ticker="ORCL", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledger = Ledger(instrument=inst)
             portfolio.journal.ledgers.add(ledger)
             ledger_uid = ledger.uid
@@ -117,7 +119,7 @@ class TestPortfolioSessions:
     def test_add_transactions_commit_and_ordering(self, portfolio_root: PortfolioRoot, session_manager):
         portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
         with session_manager(actor="tester", reason="setup-ledger"):
-            inst = Instrument(ticker="TSLA", currency=Currency("USD"))
+            inst = Instrument(ticker="TSLA", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledger = Ledger(instrument=inst)
             portfolio.journal.ledgers.add(ledger)
             ledger_uid = ledger.uid
@@ -130,19 +132,19 @@ class TestPortfolioSessions:
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 1),
                 quantity=Decimal(10),
-                consideration=Decimal(1000),
+                consideration=DecimalCurrency(1000, currency="USD"),
             )
             t2 = Transaction(
                 type=TransactionType.SELL,
                 date=datetime.date(2025, 1, 2),
                 quantity=Decimal(4),
-                consideration=Decimal(420),
+                consideration=DecimalCurrency(420, currency="USD"),
             )
             t3 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 3),
                 quantity=Decimal(6),
-                consideration=Decimal(630),
+                consideration=DecimalCurrency(630, currency="USD"),
             )
 
             assert isinstance(ledger.transactions, AbstractSet) and not isinstance(ledger.transactions, MutableSet)
@@ -169,18 +171,18 @@ class TestPortfolioSessions:
     def test_remove_transaction_abort(self, portfolio_root: PortfolioRoot, session_manager):
         portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
         with session_manager(actor="tester", reason="setup-ledger"):
-            inst = Instrument(ticker="NVDA", currency=Currency("USD"))
+            inst = Instrument(ticker="NVDA", type=InstrumentType.EQUITY, currency=Currency("USD"))
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 2, 1),
                 quantity=Decimal(5),
-                consideration=Decimal(2500),
+                consideration=DecimalCurrency(2500, currency="USD"),
             )
             t2 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 2, 2),
                 quantity=Decimal(3),
-                consideration=Decimal(1500),
+                consideration=DecimalCurrency(1500, currency="USD"),
             )
             ledger = Ledger(instrument=inst)
             portfolio.journal.ledgers.add(ledger)
@@ -211,7 +213,7 @@ class TestPortfolioSessions:
         portfolio = portfolio_root.portfolio
 
         with session_manager(actor="tester", reason="attach-ledger"):
-            inst = Instrument(ticker="IBM", currency=Currency("USD"))
+            inst = Instrument(ticker="IBM", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledger = Ledger(instrument=inst)
             portfolio.journal.ledgers.add(ledger)
             ledger_uid = ledger.uid
@@ -232,45 +234,107 @@ class TestPortfolioSessions:
         assert portfolio_root.entity_store.get_entity_record(ledger_uid) is None
 
         with session_manager(actor="tester", reason="create-unattached"):
+            inst = Instrument(ticker="IBM", type=InstrumentType.EQUITY, currency=Currency("USD"))
             orphan = Ledger(instrument=inst)
-            orphan_record = orphan.record
 
             assert orphan.uid == ledger.uid
-            assert orphan.instance_parent is None
-            assert orphan.exists is True
-            assert orphan.version == 3
 
+        assert orphan.instance_parent is None
+        assert orphan.version == 2
         assert orphan.exists is False
         assert orphan.deleted is True
-        assert orphan_record.exists is False
-        assert orphan_record.deleted is True
-        assert orphan_record.reverted is True
-        assert orphan_record.entity_or_none is None
+
+        orphan_record = orphan.record_or_none
+        assert orphan_record is None
         assert Ledger.by_uid_or_none(ledger.uid) is ledger
         assert ledger.version == 2
         assert ledger.entity_log.version == 2
 
+    def test_delete_then_commit_then_recreate_without_gc(self, portfolio_root: PortfolioRoot, session_manager):
+        portfolio = portfolio_root.portfolio
+
+        with session_manager(actor="tester", reason="attach-ledger for delete no gc"):
+            inst = Instrument(ticker="CRM", type=InstrumentType.EQUITY, currency=Currency("USD"))
+            ledger = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(ledger)
+
+        with session_manager(actor="tester", reason="delete-ledger no gc") as s:
+            portfolio.journal.ledgers.discard(ledger)
+            ledger.delete()
+
+            assert s.dirty is True
+            assert ledger.marked_for_deletion is True
+        assert ledger.deleted is True
+        assert ledger.exists is False
+
+        with session_manager(actor="tester", reason="recreate-ledger no gc"):
+            inst = Instrument(ticker="CRM", type=InstrumentType.EQUITY, currency=Currency("USD"))
+            recreated = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(recreated)
+
+            assert recreated.exists is False
+
+        assert recreated is ledger
+        assert recreated.exists is True
+
+    def test_delete_then_commit_then_recreate_with_gc(self, portfolio_root: PortfolioRoot, session_manager):
+        import gc
+
+        portfolio = portfolio_root.portfolio
+
+        with session_manager(actor="tester", reason="attach-ledger for delete with gc"):
+            inst = Instrument(ticker="ADBE", type=InstrumentType.EQUITY, currency=Currency("USD"))
+            ledger = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(ledger)
+
+        with session_manager(actor="tester", reason="delete-ledger with gc") as s:
+            portfolio.journal.ledgers.discard(ledger)
+            ledger.delete()
+
+            assert s.dirty is True
+            assert ledger.marked_for_deletion is True
+        assert ledger.deleted is True
+
+        # Ensure no references remain
+        ledger_uid = ledger.uid
+        inst_uid = inst.uid
+        del ledger
+        del inst
+        portfolio_root.entity_store.delete(ledger_uid, keep_log=False)
+        portfolio_root.entity_store.delete(inst_uid, keep_log=False)
+        gc.collect()
+        assert portfolio_root.entity_store.get(ledger_uid, None) is None
+        assert portfolio_root.entity_store.get(inst_uid, None) is None
+
+        # Recreate
+        with session_manager(actor="tester", reason="recreate-ledger with gc"):
+            inst = Instrument(ticker="ADBE", type=InstrumentType.EQUITY, currency=Currency("USD"))
+            recreated = Ledger(instrument=inst)
+            portfolio.journal.ledgers.add(recreated)
+
+        assert recreated.exists is True
+
     def test_reorder_transactions_commit(self, portfolio_root: PortfolioRoot, session_manager):
         portfolio = Portfolio(uid=portfolio_root.portfolio.uid)
         with session_manager(actor="tester", reason="setup-ledger"):
-            inst = Instrument(ticker="IBM", currency=Currency("USD"))
+            inst = Instrument(ticker="IBM", type=InstrumentType.EQUITY, currency=Currency("USD"))
             t1 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 1),
                 quantity=Decimal(1),
-                consideration=Decimal(100),
+                consideration=DecimalCurrency(100, currency="USD"),
             )
             t2 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 2),
                 quantity=Decimal(2),
-                consideration=Decimal(210),
+                consideration=DecimalCurrency(210, currency="USD"),
             )
             t3 = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 3, 3),
                 quantity=Decimal(3),
-                consideration=Decimal(330),
+                consideration=DecimalCurrency(330, currency="USD"),
             )
             ledger = Ledger(instrument=inst)
             portfolio.journal.ledgers.add(ledger)

@@ -15,8 +15,8 @@ from app.portfolio.journal.journal import Journal
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.models.entity import Entity, EntityImpl, EntityRecord, EntitySchemaBase, IncrementingUidMixin
 from app.portfolio.models.root import EntityRoot
-from app.portfolio.util.superseded import SupersededError
 from app.util.helpers.empty_class import empty_class
+from app.util.models.superseded import SupersededError
 
 
 # --- Sample Entity -----------------------------------------------------------------------
@@ -221,7 +221,7 @@ class TestSessionEntityJournal:
             with pytest.raises(SupersededError):
                 s.commit()
             with pytest.raises(SupersededError):
-                s.get_record_journal(record=entity.record)
+                s.get_journal(entity.uid)
 
     def test_using_invalid_journal_fails(self, entity: SampleEntity, session_manager: SessionManager):
         with session_manager(actor="tester", reason="unit-test"):
@@ -234,7 +234,7 @@ class TestSessionEntityJournal:
         assert entity_root.root is entity
 
         msg = f"Root entity {entity.uid} cannot be marked for deletion."
-        with pytest.raises(RuntimeError, match=msg), session_manager(actor="tester", reason="delete-root-entity"):
+        with pytest.raises(RuntimeError, match=msg), session_manager(actor="tester", reason="delete-root-entity", exit_on_exception=False):
             entity.delete()
 
         assert entity.deleted is False
@@ -246,23 +246,19 @@ class TestSessionEntityJournal:
 
         with session_manager(actor="tester", reason="create-unattached-entity"):
             entity = SampleEntity(value=7)
-            record = entity.record
+            record = entity.record_or_none
             uid = entity.uid
 
             assert entity.instance_parent is None
-            assert entity.exists is True
+            assert entity.exists is False
             assert entity_root.root is None
 
         assert entity is not None
-        assert record is not None
+        assert record is None
         assert entity.exists is False
-        assert record.exists is False
         assert entity.deleted is True
-        assert record.deleted is True
         assert entity.version == 0
-        assert record.reverted is True
         assert entity.record_or_none is None
-        assert record.entity_or_none is None
         assert entity.entity_log.exists is False
         assert entity.entity_log.deleted is True
         assert entity.entity_log.version == 0

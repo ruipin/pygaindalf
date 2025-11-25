@@ -17,11 +17,13 @@ from app.portfolio.models.annotation.incrementing_uid_annotation import Incremen
 from app.portfolio.models.annotation.unique_annotation import UniqueAnnotation
 from app.portfolio.models.entity import Entity, EntityImpl, EntityRecord, EntitySchemaBase, IncrementingUidMixin
 from app.util.helpers.empty_class import empty_class
+from app.util.models import NonChild
 
 
 # --- Host entity used for annotation tests -------------------------------------------------
 class HostEntitySchema(EntitySchemaBase, metaclass=ABCMeta):
     name: str = Field(default="host", description="Minimal payload field for testing annotations.")
+    other_entity: Entity | None = Field(default=None, description="An optional other entity for testing purposes.")
 
 
 class HostEntityImpl(
@@ -145,3 +147,47 @@ class SampleUniqueAnnotation(
 
 
 SampleUniqueAnnotationRecord.register_entity_class(SampleUniqueAnnotation)
+
+
+# --- Non-child dependency annotation ------------------------------------------------------
+class NonChildDependencyAnnotationSchema(AnnotationSchema, metaclass=ABCMeta):
+    # Non-child dependency using InstanceOf to mirror production patterns
+    # like S104PoolAnnotation.
+    referenced: NonChild[HostEntity]
+
+
+class NonChildDependencyAnnotationImpl(
+    AnnotationImpl,
+    NonChildDependencyAnnotationSchema if TYPE_CHECKING else empty_class(),
+    metaclass=ABCMeta,
+):
+    """Implementation mixin for InstanceOf-based non-child dependency annotations."""
+
+
+class NonChildDependencyAnnotationJournal(
+    NonChildDependencyAnnotationImpl,
+    AnnotationJournal,
+    init=False,
+):
+    """Journal counterpart for the non-child dependency annotation."""
+
+
+class NonChildDependencyAnnotationRecord(
+    NonChildDependencyAnnotationImpl,
+    NonChildDependencyAnnotationSchema if not TYPE_CHECKING else empty_class(),
+    AnnotationRecord[NonChildDependencyAnnotationJournal],
+    init=False,
+    unsafe_hash=True,
+):
+    """Immutable record storing data for non-child dependency detection tests."""
+
+
+class NonChildDependencyAnnotation(
+    NonChildDependencyAnnotationImpl if TYPE_CHECKING else empty_class(),
+    UniqueAnnotation[NonChildDependencyAnnotationRecord, NonChildDependencyAnnotationJournal],
+    init=False,
+):
+    """Annotation entity whose referenced field (InstanceOf) is non-child dependency."""
+
+
+NonChildDependencyAnnotationRecord.register_entity_class(NonChildDependencyAnnotation)

@@ -1,46 +1,71 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
+import re
 
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
+from frozendict import frozendict
 from pydantic import DirectoryPath, Field, field_validator
 
 from ..config.models import BaseConfigModel
+from ..helpers.frozendict import FrozenDict
 from .levels import LoggingLevel
 
 
 DEFAULT_CUSTOM_LEVELS: dict[str, LoggingLevel] = {
-    "requests_cache": LoggingLevel.INFO,
-    "urllib3.connectionpool": LoggingLevel.INFO,
+    "^requests_cache": LoggingLevel.INFO,
+    "^urllib3.connectionpool": LoggingLevel.INFO,
 }
 
 
 class LoggingLevels(BaseConfigModel):
     file: LoggingLevel = Field(default=LoggingLevel.OFF, description="Log level for log file output")
-    tty: LoggingLevel = Field(default=LoggingLevel.INFO, description="Log level for TTY output")
+    tty: LoggingLevel = Field(default=LoggingLevel.NOTSET, description="Log level for TTY output")
     root: LoggingLevel = Field(default=LoggingLevel.NOTSET, description="Log level for the root log handler")
+    default: LoggingLevel = Field(default=LoggingLevel.INFO, description="Default log level for loggers not explicitly specified in 'custom'")
 
-    custom: dict[str, LoggingLevel] = Field(
-        default_factory=dict, description="Custom logging levels, where the key is the logger name and the value is the logging level.", validate_default=True
+    custom: FrozenDict[re.Pattern[str], LoggingLevel] = Field(
+        default_factory=dict,
+        description="Custom logging levels, where the key is a regex for the logger name, and the value is the logging level.",
+        validate_default=True,
     )
 
-    @field_validator("custom", mode="after")
-    def add_default_custom_levels(cls, value: dict[str, LoggingLevel]) -> dict[str, LoggingLevel]:
+    @classmethod
+    def _validate_regex_pattern(cls, pattern: Any) -> re.Pattern[str]:
+        if isinstance(pattern, str):
+            pattern = re.compile(pattern, re.IGNORECASE)
+        if not isinstance(pattern, re.Pattern):
+            msg = f"Custom logging levels keys must be str or compiled regex patterns, got {type(pattern)}"
+            raise TypeError(msg)
+
+        return pattern
+
+    @field_validator("custom", mode="before")
+    def compile_custom_level_patterns(cls, value: Any) -> FrozenDict[re.Pattern[str], LoggingLevel]:
+        if not isinstance(value, Mapping):
+            msg = f"Custom logging levels must be a dict, got {type(value)}"
+            raise TypeError(msg)
+
+        levels: Mapping[re.Pattern[str], LoggingLevel] = {}
+
         # Seed the custom levels with the default ones if they are not present
         for name, level in DEFAULT_CUSTOM_LEVELS.items():
-            if name not in value:
-                value[name] = level
+            name = cls._validate_regex_pattern(name)
+            levels[name] = level
 
-        # Ensure the root logger is not included in custom levels
-        if "root" in value:
-            msg = "Custom logging levels must not include 'root' logger. Use the 'root' field instead."
-            raise ValueError(msg)
+        # Process the provided custom levels
+        for name, level in value.items():
+            name = cls._validate_regex_pattern(name)
+            levels[name] = level
 
-        return value
+        # Return as frozendict
+        return frozendict(levels)
 
 
 class LoggingConfig(BaseConfigModel):
     dir: DirectoryPath = Field(default=Path.cwd(), description="Log file directory")
-    levels: LoggingLevels = Field(default=LoggingLevels(), description="Logging levels configuration")
+    levels: LoggingLevels = Field(default_factory=LoggingLevels, description="Logging levels configuration")
     rich: bool = Field(default=True, description="Enable rich text (colors etc) in TTY output")

@@ -9,6 +9,7 @@ import pytest
 
 from app.portfolio.models.entity.entity_log import EntityLog, EntityModificationType
 from app.portfolio.models.transaction import Transaction, TransactionType
+from app.util.helpers.decimal_currency import DecimalCurrency
 
 
 @pytest.mark.portfolio
@@ -19,8 +20,8 @@ class TestTransactionEntity:
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
             quantity=Decimal(10),
-            consideration=Decimal(1500),
-            fees=Decimal(5),
+            consideration=DecimalCurrency(1500, currency="USD"),
+            fees=DecimalCurrency(5, currency="USD"),
         )
 
         assert tx.uid.namespace == "Transaction"
@@ -39,14 +40,14 @@ class TestTransactionEntity:
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 1),
             quantity=Decimal(5),
-            consideration=Decimal(500),
-            fees=Decimal(5),
+            consideration=DecimalCurrency(500, currency="USD"),
+            fees=DecimalCurrency(5, currency="USD"),
         )
 
         assert tx.uid.namespace == "Transaction"
         assert tx.quantity == Decimal(5)
-        assert tx.consideration == Decimal(500)
-        assert tx.fees == Decimal(5)
+        assert tx.consideration == DecimalCurrency(500, currency="USD")
+        assert tx.fees == DecimalCurrency(5, currency="USD")
         assert Transaction.by_uid(tx.uid) is tx
 
     def test_multiple_transactions_increment_uid_and_audit(self):
@@ -54,13 +55,13 @@ class TestTransactionEntity:
             type=TransactionType.BUY,
             date=datetime.date(2025, 1, 2),
             quantity=Decimal(5),
-            consideration=Decimal(750),
+            consideration=DecimalCurrency(750, currency="USD"),
         )
         tx2 = Transaction(
             type=TransactionType.SELL,
             date=datetime.date(2025, 1, 3),
             quantity=Decimal(2),
-            consideration=Decimal(320),
+            consideration=DecimalCurrency(320, currency="USD"),
         )
 
         assert tx1.uid.namespace == tx2.uid.namespace == "Transaction"
@@ -75,7 +76,7 @@ class TestTransactionEntity:
             type=TransactionType.BUY,
             date=datetime.date(2025, 2, 1),
             quantity=Decimal(2),
-            consideration=Decimal(220),
+            consideration=DecimalCurrency(220, currency="USD"),
         )
 
         original_record = tx.record
@@ -97,8 +98,8 @@ class TestTransactionEntity:
                 "type": TransactionType.BUY,
                 "date": datetime.date(2025, 2, 1),
                 "quantity": Decimal(2),
-                "consideration": Decimal(220),
-                "fees": Decimal(0),
+                "consideration": DecimalCurrency(220, currency="USD"),
+                "fees": DecimalCurrency(0, currency="USD"),
             }
 
         entry_v2 = log.get_entry_by_version(2)

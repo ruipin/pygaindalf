@@ -1,7 +1,4 @@
-logging:
-  levels:
-    file: OFF
-    tty: INFO
+logging: !include ../_include/logging/info.yaml
 
 default:
   context:

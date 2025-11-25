@@ -35,6 +35,8 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
                 continue
 
             value = getattr(self, attr, None)
+            assert isinstance(attr, str), f"Attribute name must be a string, got {type(attr)}"
+
             if value is None:
                 yield attr, value
                 continue

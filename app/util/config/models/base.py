@@ -17,7 +17,14 @@ from .base_model import BaseConfigModel
 class ConfigLoggingOnly(BaseConfigModel):
     PROPAGATE_FROM_PARENT: ClassVar[bool] = False
 
-    logging: LoggingConfig = Field(default=LoggingConfig(), description="Logging configuration")
+    logging: LoggingConfig = Field(default_factory=LoggingConfig, description="Logging configuration")
+
+
+class AppOptions(BaseConfigModel):
+    abort_session_on_exception: bool = Field(
+        default=False,
+        description="Whether to abort the current session on exceptions. If set to False, an exception during a session will abort the session, and the exception is then re-raised such that it can be caught and handled by the caller. If set to True, the exception will be re-raised immediately.",
+    )
 
 
 class ConfigBase(ConfigLoggingOnly):

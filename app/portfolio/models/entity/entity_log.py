@@ -15,12 +15,12 @@ from pydantic_core import CoreSchema, core_schema
 from ....util.callguard import callguard_class
 from ....util.helpers.frozendict import FrozenDict
 from ....util.mixins import HierarchicalMixinMinimal, LoggableMixin, NamedMixinMinimal
-from ....util.models import SingleInitializationModel
+from ....util.models import HierarchicalModel, SingleInitializationModel
 
 
 if TYPE_CHECKING:
+    from ....util.models.uid import Uid
     from ...journal import Session, SessionManager
-    from ...util.uid import Uid
     from .entity import Entity
     from .entity_record import EntityRecord
 
@@ -95,6 +95,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
     # MARK: EntityRecord
     _entity_uid: Uid
     _entries: list[EntityLogEntry]
+    _reverted: bool
 
     @classmethod
     def _get_audit_log(cls, uid: Uid) -> Self | None:
@@ -119,6 +120,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
     def _post_init(self, uid: Uid) -> None:
         self._entity_uid = uid
         self._entries = []
+        self._reverted = False
 
     @classmethod
     def by_entity(cls, entity: Entity | EntityRecord) -> EntityLog | None:
@@ -226,7 +228,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
 
     # MARK: EntityRecord Diffing
     def _is_diffable_field(self, field_name: str) -> bool:
-        return not field_name.startswith("_") and field_name not in ("uid", "version", "instance_parent_weakref")
+        return not field_name.startswith("_") and field_name not in ("uid", "version") and field_name not in HierarchicalModel.INSTANCE_PARENT_FIELD_NAMES
 
     def _diff(self, old_record: EntityRecord | None, new_record: EntityRecord | None) -> frozendict[str, Any] | None:
         """Return a dictionary containing the differences between the old and new entities.
@@ -283,7 +285,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
         else:
             assert new_record is not None, "New record must not be None"
             assert old_record is not None, "Old record must not be None"
-            journal = old_record.get_journal(create=False, fail=False)
+            journal = old_record.journal_or_none
             return journal.get_diff() if journal is not None else self._diff_manual(old_record, new_record)
 
     def _diff_manual(self, old_record: EntityRecord, new_record: EntityRecord) -> frozendict[str, Any] | None:
@@ -421,6 +423,7 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
             msg = f"Cannot revert entity log to {self.version - 1} because the most recent entry is not of type 'CREATED'."
             raise ValueError(msg)
 
+        self._reverted = True
         version = self.version
         entry = self._entries.pop()
         assert entry.version == version, f"Popped entry version {entry.version} does not match the expected version {version}."
@@ -475,6 +478,10 @@ class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMin
         if not self._entries:
             return True
         return self.most_recent.record_deleted
+
+    @property
+    def reverted(self) -> bool:
+        return self._reverted
 
     def get_entry_by_version(self, version: PositiveInt) -> EntityLogEntry | None:
         """Return the audit entry for the given version, or None if no such entry exists."""

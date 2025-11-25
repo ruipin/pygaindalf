@@ -4,6 +4,8 @@
 from abc import ABCMeta
 from typing import TYPE_CHECKING
 
+from iso4217 import Currency
+
 from ....util.helpers.empty_class import empty_class
 from ..entity import EntityImpl
 from .transaction_schema import TransactionSchema
@@ -12,8 +14,9 @@ from .transaction_schema import TransactionSchema
 if TYPE_CHECKING:
     from decimal import Decimal
 
-    from iso4217 import Currency
-
+    from ....util.helpers.decimal_currency import DecimalCurrency
+    from ..annotation.forex import ForexAnnotation
+    from ..annotation.s104 import S104HoldingsAnnotation, S104PoolAnnotation
     from ..instrument import Instrument
 
 
@@ -24,31 +27,134 @@ class TransactionImpl(
 ):
     # MARK: Instrument
     @property
-    def instrument(self) -> Instrument:
+    def instrument_or_none(self) -> Instrument | None:
         from ..ledger import Ledger
 
         parent = self.entity.instance_parent
         if parent is None or not isinstance(parent, Ledger):
-            msg = f"Transaction.instrument requires parent to be a Ledger, got {type(parent)}"
-            raise TypeError(msg)
+            return None
+
         return parent.instrument
+
+    @property
+    def instrument(self) -> Instrument:
+        if (instrument := self.instrument_or_none) is None:
+            msg = "Transaction's instrument requested but not found. This may indicate data corruption."
+            raise ValueError(msg)
+        return instrument
 
     # MARK: Currency
     @property
     def currency(self) -> Currency:
-        if (currency := self.txn_currency) is not None:
-            return currency
-        elif self.is_journal:
-            return self.instrument.get_journal_field("currency", create=False)
-        else:
-            return self.instrument.currency
+        currency = self.consideration.currency
+        assert currency is not None, "Transaction consideration currency should have been validated already."
+        return currency
 
     # MARK: Forex
-    def get_consideration_in_currency(self, currency: Currency, *, use_forex_annotation: bool = True) -> Decimal:
-        if use_forex_annotation:
-            from ..annotation.forex import ForexAnnotation
+    @property
+    def forex_annotation_or_none(self) -> ForexAnnotation | None:
+        from ..annotation.forex import ForexAnnotation
 
-            if (annotation := self.get_annotation(ForexAnnotation)) is not None:
-                return annotation.get_consideration_in_currency(currency)
+        return ForexAnnotation.get(self.entity)
+
+    @property
+    def forex_annotation(self) -> ForexAnnotation:
+        if (ann := self.forex_annotation_or_none) is None:
+            msg = "Forex annotation requested but not found. Please ensure you have run a forex annotator."
+            raise ValueError(msg)
+        return ann
+
+    def get_exchange_rate(self, currency: Currency, *, use_forex_annotation: bool = True) -> Decimal:
+        if use_forex_annotation and (ann := self.forex_annotation_or_none) is not None:
+            return ann.get_exchange_rate(currency)
+
+        return self.forex_provider.get_daily_rate(source=self.currency, target=currency, date=self.date)
+
+    def get_consideration_in_currency(self, currency: Currency, *, use_forex_annotation: bool = True) -> DecimalCurrency:
+        if use_forex_annotation and (ann := self.forex_annotation_or_none) is not None:
+            return ann.get_consideration(currency)
 
         return self.forex_provider.convert_currency(amount=self.consideration, source=self.currency, target=currency, date=self.date)
+
+    # MARK: Consideration
+    @property
+    def unit_consideration(self) -> DecimalCurrency:
+        if self.quantity == 0:
+            msg = "Cannot calculate unit consideration for transaction with zero quantity"
+            raise ValueError(msg)
+
+        return self.consideration / self.quantity
+
+    def get_partial_consideration(self, quantity: Decimal, *, currency: Currency | str | None = None) -> DecimalCurrency:
+        if self.quantity == 0:
+            msg = "Cannot calculate partial consideration for transaction with zero quantity"
+            raise ValueError(msg)
+
+        if self.quantity == quantity:
+            result = self.consideration
+        elif quantity == 1:
+            result = self.unit_consideration
+        else:
+            result = self.unit_consideration * quantity
+
+        if currency is not None:
+            currency = Currency(currency)
+            if result.currency != currency:
+                rate = self.get_exchange_rate(currency)
+                result = result.convert(target=currency, rate=rate)
+                assert result.currency == currency, f"Currency conversion failed, got {result.currency}."
+
+        return result
+
+    # MARK: S104
+    @property
+    def s104_pool_annotation_or_none(self) -> S104PoolAnnotation | None:
+        from ..annotation.s104 import S104PoolAnnotation
+
+        return S104PoolAnnotation.get(self.entity)
+
+    @property
+    def s104_pool_annotation(self) -> S104PoolAnnotation:
+        if (ann := self.s104_pool_annotation_or_none) is None:
+            msg = "S104 pool annotation requested but not found. Please ensure you have run a S104 annotator."
+            raise ValueError(msg)
+        return ann
+
+    def get_s104_holdings_or_none(self) -> S104HoldingsAnnotation | None:
+        from ..annotation.s104 import S104HoldingsAnnotation
+
+        return S104HoldingsAnnotation.get(self.entity)
+
+    def get_s104_holdings(self) -> S104HoldingsAnnotation:
+        if (ann := self.get_s104_holdings_or_none()) is None:
+            msg = "S104 holdings annotation requested but not found. Please ensure you have run a S104 annotator."
+            raise ValueError(msg)
+        return ann
+
+    def get_previous_s104_holdings_or_none(self) -> S104HoldingsAnnotation | None:
+        previous = self.previous
+        if previous is None:
+            return None
+        return previous.get_s104_holdings_or_none()
+
+    def get_previous_s104_holdings(self) -> S104HoldingsAnnotation:
+        previous = self.previous
+        if previous is None:
+            msg = "Previous transaction not found for S104 holdings retrieval."
+            raise ValueError(msg)
+        return previous.get_s104_holdings()
+
+    @property
+    def s104_quantity_matched(self) -> Decimal:
+        ann = self.s104_pool_annotation_or_none
+        return self.decimal(0) if ann is None else ann.quantity_matched
+
+    @property
+    def s104_quantity_unmatched(self) -> Decimal:
+        ann = self.s104_pool_annotation_or_none
+        return self.quantity if ann is None else ann.quantity_unmatched
+
+    @property
+    def s104_fully_matched(self) -> bool:
+        ann = self.s104_pool_annotation_or_none
+        return ann is not None and ann.fully_matched

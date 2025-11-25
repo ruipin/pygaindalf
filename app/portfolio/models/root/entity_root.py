@@ -15,8 +15,8 @@ from ..store.entity_store import EntityStore
 
 
 if TYPE_CHECKING:
+    from ....util.models.uid import Uid
     from ...journal.session import Session
-    from ...util.uid import Uid
 
 
 class EntityRoot[E: Entity](LoggableHierarchicalRootModel, metaclass=ABCMeta):
@@ -128,10 +128,11 @@ class EntityRoot[E: Entity](LoggableHierarchicalRootModel, metaclass=ABCMeta):
         pass
 
     def on_session_commit(self, session: Session) -> None:  # noqa: ARG002
-        unreachable_uids = self.entity_store.get_entity_uids() if self.root is None else self.entity_store.get_unreachable_uids(self.root.uid)
-        if unreachable_uids:
-            msg = f"Unreachable entities detected in entity store: {unreachable_uids}. This indicates a bug and/or memory leak in the session commit logic."
-            raise RuntimeError(msg)
+        if __debug__:
+            unreachable_uids = self.entity_store.get_entity_uids() if self.root is None else self.entity_store.get_unreachable_uids(self.root.uid)
+            if unreachable_uids:
+                msg = f"Unreachable entities detected in entity store: {unreachable_uids}. This indicates a bug and/or memory leak in the session commit logic."
+                raise RuntimeError(msg)
 
     def on_session_abort(self, session: Session) -> None:
         pass

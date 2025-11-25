@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, InstanceOf, PositiveInt
 
-from ...util.uid import Uid
+from ....util.models import Uid
 from .entity_schema_base import EntitySchemaBase
 
 
@@ -22,7 +22,7 @@ ENTITY_SCHEMA_SUBCLASSES: MutableSet[type[EntitySchema]] = set()
 
 # MARK: Fields
 class EntitySchema[
-    T_Annotation_Set: InstanceOf[AbstractSet[Annotation]],
+    T_Annotation_Set: AbstractSet[Annotation],
     T_Uid_Set: AbstractSet[Uid],
 ](
     EntitySchemaBase,

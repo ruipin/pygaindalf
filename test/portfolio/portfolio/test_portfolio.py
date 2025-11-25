@@ -6,6 +6,7 @@ import pytest
 from iso4217 import Currency
 
 from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.portfolio import Portfolio
 
@@ -27,7 +28,7 @@ class TestPortfolioEntity:
         portfolio = Portfolio()
         initial_record = portfolio.record
 
-        inst = Instrument(ticker="AAPL", currency=Currency("USD"))
+        inst = Instrument(ticker="AAPL", type=InstrumentType.EQUITY, currency=Currency("USD"))
         ledger = Ledger(instrument=inst)
 
         portfolio.update(ledgers={ledger})

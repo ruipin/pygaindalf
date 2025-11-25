@@ -1,0 +1,6 @@
+logging: !include ../_include/logging/info.yaml
+
+agents:
+- !include ../_include/importer_config/simple.yaml
+
+- !include ../_include/exporter/yaml.yaml

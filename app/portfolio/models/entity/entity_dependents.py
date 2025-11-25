@@ -2,9 +2,10 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 from collections.abc import Iterable
+from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import GetCoreSchemaHandler, PositiveInt
+from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 from ....util.callguard import callguard_class
@@ -12,7 +13,7 @@ from ....util.mixins import HierarchicalMixinMinimal, LoggableMixin, NamedMixinM
 
 
 if TYPE_CHECKING:
-    from ...util.uid import Uid
+    from ....util.models.uid import Uid
     from .entity import Entity
     from .entity_record import EntityRecord
 
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinimal):
     # MARK: EntityRecord
     _entity_uid: Uid
-    _entity_version: PositiveInt
+    _entity_version: int
 
     def __init__(self, uid: Uid) -> None:
         super().__init__()
@@ -102,9 +103,7 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
     _extra_dependent_uids: set[Uid]
 
     def add_dependent(self, entity_or_uid: Entity | EntityRecord | Uid) -> None:
-        if not self.entity.is_update_allowed(in_commit_only=True):
-            msg = f"EntityRecord {self.entity} is not allowed to be updated; cannot add dependent."
-            raise RuntimeError(msg)
+        self.entity.assert_update_allowed(force_session=False)
 
         from .entity import Entity
 
@@ -116,9 +115,7 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
         self._extra_dependent_uids.add(uid)
 
     def remove_dependent(self, entity_or_uid: Entity | EntityRecord | Uid) -> None:
-        if not self.entity.is_update_allowed(in_commit_only=True):
-            msg = f"EntityRecord {self.entity} is not allowed to be updated; cannot remove dependent."
-            raise RuntimeError(msg)
+        self.entity.assert_update_allowed(allow_frozen_journal=True, force_session=False)
 
         from .entity import Entity
 
@@ -143,11 +140,31 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
 
     @property
     def dependents(self) -> Iterable[Entity]:
+        from .entity import Entity
+
         for uid in self.dependent_uids:
-            yield uid.entity
+            yield Entity.by_uid(uid)
 
     # MARK: Extra dependencies
     _extra_dependency_uids: frozenset[Uid]
+
+    def _collect_extra_dependencies(self, record: EntityRecord) -> AbstractSet[Uid]:
+        # Start with any explicitly named dependencies
+        deps = None
+
+        # Automatically detect non-children dependencies
+        for uid in record.iter_field_uids(children=False, non_children=True):
+            if deps is None:
+                deps = set()
+            deps.add(uid)
+
+        # Optimization: If no new dependencies were found, return the declared extra dependency set directly
+        if not deps:
+            return record.extra_dependency_uids
+
+        # Otherwise, merge with declared extra dependencies
+        deps.update(record.extra_dependency_uids)
+        return deps
 
     def on_delete_record(self, record: EntityRecord) -> None:
         self.log.debug(t"EntityDependents {self} received deletion notice for entity record {record}.")
@@ -158,7 +175,12 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
         if record.version != self._entity_version:
             msg = f"EntityRecord version has changed from {self._entity_version} to {record.version} since EntityDependents was last updated. This indicates a bug."
             raise RuntimeError(msg)
-        self._entity_version = record.entity_log.version
+
+        entity = self.entity
+        if (entity_version := entity.version) != self._entity_version + 1:
+            msg = f"Entity {entity} version {entity.version} does not match expected version {self._entity_version + 1} after deletion of record {record}. This indicates a bug."
+            raise RuntimeError(msg)
+        self._entity_version = entity_version
 
         # Notify all extra dependencies that they can remove us from their dependents
         for uid in self._extra_dependency_uids:
@@ -169,13 +191,13 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
         if record.uid != self.entity_uid:
             msg = f"EntityRecord UID {record.uid} does not match EntityDependents' entity UID {self.entity_uid}."
             raise ValueError(msg)
-        if record.version != self._entity_version + 1:
-            msg = f"EntityRecord version has changed from {self._entity_version} to {record.version} since EntityDependents was last updated. This indicates a bug."
+        if (record_version := record.version) != self._entity_version + 1:
+            msg = f"EntityRecord {record} version has changed from {self._entity_version} to {record.version} since EntityDependents was last updated. This indicates a bug."
             raise RuntimeError(msg)
-        self._entity_version = record.version
+        self._entity_version = record_version
 
         # Update our extra dependencies to match the entity's current extra dependencies
-        current_extra_dependencies = record.extra_dependency_uids
+        current_extra_dependencies = self._collect_extra_dependencies(record)
 
         # Remove dependencies that are no longer present
         for uid in self._extra_dependency_uids - current_extra_dependencies:
@@ -188,4 +210,4 @@ class EntityDependents(LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinima
                 other.add_dependent(self.entity_uid)
 
         # Update our record of extra dependencies
-        self._extra_dependency_uids = current_extra_dependencies
+        self._extra_dependency_uids = frozenset(current_extra_dependencies)

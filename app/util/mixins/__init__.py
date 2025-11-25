@@ -4,7 +4,15 @@
 
 # Import mixins
 from .combined import HierarchicalNamedMixin, LoggableHierarchicalMixin, LoggableHierarchicalNamedMixin, LoggableNamedMixin
-from .hierarchical import HierarchicalMixin, HierarchicalMixinMinimal, HierarchicalMutableProtocol, HierarchicalProtocol, ParentType
+from .hierarchical import (
+    HierarchicalMixin,
+    HierarchicalMixinMinimal,
+    HierarchicalMutableProtocol,
+    HierarchicalProtocol,
+    InstanceParentMutableProtocol,
+    InstanceParentProtocol,
+    ParentType,
+)
 from .loggable import LoggableMixin, LoggableProtocol
 from .named import FinalNamedProtocol, NamedMixin, NamedMixinMinimal, NamedMutableProtocol, NamedProtocol
 
@@ -16,6 +24,8 @@ __all__ = [
     "HierarchicalMutableProtocol",
     "HierarchicalNamedMixin",
     "HierarchicalProtocol",
+    "InstanceParentMutableProtocol",
+    "InstanceParentProtocol",
     "LoggableHierarchicalMixin",
     "LoggableHierarchicalNamedMixin",
     "LoggableMixin",

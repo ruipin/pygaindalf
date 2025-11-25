@@ -17,8 +17,9 @@ from app.portfolio.collections.uid_proxy.sequence import UidProxySequence
 from app.portfolio.journal.journal import Journal
 from app.portfolio.models.entity import Entity, EntityImpl, EntityRecord, EntitySchemaBase, IncrementingUidMixin
 from app.portfolio.models.transaction import Transaction, TransactionType
-from app.portfolio.util.uid import Uid
+from app.util.helpers.decimal_currency import DecimalCurrency
 from app.util.helpers.empty_class import empty_class
+from app.util.models.uid import Uid
 
 
 # Proxy specialization ------------------------------------------------------
@@ -87,7 +88,7 @@ class TestUidProxyMutableSequence:
             type=ttype,
             date=dt.datetime.now(tz=dt.UTC).date(),
             quantity=Decimal(qty),
-            consideration=Decimal(cons),
+            consideration=DecimalCurrency(cons, currency="USD"),
         )
 
     def test_insert_and_indexing(self):

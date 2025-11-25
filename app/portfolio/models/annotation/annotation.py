@@ -10,7 +10,7 @@ from pydantic import SerializationInfo, SerializerFunctionWrapHandler, model_ser
 
 from ....util.helpers import generics
 from ....util.helpers.empty_class import empty_class
-from ...util import SupersededError, Uid
+from ....util.models import SupersededError, Uid
 from ..entity import Entity, EntityRecord, EntitySchema
 from .annotation_journal import AnnotationJournal
 from .annotation_record import AnnotationRecord
@@ -52,6 +52,10 @@ class Annotation[
     @classmethod
     def _validate_entity(cls, entity: Entity) -> None:
         pass
+
+    @override
+    def _propagate_record_prepared(self) -> None:
+        self.entity_parent.on_annotation_created(self)
 
 
 # Register the proxy with the corresponding entity class to ensure isinstance and issubclass checks work correctly.

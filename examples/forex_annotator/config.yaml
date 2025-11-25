@@ -1,0 +1,16 @@
+logging: !include ../_include/logging/runtime_debug.yaml
+
+providers:
+  forex: !include ../_include/forex/oanda.yaml
+
+agents:
+- !include ../_include/importer_config/simple.yaml
+
+- package: transformers.forex_annotator
+  currencies:
+    - USD
+    - GBP
+    - EUR
+    - JPY
+
+- !include ../_include/exporter/yaml.yaml

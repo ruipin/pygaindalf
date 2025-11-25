@@ -22,16 +22,25 @@ class DefaultArgParser(ArgParserBase):
         self.add(
             "logging.levels.file",
             "-lv",
-            "--log-verbosity",
+            "--logfile-verbosity",
             action="store",
             help="Logfile verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)",
         )
+
         self.add(
             "logging.levels.tty",
+            "-cv",
+            "--console-verbosity",
+            action="store",
+            help="Console verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)",
+        )
+
+        self.add(
+            "logging.levels.default",
             "-v",
             "--verbosity",
             action="store",
-            help="Console verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)",
+            help="Default verbosity. Can be numeric or one of the default logging levels (CRITICAL=50, ERROR=40, WARNING=30, INFO=20, DEBUG=10)",
         )
 
         self.add("logging.rich", "-r", "--rich", action="store_true", help="Use rich for console output")

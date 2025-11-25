@@ -8,79 +8,68 @@ from typing import TYPE_CHECKING, Any, Self, override
 
 from frozendict import frozendict
 from iso4217 import Currency
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from .....util.helpers.decimal_currency import DecimalCurrency
 from .....util.helpers.empty_class import empty_class
 from .....util.helpers.frozendict import FrozenDict
 from ...entity import EntityDependencyEventHandlerImpl, EntityDependencyEventType
 from ...instrument import InstrumentRecord
-from ...transaction import Transaction, TransactionRecord
-from ..annotation_impl import AnnotationImpl
-from ..annotation_journal import AnnotationJournal
-from ..annotation_record import AnnotationRecord
+from ...transaction import TransactionRecord
 from ..annotation_schema import AnnotationSchema
-from ..unique_annotation import UniqueAnnotation
-
-
-if TYPE_CHECKING:
-    from .....util.mixins import ParentType
+from ..transaction_annotation import TransactionAnnotationImpl, TransactionAnnotationJournal, TransactionAnnotationRecord, UniqueTransactionAnnotation
 
 
 # MARK: Schema
 class ForexAnnotationSchema[
-    T_Mapping: Mapping[Currency, Decimal],
+    T_Decimal_Mapping: Mapping[Currency, Decimal],
+    T_Currency_Mapping: Mapping[Currency, DecimalCurrency],
 ](
     AnnotationSchema,
     metaclass=ABCMeta,
 ):
     if TYPE_CHECKING:
-        exchange_rates: T_Mapping = Field(default=...)
-        considerations: T_Mapping = Field(default=...)
+        exchange_rates: T_Decimal_Mapping = Field(default=...)
+        considerations: T_Currency_Mapping = Field(default=...)
     else:
         exchange_rates: FrozenDict[Currency, Decimal] = Field(default_factory=frozendict, description="The exchange rates associated with this annotation.")
-        considerations: FrozenDict[Currency, Decimal] = Field(
+        considerations: FrozenDict[Currency, DecimalCurrency] = Field(
             default_factory=frozendict, description="The considerations in various currencies associated with this annotation."
         )
 
 
 # MARK: Implementation
-class ForexAnnotationImpl(
-    AnnotationImpl,
-    ForexAnnotationSchema[MutableMapping[Currency, Decimal]] if TYPE_CHECKING else empty_class(),
+class ForexAnnotationImpl[
+    T_Decimal_Mapping: Mapping[Currency, Decimal],
+    T_Currency_Mapping: Mapping[Currency, DecimalCurrency],
+](
+    TransactionAnnotationImpl,
+    ForexAnnotationSchema[T_Decimal_Mapping, T_Currency_Mapping] if TYPE_CHECKING else empty_class(),
     metaclass=ABCMeta,
 ):
-    @property
-    def transaction(self) -> Transaction:
-        parent = self.entity.instance_parent
-        if parent is None or not isinstance(parent, Transaction):
-            msg = f"{type(self).__name__}.transaction requires parent to be a Transaction, got {type(parent)}"
-            raise TypeError(msg)
-        return parent
-
-    def get_exchange_rate(self, currency: Currency) -> Decimal | None:
+    def get_exchange_rate(self, currency: Currency) -> Decimal:
         if currency == self.transaction.currency:
             return self.decimal(1)
-        return self.exchange_rates.get(currency)
+        if (result := self.exchange_rates.get(currency)) is not None:
+            return result
+        return self.transaction.get_exchange_rate(currency, use_forex_annotation=False)
 
-    def get_consideration(self, currency: Currency) -> Decimal | None:
+    def get_consideration(self, currency: Currency) -> DecimalCurrency:
         if currency == self.transaction.currency:
             return self.transaction.consideration
-        return self.considerations.get(currency)
-
-    def get_consideration_in_currency(self, currency: Currency) -> Decimal:
-        if (consideration := self.get_consideration(currency)) is not None:
-            return consideration
+        elif (result := self.considerations.get(currency)) is not None:
+            return result
         else:
-            assert self.get_exchange_rate(currency) is None, (
-                "ForexAnnotation should store both exchange rate and consideration for a currency, but only exchange rate was found."
-            )
             return self.transaction.get_consideration_in_currency(currency, use_forex_annotation=False)
 
 
 # MARK: Journal
 class ForexAnnotationJournal(
-    ForexAnnotationImpl,
-    AnnotationJournal,
+    ForexAnnotationImpl[
+        MutableMapping[Currency, Decimal],
+        MutableMapping[Currency, DecimalCurrency],
+    ],
+    TransactionAnnotationJournal,
     init=False,
 ):
     def clear(self) -> None:
@@ -88,6 +77,8 @@ class ForexAnnotationJournal(
         self.considerations = {}
 
     def _calculate_currency(self, currency: Currency) -> None:
+        assert isinstance(currency, Currency), f"Expected Currency instance, got {type(currency).__name__}."
+
         transaction = self.transaction
 
         # fmt: off
@@ -101,7 +92,7 @@ class ForexAnnotationJournal(
             target=currency,
             date=date,
         )
-        self.considerations[currency] = rate * consideration
+        self.considerations[currency] = DecimalCurrency(rate * consideration, currency=currency)
 
     def recalculate(self) -> None:
         currencies = self.exchange_rates.keys()
@@ -116,6 +107,8 @@ class ForexAnnotationJournal(
             for cur in currency:
                 self.add_currency(cur)
             return
+
+        assert isinstance(currency, Currency), f"Expected Currency instance, got {type(currency).__name__}."
 
         if currency is self.transaction.get_journal_field("currency", create=False):
             return
@@ -140,7 +133,7 @@ class ForexAnnotationDependencyHandler(
     @staticmethod
     @override
     def attribute_matchers(owner: ForexAnnotationRecord, record: TransactionRecord | InstrumentRecord, attribute: str, value: Any) -> bool:
-        return "currency" in attribute or attribute in ("consideration", "date")
+        return attribute in ("consideration", "date")
 
     @staticmethod
     @override
@@ -157,7 +150,7 @@ class ForexAnnotationDependencyHandler(
 # MARK: Record
 class ForexAnnotationRecord(
     ForexAnnotationImpl,
-    AnnotationRecord[ForexAnnotationJournal],
+    TransactionAnnotationRecord[ForexAnnotationJournal],
     ForexAnnotationSchema,
     init=False,
     unsafe_hash=True,
@@ -169,22 +162,29 @@ class ForexAnnotationRecord(
 
         cls.register_dependency_event_handler(ForexAnnotationDependencyHandler())
 
-
-# MARK: Annotation
-class ForexAnnotation(
-    ForexAnnotationRecord if TYPE_CHECKING else empty_class(),
-    UniqueAnnotation[ForexAnnotationRecord, ForexAnnotationJournal],
-    metaclass=ABCMeta,
-    init=False,
-):
-    @classmethod
-    @override
-    def _do_validate_instance_parent(cls, parent: ParentType) -> None:
-        from ...transaction import Transaction
-
-        if not isinstance(parent, Transaction):
-            msg = f"ForexAnnotation requires parent to be a Transaction, got {type(parent)}"
+    @field_validator("considerations", mode="before")
+    def validate_considerations(cls, value: Any) -> FrozenDict[Currency, DecimalCurrency]:
+        if not isinstance(value, Mapping):
+            msg = f"ForexAnnotation considerations must be a mapping, got {type(value).__name__}."
             raise TypeError(msg)
+
+        validated: dict[Currency, DecimalCurrency] = {}
+        for currency, consideration in value.items():
+            if not isinstance(currency, Currency):
+                currency = Currency(currency)
+
+            if not isinstance(consideration, (Decimal, DecimalCurrency)):
+                consideration = DecimalCurrency(consideration, currency=currency)
+
+            if isinstance(consideration, Decimal) or consideration.currency:
+                validated[currency] = DecimalCurrency(consideration, currency=currency)
+            else:
+                if consideration.currency is not currency:
+                    msg = f"ForexAnnotation considerations currency must match the mapping key, got {consideration.currency} and {currency}."
+                    raise ValueError(msg)
+                validated[currency] = consideration
+
+        return frozendict(validated)
 
     @model_validator(mode="after")
     def _validate_mappings(self) -> Self:
@@ -195,6 +195,16 @@ class ForexAnnotation(
             raise ValueError(msg)
 
         return self
+
+
+# MARK: Annotation
+class ForexAnnotation(
+    ForexAnnotationRecord if TYPE_CHECKING else empty_class(),
+    UniqueTransactionAnnotation[ForexAnnotationRecord, ForexAnnotationJournal],
+    metaclass=ABCMeta,
+    init=False,
+):
+    pass
 
 
 # Register the proxy with the corresponding entity class to ensure isinstance and issubclass checks work correctly.

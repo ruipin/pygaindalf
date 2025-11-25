@@ -1,0 +1,2 @@
+package: exporters.yaml
+filepath: $CFG_PATH/export.yaml

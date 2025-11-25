@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
-from ...util.helpers.wrappers import before_attribute_check
+from ..helpers.wrappers import before_attribute_check
 
 
 class SupersededError(ValueError):
     pass
 
 
+@runtime_checkable
 class SupersededProtocol(Protocol):
     @property
     def superseded(self) -> bool: ...

@@ -236,6 +236,7 @@ runtime-evaluated-base-classes = [
     "app.components.providers.provider.ProviderConfig"                   , "app.components.providers.ProviderConfig"                ,
     "app.components.providers.forex.forex.ForexProviderConfig"           , "app.components.providers.forex.ForexProviderConfig"     ,
     "app.components.agents.transformers.transformer.TransformerConfig"   , "app.components.agents.transformers.TransformerConfig"   ,
+    "app.components.agents.importers.importer.SchemaImporterConfig"      , "app.components.agents.importers.SchemaImporterConfig"   ,
 ]
 
 # Decorators that require their argument/return type hints to be available at runtime

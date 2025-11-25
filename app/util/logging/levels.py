@@ -80,7 +80,15 @@ class LoggingLevel:
     def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
         return core_schema.no_info_after_validator_function(
             function=cls.validate,
-            schema=core_schema.union_schema([core_schema.int_schema(), core_schema.str_schema(), core_schema.bool_schema(), core_schema.none_schema()]),
+            schema=core_schema.union_schema(
+                [
+                    core_schema.int_schema(),
+                    core_schema.str_schema(),
+                    core_schema.bool_schema(),
+                    core_schema.none_schema(),
+                    core_schema.is_instance_schema(LoggingLevel),
+                ]
+            ),
             serialization=core_schema.plain_serializer_function_ser_schema(cls.serialize, info_arg=True),
         )
 
@@ -115,6 +123,9 @@ class LoggingLevel:
     @override
     def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
+
+    def __int__(self) -> int:
+        return self.value
 
     @override
     def __hash__(self) -> int:

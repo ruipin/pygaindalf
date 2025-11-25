@@ -11,10 +11,13 @@ from pydantic_core import PydanticUseDefault
 
 from ..config import BaseConfigModel
 from ..config.inherit import FieldInherit
+from .decimal_currency import DecimalCurrency
 
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
+
+    from iso4217 import Currency
 
 
 # MARK: Enumerations
@@ -163,9 +166,30 @@ class DecimalFactory:
     def context_manager(self) -> AbstractContextManager[decimal.Context]:
         return decimal.localcontext(self.context)
 
-    def __call__(self, value: str | float | decimal.Decimal) -> decimal.Decimal:
+    def __call__(
+        self, value: str | float | decimal.Decimal, currency: Currency | str | None = None, default_currency: Currency | str | None = None
+    ) -> decimal.Decimal:
+        """Create a Decimal instance with the current context settings.
+
+        This is useful for creating Decimal objects with the specified precision and rounding.
+        """
+        if currency is not None or default_currency is not None:
+            return self.currency(value, currency=currency, default_currency=default_currency)
+        else:
+            return self.decimal(value)
+
+    def decimal(self, value: str | float | decimal.Decimal) -> decimal.Decimal:
         """Create a Decimal instance with the current context settings.
 
         This is useful for creating Decimal objects with the specified precision and rounding.
         """
         return decimal.Decimal(value, context=self.context)
+
+    def currency(
+        self, value: str | float | decimal.Decimal, currency: Currency | str | None = None, *, default_currency: Currency | str | None = None
+    ) -> DecimalCurrency:
+        """Create a DecimalCurrency instance with the current context settings.
+
+        This is useful for creating DecimalCurrency objects with the specified precision and rounding.
+        """
+        return DecimalCurrency(value, currency=currency, default_currency=default_currency, context=self.context)

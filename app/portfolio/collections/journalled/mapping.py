@@ -11,7 +11,7 @@ from typing import (
 )
 
 from ....util.helpers.frozendict import PydanticFrozenDictAnnotation, frozendict
-from ...util.uid import Uid, UidProtocol
+from ....util.models.uid import Uid, UidProtocol
 from .collection import JournalledCollection
 
 

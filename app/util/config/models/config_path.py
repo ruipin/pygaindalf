@@ -37,10 +37,11 @@ class ConfigFilePath:
         return self.file_path == "-"
 
     @property
-    def dirname(self) -> Path:
+    def parent(self) -> Path:
         if self.is_stdin:
-            return Path.cwd()
-        return Path(Path(self.file_path).resolve()).parent
+            msg = "Standard input does not have a parent directory"
+            raise ValueError(msg)
+        return Path(self.file_path).parent
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:

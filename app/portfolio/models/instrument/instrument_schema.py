@@ -7,6 +7,7 @@ from iso4217 import Currency
 from pydantic import Field
 
 from ..entity import EntitySchemaBase
+from .instrument_type import InstrumentType
 
 
 class InstrumentSchema(EntitySchemaBase, metaclass=ABCMeta):
@@ -17,4 +18,5 @@ class InstrumentSchema(EntitySchemaBase, metaclass=ABCMeta):
     ticker: str | None = Field(
         default=None, min_length=1, exclude_if=lambda v: v is None, description="Ticker symbol of the instrument, used for trading and identification."
     )
-    currency: Currency = Field(description="The currency in which the instrument is denominated.")
+    type: InstrumentType = Field(description="The type of the instrument.")
+    currency: Currency = Field(description="The default currency in which the instrument is denominated.")

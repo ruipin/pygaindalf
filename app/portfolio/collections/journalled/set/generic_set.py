@@ -10,7 +10,7 @@ from typing import Any, override
 
 from pydantic_core import CoreSchema, core_schema
 
-from ....util.uid import Uid, UidProtocol
+from .....util.models.uid import Uid, UidProtocol
 from ..collection import JournalledCollection
 
 

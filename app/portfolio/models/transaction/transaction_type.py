@@ -15,6 +15,51 @@ class TransactionType(StrEnum):
     FEE      = "fee"
     # fmt: on
 
+    # MARK: Acquisitions
+    @property
+    def buy(self) -> bool:
+        return self is TransactionType.BUY
+
+    @property
+    def acquisition(self) -> bool:
+        return self is TransactionType.BUY
+
+    # MARK: Disposals
+    @property
+    def sell(self) -> bool:
+        return self is TransactionType.SELL
+
+    @property
+    def disposal(self) -> bool:
+        return self is TransactionType.SELL
+
+    # MARK: Income
+    @property
+    def dividend(self) -> bool:
+        return self is TransactionType.DIVIDEND
+
+    @property
+    def interest(self) -> bool:
+        return self is TransactionType.INTEREST
+
+    @property
+    def income(self) -> bool:
+        return self in {TransactionType.DIVIDEND, TransactionType.INTEREST}
+
+    # MARK: Expenses
+    @property
+    def fee(self) -> bool:
+        return self is TransactionType.FEE
+
+    @property
+    def expense(self) -> bool:
+        return self is TransactionType.FEE
+
+    # MARK: S104
+    def affects_s104_holdings(self) -> bool:
+        return self in {TransactionType.BUY, TransactionType.SELL}
+
+    # MARK: Utilities
     @override
     def __str__(self) -> str:
         return self.value

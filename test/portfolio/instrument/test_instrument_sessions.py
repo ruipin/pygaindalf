@@ -9,6 +9,7 @@ from app.portfolio.journal.session import Session
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.instrument.instrument_journal import InstrumentJournal
+from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.root import EntityRoot
 
 
@@ -16,7 +17,7 @@ from app.portfolio.models.root import EntityRoot
 @pytest.fixture
 def instrument(entity_root: EntityRoot) -> Instrument:
     with entity_root.session_manager(actor="instrument fixture", reason="fixture setup"):
-        entity = entity_root.root = Instrument(ticker="AAPL", currency=Currency("USD"))
+        entity = entity_root.root = Instrument(ticker="AAPL", type=InstrumentType.EQUITY, currency=Currency("USD"))
     return entity
 
 
@@ -83,7 +84,7 @@ class TestInstrumentJournalWithSessions:
     def test_attribute_forbids_name_changes(self, instrument: Instrument, session_manager: SessionManager):
         with (
             pytest.raises(ValueError, match="Updating the entity record cannot change its instance name"),
-            session_manager(actor="tester", reason="attr-style"),
+            session_manager(actor="tester", reason="attr-style", exit_on_exception=False),
         ):
             j = instrument.journal
 

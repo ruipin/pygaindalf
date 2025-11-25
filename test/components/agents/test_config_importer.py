@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from decimal import Decimal
 from typing import Any
 
 import pytest
 
 from ..fixture import RuntimeFixture
+from .lib.portfolio_validation import validate_portfolio
 
 
 @pytest.mark.components
@@ -30,57 +30,14 @@ class TestConfigImporter:
 
         runtime_instance.run()
 
-        portfolio = runtime_instance.context.portfolio
-        ledgers_by_ticker = {ledger.instrument.ticker: ledger for ledger in portfolio}
-
-        assert len(ledgers_by_ticker) == len(ledgers_data)
-
-        for ledger_data in ledgers_data:
-            ticker = ledger_data["instrument"]["ticker"]
-            assert ticker in ledgers_by_ticker
-            ledger = ledgers_by_ticker[ticker]
-
-            for field, expected_value in ledger_data["instrument"].items():
-                actual_value = getattr(ledger.instrument, field)
-                if field == "currency":
-                    actual_value = actual_value.code
-                assert actual_value == expected_value
-
-            transactions = list(ledger)
-            transactions_data = list(ledger_data["transactions"])
-            assert len(transactions) == len(transactions_data)
-
-            for transaction in transactions:
-                for transaction_data in transactions_data:
-                    if transaction.type.value == transaction_data["type"] and transaction.date.isoformat() == transaction_data["date"]:
-                        break
-                else:
-                    pytest.fail(f"No matching transaction found for {transaction!r}")
-                transactions_data.remove(transaction_data)
-
-                for field, expected_value in transaction_data.items():
-                    if field == "currency":
-                        field = "txn_currency"
-                    actual_value = getattr(transaction, field)
-
-                    if field in {"quantity", "consideration", "fees"}:
-                        expected_value = Decimal(str(expected_value))
-                    elif field == "txn_currency":
-                        actual_value = actual_value.code if actual_value is not None else None
-                    elif field == "type":
-                        actual_value = actual_value.value
-                    elif field == "date":
-                        actual_value = actual_value.isoformat()
-
-                    assert actual_value == expected_value
-
-                assert transaction.currency == transaction.txn_currency if transaction.txn_currency is not None else ledger.instrument.currency
+        validate_portfolio(runtime_instance, ledgers_data)
 
     def test_config_importer_single_instrument(self, runtime: RuntimeFixture) -> None:
         ledgers_data = [
             {
                 "instrument": {
                     "ticker": "APPL",
+                    "type": "equity",
                     "currency": "USD",
                 },
                 "transactions": [
@@ -121,8 +78,7 @@ class TestConfigImporter:
                         "type": "fee",
                         "date": "2023-01-06",
                         "quantity": 1,
-                        "consideration": 10,
-                        "currency": "GBP",
+                        "consideration": "10 GBP",
                     },
                 ],
             }
@@ -135,6 +91,7 @@ class TestConfigImporter:
             {
                 "instrument": {
                     "ticker": "APPL",
+                    "type": "equity",
                     "currency": "USD",
                 },
                 "transactions": [
@@ -156,6 +113,7 @@ class TestConfigImporter:
             {
                 "instrument": {
                     "ticker": "MSFT",
+                    "type": "equity",
                     "currency": "USD",
                 },
                 "transactions": [
@@ -169,8 +127,7 @@ class TestConfigImporter:
                         "type": "fee",
                         "date": "2023-02-11",
                         "quantity": 1,
-                        "consideration": 15,
-                        "currency": "USD",
+                        "consideration": "15 USD",
                     },
                 ],
             },

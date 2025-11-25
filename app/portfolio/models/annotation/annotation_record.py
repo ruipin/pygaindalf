@@ -2,7 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
-from typing import Any, override
+from typing import override
 
 from ..entity import EntityRecord
 from .annotation_impl import AnnotationImpl
@@ -20,17 +20,10 @@ class AnnotationRecord[
     unsafe_hash=True,
 ):
     @override
-    def model_post_init(self, context: Any) -> None:
-        super().model_post_init(context)
-
-        # Add self to parent's annotations
-        self.record_parent.on_annotation_record_created(self)
-
-    @override
     def propagate_deletion(self) -> None:
         parent = self.record_parent_or_none
         if parent is not None:
-            self.record_parent.on_annotation_record_deleted(self)
+            self.entity_parent.on_annotation_deleted(self.uid)
         else:
             self.log.warning(t"Annotation record {self} has no parent during deletion propagation.")
 

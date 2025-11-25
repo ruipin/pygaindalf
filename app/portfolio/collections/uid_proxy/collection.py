@@ -5,7 +5,7 @@ from abc import ABCMeta
 from collections.abc import Collection
 from typing import TYPE_CHECKING, override
 
-from ...util.uid import Uid
+from ....util.models.uid import Uid
 from ..proxy import ProxyCollection, ProxyMutableCollection
 
 

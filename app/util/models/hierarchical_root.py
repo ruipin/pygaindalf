@@ -11,8 +11,11 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 from pydantic import ConfigDict, model_validator
 from pydantic.fields import FieldInfo
 
-from ..mixins import HierarchicalMixinMinimal, HierarchicalMutableProtocol, NamedMutableProtocol, ParentType
+from ..mixins import HierarchicalMixinMinimal, InstanceParentMutableProtocol, NamedMutableProtocol, ParentType
+from .annotated import is_non_child_type
 from .single_initialization import SingleInitializationModel
+from .superseded import SupersededProtocol
+from .uid import Uid
 
 
 class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal):
@@ -41,8 +44,8 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
     #       mutable.
     #       Since it only happens at the model validation stage as part of __init__ we are not breaking the mutability contract.
     #       We do sanity check that the current values are not already set to avoid overwriting them.
-    def _seed_parent_to_object(self, *, obj: Any) -> None:
-        if isinstance(obj, HierarchicalMutableProtocol):
+    def _seed_parent_to_object(self, *, obj: Any, fldnm: str, fldkey: Any) -> None:
+        if isinstance(obj, InstanceParentMutableProtocol):
             if not getattr(type(obj), "PROPAGATE_INSTANCE_PARENT_FROM_PARENT", True):
                 return
             propagate_parent = self if not getattr(type(self), "PROPAGATE_INSTANCE_PARENT_FROM_PARENT_TO_CHILDREN", False) else self.instance_parent
@@ -55,7 +58,21 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             from .hierarchical import HierarchicalModel
 
             if isinstance(obj, HierarchicalModel):
+                if __debug__:
+                    fld = getattr(self, fldnm, None)
+                    assert fld is not None, "Inconsistent state when propagating parent to child."
+                    if fldkey is None:
+                        assert fld is obj, "Inconsistent state when propagating parent to child."
+                    elif isinstance(fld, Mapping):
+                        assert fld.get(fldkey, None) is obj, "Inconsistent state when propagating parent to child."
+                    else:
+                        assert fld[fldkey] is obj, "Inconsistent state when propagating parent to child."
+
                 object.__setattr__(obj, "instance_parent_weakref", weakref.ref(propagate_parent))
+                object.__setattr__(obj, "instance_parent_field_name", fldnm)
+                object.__setattr__(
+                    obj, "instance_parent_field_key_weakref", fldkey if fldkey is None or isinstance(fldkey, (int, str)) else weakref.ref(fldkey)
+                )
             else:
                 # If there is no setter, python raises AttributeError
                 with contextlib.suppress(AttributeError):
@@ -73,32 +90,40 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
                 raise ValueError(msg)
             object.__setattr__(obj, "instance_name", name)
 
-    def _seed_parent_and_name_to_object(self, *, obj: Any, name: str, propagate_name: bool, propagate_parent: bool) -> None:
+    def _seed_parent_and_name_to_object(self, *, obj: Any, fldnm: str, fldkey: Any, propagate_name: bool, propagate_parent: bool) -> None:
         if not getattr(type(obj), "PROPAGATE_FROM_PARENT", True):
             return
-
-        from ...portfolio.util.uid import Uid
 
         if isinstance(obj, Uid):
             from ...portfolio.models.entity import Entity
 
             obj = Entity.by_uid_or_none(obj)
-            if obj is None:
+            if obj is None or obj is self:
                 return
 
         if propagate_parent:
-            self._seed_parent_to_object(obj=obj)
+            self._seed_parent_to_object(obj=obj, fldnm=fldnm, fldkey=fldkey)
         if propagate_name:
+            name = f"{fldnm}[{fldkey}]" if isinstance(fldkey, (str, int)) else fldnm
             self._seed_name_to_object(obj=obj, name=name)
 
     def _should_seed_parent_and_name_to_field(self, fldnm: str, fldinfo: FieldInfo | None = None) -> tuple[bool, bool]:
-        if fldnm in ("instance_parent", "instance_parent_weakref", "uid"):
+        from .hierarchical import HierarchicalModel
+
+        if bool(fldnm in ("uid", "instance_name") or fldnm in HierarchicalModel.INSTANCE_PARENT_FIELD_NAMES):
             return (False, False)
 
         if fldinfo is None:
             fldinfo = type(self).model_fields[fldnm]
 
         extra = fldinfo.json_schema_extra if isinstance(fldinfo.json_schema_extra, dict) else None
+
+        # We only propagate to children
+        if extra and (is_child := extra.get("child", None)) is not None:
+            if not is_child:
+                return (False, False)
+        elif (ann := fldinfo.annotation) is not None and is_non_child_type(ann):
+            return (False, False)
 
         # Global propagation - class config
         propagate = None
@@ -139,21 +164,23 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             return
 
         # Do propagation
-        from ...portfolio.util.uid import Uid
+        from .uid import Uid
 
-        if isinstance(fld, (HierarchicalMutableProtocol, NamedMutableProtocol, Uid)):
-            self._seed_parent_and_name_to_object(obj=fld, name=fldnm, propagate_name=propagate_name, propagate_parent=propagate_parent)
+        if isinstance(fld, (InstanceParentMutableProtocol, NamedMutableProtocol, Uid)):
+            self._seed_parent_and_name_to_object(obj=fld, fldnm=fldnm, fldkey=None, propagate_name=propagate_name, propagate_parent=propagate_parent)
         elif isinstance(fld, (Sequence, AbstractSet)) and not isinstance(fld, (str, bytes, bytearray)):
             for i, item in enumerate(fld):
-                self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}.{i}", propagate_name=propagate_name, propagate_parent=propagate_parent)
+                self._seed_parent_and_name_to_object(obj=item, fldnm=fldnm, fldkey=i, propagate_name=propagate_name, propagate_parent=propagate_parent)
         elif isinstance(fld, Mapping):
             for key, item in fld.items():
-                self._seed_parent_and_name_to_object(obj=item, name=f"{fldnm}.{key}", propagate_name=propagate_name, propagate_parent=propagate_parent)
+                self._seed_parent_and_name_to_object(obj=item, fldnm=fldnm, fldkey=key, propagate_name=propagate_name, propagate_parent=propagate_parent)
 
     @model_validator(mode="after")
     def _validator_seed_parent_and_name(self) -> Any:
-        for fldnm, fldinfo in type(self).model_fields.items():
-            self._seed_parent_and_name_to_field(fldnm, fldinfo)
+        if not isinstance(self, SupersededProtocol) or not self.superseded:
+            for fldnm, fldinfo in type(self).model_fields.items():
+                self._seed_parent_and_name_to_field(fldnm, fldinfo)
+
         return self
 
     if not TYPE_CHECKING:

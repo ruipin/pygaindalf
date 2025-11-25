@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, ClassVar, override
 from ....util.callguard import callguard_class
 from ....util.helpers import script_info
 from ....util.mixins import LoggableHierarchicalMixin
-from ...util.uid import IncrementingUidFactory, Uid
+from ....util.models.uid import IncrementingUidFactory, Uid
 from ..entity import Entity, EntityRecord
 
 
@@ -152,6 +152,9 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
     @override
     def __delitem__(self, value: Uid | Entity | EntityRecord) -> None:
+        self.delete(value)
+
+    def delete(self, value: Uid | Entity | EntityRecord, *, keep_log: bool = True) -> None:
         uid = Entity.narrow_to_uid(value)
         entity = self._entity_store.get(uid, None)
         if entity is None:
@@ -162,7 +165,8 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
             raise RuntimeError(msg)
 
         del self._entity_store[uid]
-        # We don't delete the entiy log on purpose
+        if not keep_log:
+            del self._entity_log_store[uid]
 
     @override
     def __iter__(self) -> Iterator[Uid]:  # pyright: ignore[reportIncompatibleMethodOverride] as we override MutableMapping not BaseModel
@@ -207,7 +211,11 @@ class EntityStore(MutableMapping[Uid, Entity], LoggableHierarchicalMixin):
 
             entity = self.get(uid, None)
             if entity is None:
-                continue
+                msg = f"UID {uid} is reachable but not found in store."
+                raise KeyError(msg)
+            if not entity.exists:
+                msg = f"UID {uid} is reachable but does not exist."
+                raise ValueError(msg)
 
             for child in entity.children_uids if not use_journal else entity.journal_children_uids:
                 assert child in self, f"Child UID {child} of entity {entity} not found in store."

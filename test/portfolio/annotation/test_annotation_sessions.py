@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from .annotation_types import HostEntity, SampleIncrementingAnnotation, SampleUniqueAnnotation
+from .annotation_types import HostEntity, NonChildDependencyAnnotation, SampleIncrementingAnnotation, SampleUniqueAnnotation
 
 
 if TYPE_CHECKING:
@@ -80,3 +80,29 @@ class TestAnnotationSessions:
 
         assert u2.exists
         assert u2 is u
+
+    def test_non_child_dependency_detection(self, entity_root: EntityRoot, session_manager: SessionManager):
+        # Create two separate host entities; one will own the annotation, the other will be
+        # referenced as a non-child dependency.
+        with session_manager(actor="tester", reason="create-root"):
+            owner = entity_root.root = HostEntity()
+
+        # Attach an annotation to the owner that references the other host via an InstanceOf
+        # field which should be treated as a non-child dependency.
+        with session_manager(actor="tester", reason="add-non-child-dependency") as s:
+            referenced = HostEntity()
+            owner.journal.other_entity = referenced
+            ann = NonChildDependencyAnnotation.create(owner, referenced=referenced)
+
+            assert s.dirty is True
+            assert owner.dirty is True
+
+        # After commit, the annotation still exists and the dependency graph should reflect that the annotation depends on the
+        # referenced entity via a non-child dependency edge. This is surfaced through entity_dependents/dependent_uids.
+        assert ann.exists is True
+        assert referenced.exists is True
+
+        dependents = list(referenced.entity_dependents.dependent_uids)
+        assert ann.uid in dependents
+
+        assert referenced.uid not in ann.children_uids

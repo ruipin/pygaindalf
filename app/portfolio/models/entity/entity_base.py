@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import functools
 import inspect
 import weakref
 
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterable, Mapping, MutableMapping
+from functools import partialmethod
 from typing import TYPE_CHECKING, Any, ClassVar, Self, final, override
 from typing import cast as typing_cast
 
@@ -23,10 +23,11 @@ from pydantic import (
 )
 
 from ....util.callguard import CallguardClassOptions
-from ....util.helpers import generics, type_hints
+from ....util.helpers import generics, script_info, type_hints
 from ....util.mixins import HierarchicalMixinMinimal, NamedMixinMinimal
 from ....util.models import LoggableHierarchicalModel
-from ...util.uid import Uid, UidProtocol
+from ....util.models.uid import Uid, UidProtocol
+from .entity_common import EntityCommon
 from .entity_dependents import EntityDependents
 from .entity_log import EntityLog
 from .entity_record import EntityRecord
@@ -35,17 +36,19 @@ from .entity_record import EntityRecord
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
-    from ...journal.session import Session
-    from ...journal.session_manager import SessionManager
+    from ...journal import Journal
+    from ..annotation import Annotation
     from ..store import EntityStore
     from .entity import Entity
 
 
 class EntityBase[
     T_Record: EntityRecord,
+    T_Journal: Journal,
 ](
     type_hints.CachedTypeHintsMixin,
     LoggableHierarchicalModel,
+    EntityCommon[T_Journal],
     NamedMixinMinimal,
     metaclass=ABCMeta,
 ):
@@ -134,6 +137,7 @@ class EntityBase[
         # Creating a new entity
         if not self.initialized:
             super().__init__(**data)
+            self._prepare_or_update_record()
             self.log.debug(t"Created new {type(self).__name__} with UID {self.uid} and instance name '{self.instance_name}'.")
 
     def _on_reinit(self, **data) -> None:
@@ -205,7 +209,7 @@ class EntityBase[
         record_type = cls.get_record_type(origin=True)
         for name, _ in inspect.getmembers_static(record_type, predicate=inspect.isfunction):
             if cls._should_copy_record_method_to_class(name):
-                setattr(cls, name, functools.partialmethod(cls.call_record_method, name))
+                setattr(cls, name, partialmethod(cls.call_record_method, name))
 
     # MARK: Lookup
     @classmethod
@@ -418,9 +422,6 @@ class EntityBase[
         entity_store[self.uid] = self
         assert entity_store[self.uid] is self, f"Failed to store entity {self} in the entity store."
 
-        # Create entity record
-        self._create_first_record()
-
         return self
 
     # MARK: Entity Log
@@ -481,33 +482,87 @@ class EntityBase[
 
     @property
     def record_or_none(self) -> T_Record | None:
-        return self._record
+        if (record := self._record) is not None:
+            if record.superseded:
+                msg = f"Entity {self} has a record that is marked as superseded, which is invalid."
+                raise RuntimeError(msg)
+        return record
 
     @property
     def record(self) -> T_Record:
-        if self._record is None:
-            msg = f"Entity {self} does not currently have a record. It may have been deleted."
+        if (record := self.record_or_none) is None:
+            if self.version == 0:
+                msg = f"Entity {self} does not have a record yet."
+                if self.session_or_none is not None:
+                    msg += " Please commit the current session to trigger its creation."
+            elif self.deleted:
+                msg = f"Entity {self} has been deleted and does not have a record."
+            else:
+                msg = f"Entity {self} does not currently have a record for an unknown reason"
             raise ValueError(msg)
-        return self._record
+        return record
 
     get_record_type = generics.GenericIntrospectionMethod[T_Record]()
 
-    def _create_first_record(self) -> T_Record:
-        if (extra := self.__pydantic_extra__) is None:
-            msg = "Expected '__pydantic_extra__' to be set for Entity."
-            raise ValueError(msg)
+    def _prepare_or_update_record(self, data: dict[str, Any] | None = None) -> None:
+        if data is None:
+            if (data := self.__pydantic_extra__) is None:
+                data = {}
+            self.__pydantic_extra__ = None
+        else:
+            if self.__pydantic_extra__ is not None:
+                msg = "Expected '__pydantic_extra__' to be empty when preparing entity record."
+                raise ValueError(msg)
 
-        record = self._create_record(**extra)
-        extra.clear()
-        return record
+        # If record exists -> update its journal
+        if self.exists:
+            self._update_record(data)
 
-    def _create_record(self, **data) -> T_Record:
-        record_type = self.get_record_type()
+        # If record does not exist -> create record-less journal
+        else:
+            self._prepare_record(data)
 
-        record = record_type(uid=self.uid, **data)  # pyright: ignore[reportCallIssue]
+    def _update_record(self, data: dict[str, Any]) -> None:
+        assert self.exists, f"Cannot update record for non-existing entity {self}."
+        self.assert_update_allowed(in_commit_only=False, force_session=False)
+
+        if self.in_session:
+            self.record.journal.update(**data)
+        elif script_info.is_unit_test():
+            self.record.update(**data)
+        else:
+            msg = f"Cannot update record for entity {self} outside of an active session."
+            raise RuntimeError(msg)
+
+    def _prepare_record(self, data: dict[str, Any]) -> None:
+        self.assert_update_allowed(in_commit_only=False, force_session=False)
+
+        if not self.in_session:
+            self.create_record(**data)
+        else:
+            session = self.session
+            journal = session.get_journal(self.uid, create=True)
+            if journal is None:
+                msg = "Expected journal to be created for prepared entity record."
+                raise ValueError(msg)
+            journal.update(**data)
+            self.log.debug(t"Prepared record for entity {self} in session {session} with data {data}.")
+
+        self._propagate_record_prepared()
+
+    def _propagate_record_prepared(self) -> None:
+        pass
+
+    def create_record(self, **data) -> T_Record:
+        self.assert_update_allowed(allow_frozen_journal=True, force_session=False)
+
+        if (record := self.record_or_none) is None:
+            record_type = self.get_record_type()
+            record = record_type(uid=self.uid, **data)  # pyright: ignore[reportCallIssue]
+        else:
+            record = record.update(**data)
+
         self._set_record(record)
-        assert record.instance_parent is self, f"Expected record parent to be {self}, got {record.instance_parent} instead."
-
         return record
 
     def _set_record(self, record: T_Record | None) -> None:
@@ -524,47 +579,50 @@ class EntityBase[
                 raise ValueError(msg)
 
         self._record = record
+        self._reset_uid_caches()
 
         # Force instance parent to None if the record was deleted
         if record is None:
-            object.__setattr__(self, "instance_parent_weakref", None)
-
-    # MARK: Session
-    @property
-    def session_manager_or_none(self) -> SessionManager | None:
-        from ...journal import SessionManager
-
-        return SessionManager.get_global_manager_or_none()
+            self._clear_instance_parent_data()
 
     @property
-    def session_manager(self) -> SessionManager:
-        from ...journal import SessionManager
-
-        return SessionManager.get_global_manager()
-
-    @property
-    def session_or_none(self) -> Session | None:
-        if (manager := self.session_manager_or_none) is None:
+    def record_parent_or_none(self) -> EntityRecord | None:
+        if (parent := self.instance_parent) is None:
             return None
-        return manager.session
+
+        record = parent.record_or_none if isinstance(parent, EntityBase) else parent
+        if record is None or not isinstance(record, EntityRecord):
+            return None
+        return record.superseding_or_none
 
     @property
-    def session(self) -> Session:
-        if (session := self.session_or_none) is None:
-            msg = "No active session found in the session manager."
-            raise RuntimeError(msg)
-        return session
+    def record_parent(self) -> EntityRecord:
+        if (parent := self.record_parent_or_none) is None:
+            msg = f"{type(self).__name__} instance {self.uid} has no valid entity record parent."
+            raise ValueError(msg)
+        return parent
 
     @property
-    def in_session(self) -> bool:
-        manager = self.session_manager_or_none
-        return False if manager is None else manager.in_session
+    def entity_parent_or_none(self) -> Entity | None:
+        if (parent := self.instance_parent) is None:
+            return None
+        from .entity import Entity
+
+        entity = parent.entity_or_none if isinstance(parent, EntityRecord) else parent
+        if entity is None or not isinstance(entity, Entity):
+            return None
+        return entity
+
+    @property
+    def entity_parent(self) -> Entity:
+        if (parent := self.entity_parent_or_none) is None:
+            msg = f"{type(self).__name__} instance {self.uid} has no valid entity parent."
+            raise ValueError(msg)
+        return parent
 
     # MARK: Update
-    def update(self, **kwargs) -> Self:
-        record = self.record_or_none
-
-        if (new_parent := kwargs.pop("instance_parent", None)) is not None:
+    def update(self, **data) -> Self:
+        if (new_parent := data.pop("instance_parent", None)) is not None:
             if new_parent is None:
                 msg = "Cannot set 'instance_parent' to None. To remove the parent, delete the entity instead."
                 raise ValueError(msg)
@@ -573,12 +631,12 @@ class EntityBase[
                     msg = "Cannot change the 'instance_parent' of an existing entity. The parent is managed by the associated Entity instance and should not be changed directly."
                     raise ValueError(msg)
             else:
+                self._clear_instance_parent_data()
                 object.__setattr__(
                     self, "instance_parent_weakref", weakref.ref(new_parent) if not isinstance(new_parent, weakref.ReferenceType) else new_parent
                 )
 
-        record = self._create_record(**kwargs) if record is None else record.update(**kwargs)
-        assert self.record_or_none is record, f"Expected record to be {record}, got {self.record_or_none} instead."
+        self._prepare_or_update_record(data)
         return self
 
     @property
@@ -615,12 +673,14 @@ class EntityBase[
 
     @property
     def deleted(self) -> bool:
-        return not self.exists
+        return not self.exists and (self.version > 0 or self.entity_log.reverted)
 
     @property
     def marked_for_deletion(self) -> bool:
-        record = self.record_or_none
-        return record is None or record.marked_for_deletion
+        if (record := self.record_or_none) is None:
+            return self.deleted and not self.has_journal
+        else:
+            return self.deleted or record.marked_for_deletion
 
     def on_delete_record(self) -> None:
         self._set_record(None)
@@ -647,8 +707,8 @@ class EntityBase[
             record.revert()
             self._set_record(None)
 
-        if version != self.version + 1:
-            msg = f"Expected entity log version to be {version + 1} after revert, got {self.version} instead."
+        if self.version != version - 1:
+            msg = f"Expected entity log version to be {version - 1} after revert, got {self.version} instead."
             raise RuntimeError(msg)
 
     # MARK: Fields
@@ -693,14 +753,26 @@ class EntityBase[
 
         @override
         def __getattribute__(self, name: str) -> Any:
-            if name == "__class__" or not EntityBase._should_redirect_attribute_to_record(name):
+            if name == "__class__" or not type(self)._should_redirect_attribute_to_record(name):  # noqa: SLF001
                 return super().__getattribute__(name)
-            return self.record.__getattribute__(name)
+
+            if not self.exists:
+                if (journal := self.journal_or_none) is None:
+                    msg = f"Cannot get attribute '{name}' on entity {self} without a record or journal."
+                    raise AttributeError(msg)
+                return journal.__getattribute__(name)
+            else:
+                return self.record.__getattribute__(name)
 
         @override
         def __setattr__(self, name: str, value: object) -> None:
             if not self._should_redirect_attribute_to_record(name):
                 return super().__setattr__(name, value)
+
+            if not self.exists:
+                msg = f"Cannot set attribute '{name}' on entity {self} without a record."
+                raise AttributeError(msg)
+
             return self.record.__setattr__(name, value)
 
     @override
@@ -723,11 +795,6 @@ class EntityBase[
         return method(*args, **kwargs)
 
     # MARK: Children
-    @property
-    def children(self) -> Iterable[EntityBase]:
-        for uid in self.record.children_uids:
-            yield EntityBase.by_uid(uid)
-
     def is_reachable(self, *, recursive: bool = True, use_journal: bool = False) -> bool:
         from ..root import EntityRoot
 
@@ -755,6 +822,50 @@ class EntityBase[
         else:
             return parent.is_reachable(use_journal=use_journal, recursive=True)
 
+    # MARK: Annotations
+    def on_annotation_created(self, annotation_or_uid: Annotation | Uid) -> None:
+        self.assert_update_allowed(in_commit_only=False, force_session=False)
+
+        self.log.debug(t"Entity {self} received creation notice for annotation {annotation_or_uid}.")
+
+        if (journal := self.journal_or_none) is not None and journal.frozen:
+            msg = f"Cannot modify annotations of {self} because its journal is frozen."
+            raise RuntimeError(msg)
+
+        from ..annotation import Annotation
+
+        annotation = Annotation.narrow_to_instance(annotation_or_uid)
+
+        if not self.in_session:
+            record = self.record_or_none
+            annotations: set[Annotation] = set(record.annotations) if record is not None else set()
+            if annotation in annotations:
+                return
+            annotations.add(annotation)
+            self.update(annotations=annotations)
+        else:
+            journal = self.journal
+            if annotation in journal.get_field("annotations", wrap=False):
+                return
+            journal.annotations.add(annotation)
+
+    def on_annotation_deleted(self, annotation_or_uid: Annotation | Uid) -> None:
+        self.log.debug(t"Entity {self} received deletion notice for annotation {annotation_or_uid}.")
+        self.assert_update_allowed(in_commit_only=False)
+
+        if (journal := self.journal_or_none) is not None and journal.frozen:
+            msg = f"Cannot modify annotations of {self} because its journal is frozen."
+            raise RuntimeError(msg)
+
+        from ..annotation import Annotation
+
+        journal = self.journal
+
+        annotation = Annotation.narrow_to_instance(annotation_or_uid)
+        if annotation not in journal.get_field("annotations", wrap=False):
+            return
+        journal.annotations.discard(annotation)
+
     # MARK: Serialization
     @model_serializer(mode="wrap")
     def _serialize_model(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict[str, Any]:
@@ -772,7 +883,10 @@ class EntityBase[
 
     # MARK: Utilities
     def sort_key(self) -> SupportsRichComparison:
-        return self.record.sort_key()
+        if not self.exists:
+            return self.journal.sort_key()
+        else:
+            return self.record.sort_key()
 
     @override
     def __eq__(self, other: object) -> bool:
@@ -791,8 +905,14 @@ class EntityBase[
 
         result = spr.removesuffix(">")
         result += f" v{self.version}"
+
         if not self.exists:
-            result += " (D)"
+            if self.deleted:
+                result += " (D)"
+            elif self.version == 0:
+                result += " (J)"
+            else:
+                result += " (X)"
 
         result = result.replace(f"{type(self).__name__}@", "")
         return result + ">"

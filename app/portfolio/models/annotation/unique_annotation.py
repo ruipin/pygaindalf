@@ -6,7 +6,7 @@ import weakref
 from collections.abc import Mapping
 from typing import Any, override
 
-from ...util.uid import UID_SEPARATOR, Uid
+from ....util.models.uid import UID_SEPARATOR, Uid
 from ..entity import Entity, EntityRecord
 from .annotation import Annotation
 from .annotation_journal import AnnotationJournal

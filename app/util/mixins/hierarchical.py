@@ -16,9 +16,22 @@ type ParentType = HierarchicalProtocol | NamedProtocol
 
 # MARK: Hierarchical Protocols
 @runtime_checkable
-class HierarchicalProtocol(Protocol):
+class InstanceParentProtocol(Protocol):
     @property
     def instance_parent(self) -> ParentType | None: ...
+
+
+@runtime_checkable
+class InstanceParentMutableProtocol(InstanceParentProtocol, Protocol):
+    @property
+    @override
+    def instance_parent(self) -> ParentType | None: ...
+    @instance_parent.setter
+    def instance_parent(self, new_parent: ParentType | None) -> None: ...
+
+
+@runtime_checkable
+class HierarchicalProtocol(InstanceParentProtocol, Protocol):
     @property
     def instance_hierarchy(self) -> str: ...
 

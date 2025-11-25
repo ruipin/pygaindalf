@@ -10,4 +10,4 @@ from ..util.config.models.default import BaseDefaultConfig
 
 # MARK: Main Config
 class DefaultConfig(BaseDefaultConfig):
-    context: ContextConfig = Field(default=ContextConfig(), description="Default context configuration")
+    context: ContextConfig = Field(default_factory=ContextConfig, description="Default context configuration")

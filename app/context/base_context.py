@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from ..components.providers import Provider
     from ..components.providers.forex import ForexProvider
     from ..portfolio.journal import SessionManager
+    from ..portfolio.models.ledger import Ledger
     from ..portfolio.models.portfolio import PortfolioProtocol
     from ..portfolio.models.transaction import Transaction
     from ..runtime import Runtime
@@ -60,6 +61,10 @@ class Context(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
     def portfolio(self) -> PortfolioProtocol:
         msg = "Subclasses must implement the 'portfolio' property."
         raise NotImplementedError(msg)
+
+    @property
+    def ledgers(self) -> Iterable[Ledger]:
+        return self.portfolio.ledgers
 
     @property
     def transactions(self) -> Iterable[Transaction]:

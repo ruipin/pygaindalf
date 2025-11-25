@@ -7,8 +7,8 @@ from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, override
 
 from ....util.helpers.empty_class import empty_class
+from ....util.models.uid import Uid
 from ...collections.ordered_view import OrderedViewSet
-from ...util.uid import Uid
 from ..entity import Entity, EntityImpl
 from ..instrument import Instrument, InstrumentRecord
 from ..ledger import Ledger, LedgerRecord

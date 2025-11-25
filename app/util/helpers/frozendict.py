@@ -40,7 +40,8 @@ FrozenDict = typing.Annotated[frozendict[_K, _V], PydanticFrozenDictAnnotation]
 
 # Add rich repr support to frozendict
 def frozendict_rich_repr(self: frozendict) -> rich.repr.Result:
-    return self.items()
+    for key, value in self.items():
+        yield str(key), value
 
 
 frozendict.__rich_repr__ = frozendict_rich_repr  # pyright: ignore[reportAttributeAccessIssue]

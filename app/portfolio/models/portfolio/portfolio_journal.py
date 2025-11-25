@@ -11,7 +11,7 @@ from .portfolio_impl import PortfolioImpl
 
 
 if TYPE_CHECKING:
-    from ...util.uid import Uid
+    from ....util.models.uid import Uid
 
 
 class PortfolioJournal(

@@ -1,35 +1,26 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-import annotationlib
 import sys
 
 from abc import ABCMeta
-from collections.abc import Callable, Iterable, MutableMapping, MutableSet
+from collections.abc import Iterable, MutableMapping, MutableSet
 from collections.abc import Set as AbstractSet
-from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, Self, override
 from typing import cast as typing_cast
 
 from frozendict import frozendict
-from pydantic import (
-    ConfigDict,
-    PositiveInt,
-    PrivateAttr,
-    ValidationInfo,
-    field_serializer,
-    field_validator,
-    model_validator,
-)
+from pydantic import ConfigDict, PositiveInt, PrivateAttr, ValidationInfo, field_serializer, field_validator, model_validator
 
 from ....util.callguard import CallguardClassOptions
 from ....util.helpers import generics, script_info, type_hints
 from ....util.mixins import HierarchicalMixinMinimal, HierarchicalProtocol, NamedMixinMinimal, NamedProtocol
 from ....util.models import LoggableHierarchicalRootModel
-from ...util.superseded import superseded_check
-from ...util.uid import Uid, UidProtocol
+from ....util.models.superseded import superseded_check
+from ....util.models.uid import Uid
 from .dependency_event_handler.base import EntityDependencyEventHandlerBase
 from .dependency_event_handler.type_enum import EntityDependencyEventType
+from .entity_common import EntityCommon
 from .entity_dependents import EntityDependents
 from .entity_impl import EntityImpl
 from .entity_log import EntityLog, EntityModificationType
@@ -41,9 +32,6 @@ if TYPE_CHECKING:
 
     from ...collections.uid_proxy import UidProxySet
     from ...journal.journal import Journal
-    from ...journal.session import Session
-    from ...journal.session_manager import SessionManager
-    from ..annotation import AnnotationRecord
     from ..store.entity_store import EntityStore
     from .entity import Entity
 
@@ -65,6 +53,7 @@ class EntityRecordBase[
     type_hints.CachedTypeHintsMixin,
     LoggableHierarchicalRootModel,
     EntityImpl,
+    EntityCommon[T_Journal],
     EntitySchema,
     NamedMixinMinimal,
     metaclass=ABCMeta,
@@ -106,31 +95,9 @@ class EntityRecordBase[
         # Initialise dependencies
         cls.__init_dependencies__()
 
-    # TODO: Move to entity?
-    @classmethod
-    def is_update_allowed(cls, *, in_commit_only: bool = True, allow_in_abort: bool = False, force_session: bool = False) -> bool:
-        # Check if we are in the middle of a commit
-        from ...journal.session_manager import SessionManager
-
-        session_manager = SessionManager.get_global_manager_or_none()
-        if session_manager is None:
-            if force_session or not script_info.is_unit_test():
-                return False
-        else:
-            if not session_manager.in_session or (session := session_manager.session) is None:
-                return False
-            if allow_in_abort and session.in_abort:
-                return True
-            if in_commit_only and not session.in_commit:
-                return False
-
-        return True
-
     # MARK: Initialization / Destruction
     def __new__(cls, *args: Any, **kwargs: Any) -> Self:
-        if not cls.is_update_allowed(in_commit_only=False):
-            msg = f"Not allowed to create {cls.__name__} instances outside of a session."
-            raise RuntimeError(msg)
+        cls.assert_update_allowed(in_commit_only=False, force_session=False)
         return super().__new__(cls, *args, **kwargs)
 
     @override
@@ -153,7 +120,7 @@ class EntityRecordBase[
         if not self.superseded:
             return False
 
-        if self._reverted:
+        if self.reverted:
             return True
 
         superseding_log = self.entity_log.get_entry_by_version(self.version + 1)
@@ -172,7 +139,7 @@ class EntityRecordBase[
         if self.deleted:
             return True
 
-        journal = self.get_journal(create=False, fail=False)
+        journal = self.journal_or_none
         return journal.marked_for_deletion if journal is not None else False
 
     def __del__(self) -> None:
@@ -191,14 +158,9 @@ class EntityRecordBase[
         if self.marked_for_deletion:
             return
 
-        if not self.is_update_allowed(in_commit_only=False):
-            msg = f"Not allowed to delete {type(self).__name__} instances outside of a session."
-            raise RuntimeError(msg)
-
+        self.assert_update_allowed(in_commit_only=False, force_session=False)
         self.log.debug(t"Entity record delete called for {self}.")
 
-        # Only situation is_update_allowed returns True but we are not in a session is during unit tests without a session manager,
-        # in which case it is fine to immediately delete the entity
         if self.in_session:
             self.journal.delete()
         else:
@@ -215,9 +177,7 @@ class EntityRecordBase[
                 child.delete()
 
     def apply_deletion(self, *, who: str | None = None, why: str | None = None) -> None:
-        if not self.is_update_allowed(allow_in_abort=True):
-            msg = f"Not allowed to apply deletion to {type(self).__name__} instances outside of a session commit or abort."
-            raise RuntimeError(msg)
+        self.assert_update_allowed(allow_frozen_journal=True, allow_in_abort=True)
 
         self._apply_deletion(who=who, why=why)
 
@@ -238,15 +198,13 @@ class EntityRecordBase[
 
     @property
     def reverted(self) -> bool:
-        return self._reverted
+        return getattr(self, "_reverted", False)
 
     def revert(self) -> None:
-        if self._reverted:
+        if self.reverted:
             return
 
-        if not self.is_update_allowed(in_commit_only=True, allow_in_abort=True):
-            msg = f"Not allowed to revert {type(self).__name__} instances outside of a session commit or abort."
-            raise RuntimeError(msg)
+        self.assert_update_allowed(allow_in_abort=True)
 
         if self.entity_log.version >= self.version:
             msg = f"Cannot revert entity record {self} because its entity log is still tracking it."
@@ -394,7 +352,7 @@ class EntityRecordBase[
 
     @property
     def entity_or_none(self) -> Entity | None:
-        if self._reverted:
+        if self.reverted:
             return None
 
         from .entity import Entity
@@ -442,6 +400,26 @@ class EntityRecordBase[
             raise ValueError(msg)
         return parent
 
+    @property
+    def entity_parent_or_none(self) -> Entity | None:
+        if (entity := self.entity_or_none) is None:
+            return None
+        if (parent := entity.instance_parent) is None:
+            return None
+        from .entity import Entity
+
+        entity = parent.entity_or_none if isinstance(parent, EntityRecordBase) else parent
+        if entity is None or not isinstance(entity, Entity):
+            return None
+        return entity
+
+    @property
+    def entity_parent(self) -> Entity:
+        if (parent := self.entity_parent_or_none) is None:
+            msg = f"{type(self).__name__} instance {self.uid} has no valid entity parent."
+            raise ValueError(msg)
+        return parent
+
     # MARK: Version / Entity Log
     if TYPE_CHECKING:
         entity_log: EntityLog
@@ -479,7 +457,7 @@ class EntityRecordBase[
     @property
     def superseded(self) -> bool:
         """Indicates whether this entity record instance has been superseded by another instance with an incremented version."""
-        return self._reverted or self.entity_log.version > self.version
+        return self.reverted or self.entity_log.version > self.version
 
     @property
     def superseding_or_none[T: EntityRecordBase](self: T) -> T | None:
@@ -499,10 +477,7 @@ class EntityRecordBase[
 
         The new instance will have an incremented version and the same UID, superseding the current instance.
         """
-        # Check if we are in the middle of a commit
-        if not self.is_update_allowed():
-            msg = f"Not allowed to update {type(self).__name__} instances outside of a session commit."
-            raise RuntimeError(msg)
+        self.assert_update_allowed(allow_frozen_journal=True, force_session=False)
 
         # Validate data
         if not kwargs:
@@ -522,7 +497,7 @@ class EntityRecordBase[
             if field_name in kwargs:
                 args[target_name] = kwargs[field_name]
             else:
-                args[target_name] = getattr(self, field_name)
+                args[target_name] = self.__dict__[field_name]
 
         args.update(kwargs)
         args["uid"] = self.uid
@@ -547,63 +522,7 @@ class EntityRecordBase[
         # Return updated entity record
         return new_record
 
-    # MARK: Session
-    @property
-    def session_manager_or_none(self) -> SessionManager | None:
-        return self.entity.session_manager_or_none
-
-    @property
-    def session_manager(self) -> SessionManager:
-        return self.entity.session_manager
-
-    @property
-    def session_or_none(self) -> Session | None:
-        return self.entity.session_or_none
-
-    @property
-    def session(self) -> Session:
-        return self.entity.session
-
-    @property
-    def in_session(self) -> bool:
-        return self.entity.in_session
-
     # MARK: Journal
-    get_journal_class = generics.GenericIntrospectionMethod[T_Journal]()
-
-    @property
-    @override
-    def is_journal(self) -> bool:
-        return False
-
-    def get_journal(self, *, create: bool = True, fail: bool = True) -> Journal | None:
-        session = self.session if fail else self.session_or_none
-
-        from .entity_record import EntityRecord
-
-        assert isinstance(self, EntityRecord), f"Expected EntityRecord, got {type(self).__name__} instead."
-        return session.get_record_journal(record=self, create=create) if session is not None else None
-
-    @property
-    def journal(self) -> T_Journal:
-        result = self.get_journal(create=True)
-        if result is None:
-            msg = f"No journal found for entity record {self}."
-            raise RuntimeError(msg)
-        journal_cls = self.get_journal_class()
-        if type(result) is not journal_cls:
-            msg = f"Expected journal of type {journal_cls}, got {type(result)}."
-            raise RuntimeError(msg)
-        return result
-
-    @property
-    def j(self) -> T_Journal:
-        return self.journal
-
-    @property
-    def has_journal(self) -> bool:
-        return self.get_journal(create=False) is not None
-
     @staticmethod
     def _is_entity_record_attribute(name: str) -> bool:
         return hasattr(EntityRecordBase, name) or name in EntityRecordBase.model_fields or name in EntityRecordBase.model_computed_fields
@@ -656,31 +575,6 @@ class EntityRecordBase[
     def is_computed_field(cls, field: str) -> bool:
         return field in cls.model_computed_fields
 
-    @property
-    def dirty(self) -> bool:
-        if not self.in_session:
-            return False
-        j = self.get_journal(create=False)
-        return j.dirty if j is not None else False
-
-    @property
-    def has_diff(self) -> bool:
-        if not self.in_session:
-            return False
-        j = self.get_journal(create=False)
-        return j.has_diff if j is not None else False
-
-    def is_journal_field_edited(self, field: str) -> bool:
-        journal = self.get_journal(create=False)
-        return journal.is_field_edited(field) if journal is not None else False
-
-    def get_journal_field(self, field: str, *, create: bool = False) -> Any:
-        journal = self.get_journal(create=create)
-        if journal is None or not journal.is_field_edited(field):
-            return getattr(self, field)
-        else:
-            return getattr(journal, field)
-
     _PROTECTED_FIELD_TYPES: ClassVar[tuple[type, ...]]
 
     @classmethod
@@ -697,12 +591,7 @@ class EntityRecordBase[
 
     @classmethod
     def _get_field_annotation(cls, field: str) -> Any | None:
-        for mro in cls.__mro__:
-            annotations = annotationlib.get_annotations(mro, format=annotationlib.Format.VALUE)
-            annotation = annotations.get(field, None)
-            if annotation is not None:
-                return annotation
-        return None
+        return type_hints.get_type_hint(cls, field)
 
     _PROTECTED_FIELD_LOOKUP: ClassVar[MutableMapping[str, bool]]
 
@@ -721,7 +610,7 @@ class EntityRecordBase[
 
         forbidden_types = cls._get_protected_field_types()
         result = False
-        for hint in type_hints.iterate_type_hints(annotation):
+        for hint in type_hints.iterate_type_hints(annotation, origin=True):
             origin = generics.get_origin(hint, passthrough=True)
             if issubclass(origin, forbidden_types):
                 result = True
@@ -731,117 +620,30 @@ class EntityRecordBase[
         return result
 
     # MARK: Children
-    # These are all entities that are considered reachable (and therefore not garbage collected) by the existence of this entity record.
-    # I.e. those referenced by fields in the entity record as well as annotations.
-    def _get_children_field_ignore(self, field_name: str) -> bool:
-        return field_name.startswith("_") or field_name in ("uid", "extra_dependency_uids")
-
-    def iter_children_uids(self, *, use_journal: bool = False) -> Iterable[Uid]:
-        # Inspect all fields of the entity record for UIDs or Entities
-        for attr in type(self).model_fields:
-            if self._get_children_field_ignore(attr):
-                continue
-
-            if use_journal and (journal := self.get_journal(create=False)) is not None and journal.is_field_edited(attr):
-                value = getattr(journal, attr, None)
-            else:
-                value = getattr(self, attr, None)
-
-            if value is None:
-                continue
-
-            if isinstance(value, Uid):
-                yield value
-            elif isinstance(value, UidProtocol):
-                yield value.uid
-            elif isinstance(value, Iterable) and not isinstance(value, (str, bytes, bytearray)):
-                for item in value:
-                    if isinstance(item, Uid):
-                        yield item
-                    elif isinstance(item, UidProtocol):
-                        yield item.uid
-
-    @cached_property
-    def children_uids(self) -> Iterable[Uid]:
-        return frozenset(self.iter_children_uids())
-
-    @property
-    def journal_children_uids(self) -> Iterable[Uid]:
-        journal = self.get_journal(create=False)
-        return self.children_uids if journal is None else journal.children_uids
-
-    def get_children_uids(self, *, use_journal: bool = False) -> Iterable[Uid]:
-        return self.journal_children_uids if use_journal else self.children_uids
-
-    @property
-    def children(self) -> Iterable[EntityRecordBase]:
-        for uid in self.children_uids:
-            yield EntityRecordBase.by_uid(uid)
-
-    def iter_hierarchy(
-        self, *, condition: Callable[[EntityRecordBase], bool] | None = None, use_journal: bool = False, check_condition_on_return: bool = True
-    ) -> Iterable[EntityRecordBase]:
-        """Return a flat ordered set of all entities in this hierarchy."""
-        if condition is not None and not condition(self):
-            return
-
-        # Iterate dirty children journals
-        for uid in self.get_children_uids(use_journal=use_journal):
-            child = EntityRecordBase.by_uid_or_none(uid)
-            if child is None:
-                continue
-
-            if condition is not None and not condition(child):
-                continue
-
-            yield from child.iter_hierarchy(condition=condition, use_journal=use_journal, check_condition_on_return=check_condition_on_return)
-
-        if check_condition_on_return and condition is not None and not condition(self):
-            msg = f"Entity record {self} failed condition check on return of yield_hierarchy."
-            raise RuntimeError(msg)
-
-        # Yield self, then return
-        yield self
-
     def is_reachable(self, *, recursive: bool = True, use_journal: bool = False) -> bool:
         return self.entity.is_reachable(recursive=recursive, use_journal=use_journal)
 
+    @model_validator(mode="after")
+    def _validate_valid_fields(self) -> Self:
+        if __debug__:
+            from .entity import Entity
+
+            for uid in self.entity.iter_field_uids():
+                entity = Entity.by_uid_or_none(uid)
+                if entity is None:
+                    msg = f"Entity record has a reference to non-existent entity UID {uid}."
+                    raise ValueError(msg)
+                if entity.deleted:
+                    msg = f"Entity record has a reference to deleted entity UID {uid}."
+                    raise ValueError(msg)
+                if not entity.exists:
+                    msg = f"Entity record has a reference to non-existent entity UID {uid}."
+                    raise ValueError(msg)
+                assert not entity.superseded, f"Entity record has a reference to superseded entity UID {uid}."
+
+        return self
+
     # MARK: Annotations
-    def on_annotation_record_created(self, annotation_or_uid: AnnotationRecord | Uid) -> None:
-        if not self.is_update_allowed(in_commit_only=False):
-            msg = f"Not allowed to modify annotations of {type(self).__name__} instances outside of a session."
-            raise RuntimeError(msg)
-
-        from ..annotation import Annotation
-
-        annotation = Annotation.narrow_to_instance(annotation_or_uid)
-
-        if not self.in_session:
-            assert script_info.is_unit_test(), f"Unexpected non-session annotation addition to {self} outside of unit test."
-            annotations = set(self.annotations)
-            annotations.add(annotation)
-            self.update(annotations=annotations)
-        else:
-            if annotation in self.journal.annotations:
-                return
-
-            self.journal.annotations.add(annotation)
-
-    def on_annotation_record_deleted(self, annotation_or_uid: AnnotationRecord | Uid) -> None:
-        self.log.debug(t"Entity record {self} received deletion notice for annotation {annotation_or_uid}.")
-
-        if not self.is_update_allowed(in_commit_only=False, force_session=True):
-            msg = f"Not allowed to modify annotations of {type(self).__name__} instances outside of a session."
-            raise RuntimeError(msg)
-
-        from ..annotation import Annotation
-
-        annotation = Annotation.narrow_to_instance(annotation_or_uid)
-        if annotation not in self.journal.annotations:
-            return
-
-        self.journal.annotations.discard(annotation)
-
     @field_validator("annotations", mode="before")
     @classmethod
     def _validate_annotations_before(cls, annotations: Any) -> frozenset:
@@ -882,7 +684,6 @@ class EntityRecordBase[
         return self.entity_dependents.dependents
 
     # MARK: Dependencies
-    # TODO: Fix this
     @property
     def extra_dependencies(self) -> UidProxySet[EntityRecordBase]:
         from ...collections import UidProxySet

@@ -8,7 +8,7 @@ from .base_context import Context
 
 
 if TYPE_CHECKING:
-    from ...portfolio.models.portfolio import Portfolio
+    from ..portfolio.models.portfolio import Portfolio
 
 
 class DirectContext(Context):

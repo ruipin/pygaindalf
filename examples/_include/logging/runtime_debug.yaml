@@ -1,0 +1,4 @@
+levels:
+  default: INFO
+  custom:
+    Runtime: DEBUG

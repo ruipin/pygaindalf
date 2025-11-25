@@ -7,6 +7,7 @@ from iso4217 import Currency
 
 from app.portfolio.models.entity.entity_log import EntityLog, EntityModificationType
 from app.portfolio.models.instrument import Instrument
+from app.portfolio.models.instrument.instrument_type import InstrumentType
 
 
 @pytest.mark.portfolio
@@ -15,6 +16,7 @@ class TestInstrumentEntity:
     def test_entity_wraps_record_and_reuses_instance(self):
         inst = Instrument(
             ticker="AAPL",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
 
@@ -28,6 +30,7 @@ class TestInstrumentEntity:
     def test_entity_initialization_sets_identifiers_and_audit(self):
         inst = Instrument(
             ticker="AAPL",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
 
@@ -47,6 +50,7 @@ class TestInstrumentEntity:
         inst = Instrument(
             isin="US0378331005",
             ticker="AAPL",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
 
@@ -59,7 +63,7 @@ class TestInstrumentEntity:
         # Re-instantiating with conflicting data should raise an error
         inst_again = None
         with pytest.raises(ValueError, match=r"Expected 'currency' value 'Currency\.USD' but got 'Currency\.EUR'\."):
-            inst_again = Instrument(ticker="AAPL", currency=Currency("EUR"))
+            inst_again = Instrument(ticker="AAPL", type=InstrumentType.EQUITY, currency=Currency("EUR"))
 
         assert inst_again is None
         assert inst.currency == Currency("USD")
@@ -67,6 +71,7 @@ class TestInstrumentEntity:
     def test_entity_updates_and_audit_log(self):
         inst = Instrument(
             ticker="AAPL",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
 
@@ -84,7 +89,7 @@ class TestInstrumentEntity:
         entry_v1 = log.get_entry_by_version(1)
         assert entry_v1 is not None and entry_v1.what == EntityModificationType.CREATED
         if EntityLog.TRACK_ENTITY_DIFF:
-            assert entry_v1.diff == {"ticker": "AAPL", "currency": Currency("USD")}
+            assert entry_v1.diff == {"ticker": "AAPL", "type": InstrumentType.EQUITY, "currency": Currency("USD")}
 
         entry_v2 = log.get_entry_by_version(2)
         assert entry_v2 is not None and entry_v2.what == EntityModificationType.UPDATED
@@ -103,17 +108,19 @@ class TestInstrumentEntity:
         entry_v4 = log.get_entry_by_version(4)
         assert entry_v4 is not None and entry_v4.what == EntityModificationType.DELETED
         if EntityLog.TRACK_ENTITY_DIFF:
-            assert entry_v4.diff == {"ticker": None, "currency": None}
+            assert entry_v4.diff == {"ticker": None, "type": None, "currency": None}
 
     def test_entity_tracks_superseding_record(self):
         inst = Instrument(
             ticker="AAPL",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
         record = inst.record
 
         Instrument(
             ticker="MSFT",
+            type=InstrumentType.EQUITY,
             currency=Currency("USD"),
         )
 

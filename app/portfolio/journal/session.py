@@ -2,18 +2,19 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import datetime
+import sys
 import weakref
 
 from collections.abc import Callable, Iterable, MutableMapping, MutableSet
-from typing import TYPE_CHECKING, Any, ClassVar, TypedDict, override
+from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict, Unpack, override
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
 
 from ...util.callguard import CallguardClassOptions
 from ...util.models import LoggableHierarchicalModel
-from ..models.entity import Entity, EntityModificationType, EntityRecord, EntityRecordBase
-from ..util.superseded import SupersededError, superseded_check
-from ..util.uid import UID_SEPARATOR, IncrementingUidFactory, Uid
+from ...util.models.superseded import SupersededError, superseded_check
+from ...util.models.uid import UID_SEPARATOR, IncrementingUidFactory, Uid, UidProtocol
+from ..models.entity import Entity, EntityModificationType, EntityRecord
 from .journal import Journal
 
 
@@ -21,9 +22,18 @@ if TYPE_CHECKING:
     from .protocols import SessionManagerHookLiteral
 
 
-class SessionParams(TypedDict):
+class AbortOptions(TypedDict):
+    exit_on_exception: NotRequired[bool]
+
+
+class CommitOptions(TypedDict):
+    exit_on_exception: NotRequired[bool]
+
+
+class SessionOptions(TypedDict):
     actor: str
     reason: str
+    exit_on_exception: NotRequired[bool]
 
 
 class Session(LoggableHierarchicalModel):
@@ -80,6 +90,9 @@ class Session(LoggableHierarchicalModel):
         default_factory=lambda: datetime.datetime.now(tz=datetime.UTC), init=False, description="Timestamp when the session started."
     )
 
+    # MARK: Options
+    exit_on_exception: bool = Field(default=True, description="Whether to exit the application on exceptions during commit or abort.")
+
     # MARK: State
     @property
     def superseded(self) -> bool:
@@ -109,48 +122,64 @@ class Session(LoggableHierarchicalModel):
     def dirty(self) -> bool:
         return any(j.dirty for j in self._journals.values()) or bool(self._created)
 
-    def _add_record_journal(self, record: EntityRecord) -> Journal | None:
+    def _add_journal(self, uid: Uid, entity: Entity, record: EntityRecord | None) -> Journal | None:
+        assert entity is not None and entity.uid == uid, "Entity is not valid."  # noqa: PT018
+        assert record is None or record.uid == uid, "Record is not valid."
         if self.ended:
             msg = "Cannot add an entity journal to an ended session."
             raise RuntimeError(msg)
 
         if self._after_commit_notify:
-            self.log.warning("Cannot add an entity journal after notification phase.")
-            return None
+            msg = "Cannot add an entity journal after notification phase."
+            raise RuntimeError(msg)
 
-        journal_cls = record.get_journal_class()
-        if not issubclass(journal_cls, Journal):
-            msg = f"{type(record).__name__} journal class {journal_cls} is not a subclass of EntityJournal."
+        record_type = entity.get_record_type() if record is None else type(record)
+        journal_type = record_type.get_journal_class()
+        if not issubclass(journal_type, Journal):
+            msg = f"{type(record).__name__} journal class {journal_type} is not a subclass of EntityJournal."
             raise TypeError(msg)
-        journal = journal_cls(instance_parent=weakref.ref(self), record=record)
-        self._journals[record.uid] = journal
+
+        assert uid not in self._journals, "Journal for this UID already exists."
+        self._journals[uid] = journal = journal_type(instance_parent=weakref.ref(self), uid=uid)  # pyright: ignore[reportArgumentType]
+        assert journal.record_or_none is record, "Journal record does not match."
+        assert journal.entity is entity, "Journal entity does not match."
 
         self._restart_commit_notify = True
 
         return journal
 
-    def get_record_journal(self, record: EntityRecord, *, create: bool = True) -> Journal | None:
+    def get_journal(self, target: UidProtocol | Uid, *, create: bool = True) -> Journal | None:
         if self.ended:
             msg = "Cannot get an entity journal from an ended session."
             raise SupersededError(msg)
 
-        if record.superseded:
+        if isinstance(target, UidProtocol):
+            uid = target.uid
+        elif isinstance(target, Uid):
+            uid = target
+        else:
+            msg = "Target must be an Entity, EntityRecord or Uid."
+            raise TypeError(msg)
+
+        entity = Entity.by_uid(uid)
+        record = EntityRecord.by_uid_or_none(uid)
+
+        if record is not None and record.superseded:
             self.log.warning(t"EntityRecord {record.instance_name} is superseded; cannot create or retrieve journal.")
             return None
 
-        journal = self._journals.get(record.uid, None)
+        journal = self._journals.get(uid, None)
         if journal is not None:
-            if journal.record is not record:
-                if not journal.record.superseded:
-                    msg = "EntityRecord journal already exists for a different version of this entity. Use the latest version instead."
-                    raise RuntimeError(msg)
+            if (existing_record := journal.record_or_none) is not record:
+                assert journal.superseded, "Journal must be superseded here"
+                assert existing_record is None or existing_record.superseded, "Existing record must be None or superseded here"
                 if create:
-                    del self._journals[record.uid]
+                    del self._journals[uid]
             else:
                 return journal
 
         if create:
-            return self._add_record_journal(record)
+            return self._add_journal(uid, entity, record)
         else:
             return None
 
@@ -192,7 +221,7 @@ class Session(LoggableHierarchicalModel):
         except (TypeError, AttributeError, KeyError):
             return False
 
-    def abort(self) -> None:
+    def abort(self, **options: Unpack[AbortOptions]) -> None:
         if self.ended:
             msg = "Cannot abort an ended session."
             raise RuntimeError(msg)
@@ -200,6 +229,8 @@ class Session(LoggableHierarchicalModel):
         # No need to do anything if there are no edits to commit
         if not self.dirty:
             return
+
+        exit_on_exception = options.get("exit_on_exception", self.exit_on_exception)
 
         # TODO: Log abort
         self.log.warning("Aborting session...")
@@ -217,6 +248,11 @@ class Session(LoggableHierarchicalModel):
             self._clear()
             self.log.warning("Session aborted.")
             self._call_parent_hook("abort")
+        except:
+            if exit_on_exception:
+                self.log.exception("Exception occurred during session abort; exiting application.")
+                sys.exit(1)
+            raise
         finally:
             self._in_abort = False
 
@@ -255,7 +291,7 @@ class Session(LoggableHierarchicalModel):
         except (TypeError, AttributeError, KeyError):
             return False
 
-    def commit(self) -> None:
+    def commit(self, **options: Unpack[CommitOptions]) -> None:
         if self.ended:
             msg = "Cannot commit an ended session."
             raise SupersededError(msg)
@@ -264,34 +300,50 @@ class Session(LoggableHierarchicalModel):
         if not self.dirty:
             return
 
+        exit_on_exception = options.get("exit_on_exception", self.exit_on_exception)
+
         # TODO: Log commit
-        self.log.info("Committing session...")
+        self.log.debug("Committing session...")
 
         self._in_commit = True
         try:
             self._commit()
             self._clear()
             self._call_parent_hook("commit")
+        except Exception:
+            if exit_on_exception:
+                self.log.exception("Exception occurred during session commit; exiting application.")
+                sys.exit(1)
+            raise
         finally:
             self._in_commit = False
             self._after_commit_notify = False
 
-        self.log.info("Commit concluded.")
+        self.log.debug("Commit concluded.")
 
     def _commit(self) -> None:
         self._commit_notify()
         self._commit_apply()
 
-    def _commit_travel_hierarchy(
-        self, iterable: Iterable[Uid], *, condition: Callable[[EntityRecordBase], bool] | None = None, copy: bool = False
-    ) -> Iterable[EntityRecordBase]:
+    def _commit_travel_hierarchy(self, iterable: Iterable[Uid], *, condition: Callable[[Entity], bool] | None = None, copy: bool = False) -> Iterable[Journal]:
         if copy:
             iterable = list(iterable)
+
+        yielded = set()
+
         for uid in iterable:
-            record = EntityRecord.by_uid_or_none(uid)
-            if record is None or record.superseded:
+            journal = self._journals.get(uid, None)
+            if journal is None or journal.superseded:
                 continue
-            yield from record.iter_hierarchy(condition=condition, use_journal=True)
+
+            assert not journal.superseded, "Journal should not be superseded here."
+
+            entity = journal.entity
+            for e in entity.iter_hierarchy(condition=condition, use_journal=True):
+                if (j := self._journals.get(e.uid, None)) is not None and j not in yielded:
+                    assert not j.superseded, "Journal should not be superseded here."
+                    yield j
+                    yielded.add(j)
 
     # MARK: Commit - Notify
     _restart_commit_notify: bool = PrivateAttr(default=False)
@@ -306,13 +358,9 @@ class Session(LoggableHierarchicalModel):
 
         self._restart_commit_notify = True
 
-    def _commit_notify_travel_hierarchy_condition(self, e: EntityRecordBase) -> bool:
-        j = self._journals.get(e.uid, None)
-        return (not j.notified_dependents) if j is not None else False
-
     def _commit_notify(self) -> None:
         """Notify all journals of changes in dependency order, allowing them to update their diffs accordingly."""
-        self.log.info("Notifying journals of changes...")
+        self.log.debug("Notifying journals of changes...")
 
         pass_count = 0
         while True:
@@ -321,8 +369,10 @@ class Session(LoggableHierarchicalModel):
 
             self._restart_commit_notify = False
 
-            for e in self._commit_travel_hierarchy(self._journals.keys(), condition=self._commit_notify_travel_hierarchy_condition, copy=True):
-                j = self._journals[e.uid]
+            for j in self._commit_travel_hierarchy(self._journals.keys(), copy=True):
+                if j.notified_dependents:
+                    continue
+
                 j.notify_dependents()
 
                 if self._restart_commit_notify:
@@ -335,6 +385,9 @@ class Session(LoggableHierarchicalModel):
                 break
 
         assert not self._restart_commit_notify, "Restart flag should be false after notify loop."
+        for j in self._journals.values():
+            if not j.notified_dependents:
+                self.log.error(t"Journal {j.instance_name} did not notify dependents.")
         assert all(j.notified_dependents for j in self._journals.values()), "All journals should have notified dependents after notify loop."
 
         # Freeze all journals to prevent further edits
@@ -345,18 +398,14 @@ class Session(LoggableHierarchicalModel):
         self._after_commit_notify = True
 
     # MARK: Commit - Apply
-    def _commit_apply_travel_hierarchy_condition(self, e: EntityRecordBase) -> bool:
-        j = self._journals.get(e.uid, None)
-        return j is not None and not j.superseded
-
     def _commit_apply(self) -> None:
         """Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions, or deleting them as requested)."""
-        self.log.info("Committing journals...")
+        self.log.debug("Committing journals...")
 
         # Apply all journals in dependency order
-        for e in self._commit_travel_hierarchy(self._journals.keys(), condition=self._commit_apply_travel_hierarchy_condition, copy=False):
-            j = self._journals[e.uid]
+        for j in self._commit_travel_hierarchy(self._journals.keys(), copy=False):
             j.commit()
+            assert j.superseded, "Journal should be marked as superseded after commit."
 
         # Check for newly-created unreachable entities and revert them
         for uid in self._created:

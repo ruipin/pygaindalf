@@ -51,11 +51,11 @@ class Instrument(
             raise TypeError(msg)
 
         # Sanity check that the instruments match the identifiers
-        if by_isin is not None and by_isin.isin != isin:
-            msg = f"ISIN '{isin}' does not match existing instance with ISIN '{by_isin.isin}'."
+        if by_isin is not None and getattr(by_isin, "isin", isin) != isin:
+            msg = f"ISIN '{isin}' does not match existing instance {by_isin} with ISIN '{by_isin.isin}'."
             raise ValueError(msg)
-        if by_ticker is not None and by_ticker.ticker != ticker:
-            msg = f"Ticker '{ticker}' does not match existing instance with ticker '{by_ticker.ticker}'."
+        if by_ticker is not None and getattr(by_ticker, "ticker", ticker) != ticker:
+            msg = f"Ticker '{ticker}' does not match existing instance {by_ticker} with ticker '{by_ticker.ticker}'."
             raise ValueError(msg)
 
         # If both identifiers are provided, ensure they match

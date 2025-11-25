@@ -8,15 +8,21 @@ Configures file and TTY logging, log levels, and custom handlers.
 
 import logging
 import pathlib
+import re
 import sys
 
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Self
+from typing import cast as typing_cast
 
 from ..config.models import LoggingConfig
 from ..helpers import script_info
 from .exit_handler import ExitHandler
 from .filters import HandlerFilter
 from .formatters import ConditionalFormatter
+
+
+if TYPE_CHECKING:
+    from .levels import LoggingLevel
 
 
 ######
@@ -29,13 +35,13 @@ LOG_FILE_NAME: str = f"{script_info.get_script_name()}.log"
 ######
 # MARK: Logging Manager
 class LoggingManager:
-    _instance = None
+    _instance: ClassVar[LoggingManager | None] = None
 
     def __new__(cls, *args, **kwargs) -> Self:
-        if not cls._instance:
-            cls._instance = super().__new__(cls, *args, **kwargs)
-            cls._instance.initialized = False
-        return cls._instance
+        if (instance := cls._instance) is None:
+            instance = cls._instance = super().__new__(cls, *args, **kwargs)
+            instance.initialized = False
+        return typing_cast("Self", instance)
 
     def __init__(self) -> None:
         pass
@@ -56,8 +62,8 @@ class LoggingManager:
         self._configure_file_handler()
         self._configure_tty_handler()
         self._configure_exit_handler()
-        self._configure_custom_levels()
         self._configure_exception_handler()
+        self._configure_custom_logger_levels()
 
     def _configure_root_logger(self) -> None:
         """Configure root logger."""
@@ -130,20 +136,33 @@ class LoggingManager:
                 word_wrap=False,
             )
 
-    def _configure_custom_levels(self) -> None:
-        """Configure custom loggers with the specified levels."""
-        for name, level in self.config.levels.custom.items():
-            logging.getLogger(name).setLevel(level.value)
+    def apply_logging_level(self, logger: logging.Logger) -> None:
+        # Do nothing if logger already has an explicit level set
+        if logger.level != logging.NOTSET:
+            return
 
+        # Determine logger name
+        name = logger.name
 
-# Handle unit tests - we just initialize the logging manager with minimal configuration
-if script_info.is_unit_test():
-    LoggingManager().initialize(
-        {
-            "levels": {
-                "file": "OFF",
-                "tty": "NOTSET",
-            },
-            "rich": False,
-        }
-    )
+        # Apply the most specific matching custom level, or default if none match
+        level: LoggingLevel = self.config.levels.default
+        pattern_len = 0
+
+        for _pattern, _level in self.config.levels.custom.items():
+            assert isinstance(_pattern, re.Pattern), f"Custom logging levels keys must be compiled regex patterns, got {type(_pattern)}"
+            if (match := _pattern.match(name)) is not None:
+                _pattern_len = len(match.group(0))
+                if pattern_len < _pattern_len:
+                    level = _level
+                    pattern_len = _pattern_len
+
+        if level == logging.NOTSET:
+            return
+
+        logger.setLevel(level.value)
+
+    def _configure_custom_logger_levels(self) -> None:
+        # Apply logging levels to existing loggers
+        for logger_name in logging.root.manager.loggerDict:
+            logger = logging.getLogger(logger_name)
+            self.apply_logging_level(logger)

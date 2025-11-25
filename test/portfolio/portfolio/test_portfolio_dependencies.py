@@ -16,11 +16,13 @@ from app.portfolio.models.entity.dependency_event_handler import EntityDependenc
 from app.portfolio.models.entity.dependency_event_handler.impl import EntityDependencyEventHandlerImpl
 from app.portfolio.models.entity.dependency_event_handler.model import EntityDependencyEventHandlerModel
 from app.portfolio.models.instrument import Instrument, InstrumentRecord
+from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.ledger import Ledger, LedgerRecord
 from app.portfolio.models.portfolio.portfolio import Portfolio
 from app.portfolio.models.root.portfolio_root import PortfolioRoot
 from app.portfolio.models.transaction import Transaction, TransactionRecord, TransactionType
-from app.portfolio.util.uid import Uid
+from app.util.helpers.decimal_currency import DecimalCurrency
+from app.util.models.uid import Uid
 
 
 class DepEventCall(NamedTuple):
@@ -36,18 +38,18 @@ class TestPortfolioDependencies:
     def _seed_portfolio_with_ledger_and_transactions(self, portfolio_root: PortfolioRoot) -> tuple[Portfolio, Instrument, Ledger, Transaction, Transaction]:
         """Create an Instrument, two Transactions, and a Ledger linked to the instrument; add it to the Portfolio via a session."""
         with portfolio_root.session_manager(actor="seed", reason="seed graph"):
-            inst_appl = Instrument(ticker="AAPL", currency=Currency("USD"))
+            inst_appl = Instrument(ticker="AAPL", type=InstrumentType.EQUITY, currency=Currency("USD"))
             tx_buy = Transaction(
                 type=TransactionType.BUY,
                 date=datetime.date(2025, 1, 1),
                 quantity=Decimal(10),
-                consideration=Decimal(1500),
+                consideration=DecimalCurrency(1500, currency="USD"),
             )
             tx_sell = Transaction(
                 type=TransactionType.SELL,
                 date=datetime.date(2025, 1, 5),
                 quantity=Decimal(4),
-                consideration=Decimal(620),
+                consideration=DecimalCurrency(620, currency="USD"),
             )
             ledg_appl = Ledger(instrument=inst_appl, transactions={tx_buy, tx_sell})
             portfolio_root.portfolio.journal.ledgers.add(ledg_appl)
@@ -91,7 +93,7 @@ class TestPortfolioDependencies:
 
         # Arrange: create another instrument (MSFT) and attach to portfolio in the same session to avoid GC
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_msft = Instrument(ticker="MSFT", currency=Currency("USD"))
+            inst_msft = Instrument(ticker="MSFT", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_msft = Ledger(instrument=inst_msft)
             portfolio_root.portfolio.journal.ledgers.add(ledg_msft)
 
@@ -110,7 +112,7 @@ class TestPortfolioDependencies:
         # Act+Assert: attempting to delete while still attached should raise
         with (
             pytest.raises(Exception, match=r"Entity record <IR MSFT v1> is a child of <LR MSFT v1> and therefore the latter cannot be deleted."),
-            portfolio_root.session_manager(actor="tester", reason="delete extra dep (should fail)"),
+            portfolio_root.session_manager(actor="tester", reason="delete extra dep (should fail)", exit_on_exception=False),
         ):
             inst_msft.delete()
 
@@ -140,7 +142,7 @@ class TestPortfolioDependencies:
 
         # Arrange: create NVDA instrument and attach to portfolio (parent dependency)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_nvda = Instrument(ticker="NVDA", currency=Currency("USD"))
+            inst_nvda = Instrument(ticker="NVDA", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_nvda = Ledger(instrument=inst_nvda)
             portfolio_root.portfolio.journal.ledgers.add(ledg_nvda)
         inst_nvda_uid = inst_nvda.uid
@@ -209,7 +211,7 @@ class TestPortfolioDependencies:
         # Act+Assert: Trigger DELETED — first ensure deletion while attached raises
         with (
             pytest.raises(Exception, match=r"Entity record <IR NVDA v2> is a child of <LR NVDA v1> and therefore the latter cannot be deleted."),
-            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)"),
+            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)", exit_on_exception=False),
         ):
             inst_nvda.delete()
 
@@ -228,7 +230,7 @@ class TestPortfolioDependencies:
         assert inst_nvda.superseded is True
         assert inst_nvda.deleted is True
         assert inst_nvda.record_or_none is None
-        with pytest.raises(ValueError, match=re.escape(r"Entity <I NVDA v3 (D)> does not currently have a record. It may have been deleted.")):
+        with pytest.raises(ValueError, match=re.escape(r"Entity <I NVDA v3 (D)> has been deleted and does not have a record.")):
             _ = inst_nvda.record
 
         # Assert: after commit, we should have DELETED callback(s) and extra dep removed
@@ -244,7 +246,7 @@ class TestPortfolioDependencies:
 
         # Arrange: create ISIN-instrument and attach to portfolio (ticker-independent identity)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_isin_0001 = Instrument(isin="US0000000001", currency=Currency("USD"))
+            inst_isin_0001 = Instrument(isin="US0000000001", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_isin_0001 = Ledger(instrument=inst_isin_0001)
             portfolio_root.portfolio.journal.ledgers.add(ledg_isin_0001)
 
@@ -312,7 +314,7 @@ class TestPortfolioDependencies:
             pytest.raises(
                 Exception, match=r"Entity record <IR US0000000001 v2> is a child of <LR US0000000001 v1> and therefore the latter cannot be deleted."
             ),
-            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)"),
+            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)", exit_on_exception=False),
         ):
             inst_isin_0001.delete()
 
@@ -334,7 +336,7 @@ class TestPortfolioDependencies:
         # Arrange: seed portfolio
         _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_goog = Instrument(ticker="GOOG", currency=Currency("USD"))
+            inst_goog = Instrument(ticker="GOOG", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_goog = Ledger(instrument=inst_goog)
             portfolio_root.portfolio.journal.ledgers.add(ledg_goog)
 
@@ -382,7 +384,7 @@ class TestPortfolioDependencies:
         # Act+Assert: delete should also fire with matched None; first attempt should fail while attached
         with (
             pytest.raises(Exception, match=r"Entity record <IR GOOG v2> is a child of <LR GOOG v1> and therefore the latter cannot be deleted."),
-            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)"),
+            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)", exit_on_exception=False),
         ):
             inst_goog.delete()
 
@@ -404,7 +406,7 @@ class TestPortfolioDependencies:
         # Arrange: seed portfolio
         _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_amzn = Instrument(ticker="AMZN", currency=Currency("USD"))
+            inst_amzn = Instrument(ticker="AMZN", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_amzn = Ledger(instrument=inst_amzn)
             portfolio_root.portfolio.journal.ledgers.add(ledg_amzn)
 
@@ -485,7 +487,7 @@ class TestPortfolioDependencies:
         # Act+Assert: delete should only trigger del_handler; first attempt should fail while attached
         with (
             pytest.raises(Exception, match=r"Entity record <IR AMZN v2> is a child of <LR AMZN v1> and therefore the latter cannot be deleted."),
-            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)"),
+            portfolio_root.session_manager(actor="tester", reason="delete inst_b (should fail)", exit_on_exception=False),
         ):
             inst_amzn.delete()
         # State should be unchanged
@@ -502,7 +504,7 @@ class TestPortfolioDependencies:
         assert inst_amzn.superseded is True
         assert inst_amzn.deleted is True
         assert inst_amzn.record_or_none is None
-        with pytest.raises(ValueError, match=re.escape(r"Entity <I AMZN v3 (D)> does not currently have a record. It may have been deleted.")):
+        with pytest.raises(ValueError, match=re.escape(r"Entity <I AMZN v3 (D)> has been deleted and does not have a record.")):
             _ = inst_amzn.record
 
         # Assert: one or two delete calls (depending on whether both ledgers receive deletion callbacks)
@@ -516,7 +518,7 @@ class TestPortfolioDependencies:
         # Arrange: seed portfolio and create IMPL instrument with its own ledger
         _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_impl"):
-            inst_impl = Instrument(ticker="IMPL", currency=Currency("USD"))
+            inst_impl = Instrument(ticker="IMPL", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_impl = Ledger(instrument=inst_impl)
             portfolio_root.portfolio.journal.ledgers.add(ledg_impl)
 
@@ -582,7 +584,7 @@ class TestPortfolioDependencies:
                     f"Entity record <IR {inst_impl_instance_name} v2> is a child of <LR {inst_impl_instance_name} v1> and therefore the latter cannot be deleted."
                 ),
             ),
-            portfolio_root.session_manager(actor="tester", reason="delete inst_impl (should fail)"),
+            portfolio_root.session_manager(actor="tester", reason="delete inst_impl (should fail)", exit_on_exception=False),
         ):
             inst_impl.delete()
 
@@ -603,7 +605,7 @@ class TestPortfolioDependencies:
         assert inst_impl.record_or_none is None
         with pytest.raises(
             ValueError,
-            match=re.escape(f"Entity <I {inst_impl.instance_name} v3 (D)> does not currently have a record. It may have been deleted."),
+            match=re.escape(f"Entity <I {inst_impl.instance_name} v3 (D)> has been deleted and does not have a record."),
         ):
             _ = inst_impl.record
 
@@ -623,12 +625,12 @@ class TestPortfolioDependencies:
 
         # Arrange: create a ledger whose transaction will become a non-instrument dependency of ledg_appl
         with portfolio_root.session_manager(actor="tester", reason="create non-instrument dependency"):
-            inst_dep = Instrument(ticker="NFLX", currency=Currency("USD"))
+            inst_dep = Instrument(ticker="NFLX", type=InstrumentType.EQUITY, currency=Currency("USD"))
             tx_dep = Transaction(
                 type=TransactionType.SELL,
                 date=datetime.date(2025, 2, 1),
                 quantity=Decimal(1),
-                consideration=Decimal(100),
+                consideration=DecimalCurrency(100, currency="USD"),
             )
             ledg_dep = Ledger(instrument=inst_dep, transactions={tx_dep})
             portfolio_root.portfolio.journal.ledgers.add(ledg_dep)
@@ -709,7 +711,7 @@ class TestPortfolioDependencies:
         # Arrange: seed portfolio
         _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_isin_1111 = Instrument(isin="US1111111111", ticker=None, currency=Currency("USD"))
+            inst_isin_1111 = Instrument(isin="US1111111111", ticker=None, type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_isin_1111 = Ledger(instrument=inst_isin_1111)
             portfolio_root.portfolio.journal.ledgers.add(ledg_isin_1111)
 
@@ -788,7 +790,7 @@ class TestPortfolioDependencies:
         # Arrange: seed portfolio
         _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_isin_2222 = Instrument(isin="US2222222222", currency=Currency("USD"))
+            inst_isin_2222 = Instrument(isin="US2222222222", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_isin_2222 = Ledger(instrument=inst_isin_2222)
             portfolio_root.portfolio.journal.ledgers.add(ledg_isin_2222)
 
@@ -883,7 +885,7 @@ class TestPortfolioDependencies:
         # Arrange: seed portfolio
         _portfolio, _inst_appl, ledg_appl, _tx_buy, _tx_sell = self._seed_portfolio_with_ledger_and_transactions(portfolio_root)
         with portfolio_root.session_manager(actor="tester", reason="create+attach inst_b"):
-            inst_isin_3333 = Instrument(isin="US3333333333", currency=Currency("USD"))
+            inst_isin_3333 = Instrument(isin="US3333333333", type=InstrumentType.EQUITY, currency=Currency("USD"))
             ledg_isin_3333 = Ledger(instrument=inst_isin_3333)
             portfolio_root.portfolio.journal.ledgers.add(ledg_isin_3333)
 

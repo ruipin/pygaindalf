@@ -5,7 +5,9 @@
 import importlib
 
 from abc import ABCMeta
-from typing import TYPE_CHECKING, Any, ClassVar
+from collections.abc import Mapping
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any, ClassVar, override
 from typing import cast as typing_cast
 
 from frozendict import frozendict
@@ -15,12 +17,16 @@ from .....portfolio.models.annotation import Annotation
 from .....portfolio.models.instrument import Instrument, InstrumentSchema
 from .....portfolio.models.ledger import Ledger
 from .....portfolio.models.transaction import Transaction, TransactionSchema
-from .....portfolio.util.uid import Uid
 from .....util.config import BaseConfigModel
+from .....util.helpers.decimal_currency import DecimalCurrency
+from .....util.models.hierarchical import HierarchicalModel
+from .....util.models.uid import Uid
 from .importer import Importer, ImporterConfig
 
 
 if TYPE_CHECKING:
+    from iso4217 import Currency
+
     from .....portfolio.models.entity import Entity
 
 
@@ -50,7 +56,23 @@ class InstrumentImportData(ImportData, InstrumentSchema):
 
 
 class TransactionImportData(ImportData, TransactionSchema):
-    pass
+    @field_validator("consideration", "fees", mode="plain")
+    def validate_consideration(cls, value: Any) -> Any:
+        if not isinstance(value, (str, float, int, Decimal, DecimalCurrency)):
+            msg = "Consideration and fees must be a string or number"
+            raise TypeError(msg)
+        return value
+
+    @override
+    def get_schema_field_values(self, *, default_currency: Currency, **options) -> Mapping[str, Any]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        result = dict(self.iter_schema_field_values(**options))
+
+        for field in ("consideration", "fees"):
+            value = result.get(field)
+            if value is not None and not isinstance(value, DecimalCurrency):
+                result[field] = DecimalCurrency(value, default_currency=default_currency)
+
+        return frozendict(result)
 
 
 class LedgerImportData(ImportData):
@@ -69,8 +91,19 @@ class SchemaImporterConfig(ImporterConfig, metaclass=ABCMeta):
 
 # MARK: Schema Importer Base class
 class SchemaImporter[C: SchemaImporterConfig](Importer[C], metaclass=ABCMeta):
-    SKIP_SCHEMA_FIELDS: ClassVar[frozenset[str]] = frozenset({"uid", "instance_name", "instance_parent", "instance_parent_weakref", "annotations"})
+    SKIP_SCHEMA_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "uid",
+            "instance_name",
+            "annotations",
+            "version",
+            "extra_dependency_uids",
+        }
+        | HierarchicalModel.INSTANCE_PARENT_FIELD_NAMES,
+    )
 
+    # TODO: What about UIDs? This will desync any incremental UID generators - and means newly created entities may collide with imported ones
+    #       We ideally want to remap UIDs on import to new ones, so that the UIDs in the imported data are only used for linking within the imported data.
     def _import_annotations(self, entity: Entity, annotations_data: tuple[AnnotationImportData, ...], imported_annotations: dict[Uid, Annotation]) -> None:
         for annotation_data in annotations_data:
             # If the annotation was already imported, reuse it
@@ -104,7 +137,7 @@ class SchemaImporter[C: SchemaImporterConfig](Importer[C], metaclass=ABCMeta):
 
             transactions = set()
             for transaction_data in ledger_data.transactions:
-                transaction = Transaction(**transaction_data.get_schema_field_values(skip=type(self).SKIP_SCHEMA_FIELDS))
+                transaction = Transaction(**transaction_data.get_schema_field_values(default_currency=instrument.currency, skip=type(self).SKIP_SCHEMA_FIELDS))
                 transactions.add(transaction)
 
             ledger = Ledger(instrument=instrument, transactions=transactions)

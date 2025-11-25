@@ -4,12 +4,12 @@
 from abc import ABCMeta
 from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Self, override
 
 from ....util.callguard import callguard_class
 from ....util.helpers.empty_class import empty_class
-from ...util.superseded import superseded_check
-from ...util.uid import Uid
+from ....util.models.superseded import superseded_check
+from ....util.models.uid import Uid
 from .entity_schema import EntitySchema
 
 
@@ -34,6 +34,9 @@ class EntityImpl[
 
         @property
         def entity(self) -> Entity: ...
+
+        @property
+        def previous(self) -> Self | None: ...
 
         @property
         def is_journal(self) -> bool: ...

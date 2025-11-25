@@ -1,0 +1,13 @@
+logging: !include ../_include/logging/runtime_debug.yaml
+
+providers:
+  forex: !include ../_include/forex/oanda.yaml
+
+agents:
+- !include ../_include/importer_config/simple.yaml
+
+- package: transformers.s104.full
+  title: S104
+  allow_shorting: true
+
+- !include ../_include/exporter/yaml.yaml

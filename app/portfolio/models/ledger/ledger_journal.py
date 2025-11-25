@@ -11,7 +11,7 @@ from .ledger_impl import LedgerImpl
 
 
 if TYPE_CHECKING:
-    from ...util.uid import Uid
+    from ....util.models.uid import Uid
 
 
 class LedgerJournal(

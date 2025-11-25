@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPLv3-or-later
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
-from ....util.uid import Uid
+from .....util.models.uid import Uid
 from ...ordered_view import OrderedViewMutableSet, OrderedViewSet
 from ...proxy import ProxyOrderedViewMutableSet, ProxyOrderedViewSet
 from ..collection import T_ProxyBase
