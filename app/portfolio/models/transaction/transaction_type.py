@@ -56,6 +56,7 @@ class TransactionType(StrEnum):
         return self is TransactionType.FEE
 
     # MARK: S104
+    @property
     def affects_s104_holdings(self) -> bool:
         return self in {TransactionType.BUY, TransactionType.SELL}
 

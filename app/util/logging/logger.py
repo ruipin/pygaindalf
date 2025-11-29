@@ -3,6 +3,7 @@
 
 import functools
 import logging
+import re
 
 from typing import Any, override
 

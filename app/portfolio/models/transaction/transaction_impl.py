@@ -64,26 +64,28 @@ class TransactionImpl(
             raise ValueError(msg)
         return ann
 
-    def get_exchange_rate(self, currency: Currency, *, use_forex_annotation: bool = True) -> Decimal:
+    def get_exchange_rate(self, currency: Currency | str, *, use_forex_annotation: bool = True) -> Decimal:
+        currency = Currency(currency)
+
+        if currency == self.currency:
+            return self.decimal(1)
+
         if use_forex_annotation and (ann := self.forex_annotation_or_none) is not None:
             return ann.get_exchange_rate(currency)
 
         return self.forex_provider.get_daily_rate(source=self.currency, target=currency, date=self.date)
 
-    def get_consideration_in_currency(self, currency: Currency, *, use_forex_annotation: bool = True) -> DecimalCurrency:
+    # MARK: Consideration
+    def get_consideration(self, currency: Currency | str, *, use_forex_annotation: bool = True) -> DecimalCurrency:
+        currency = Currency(currency)
+
+        if currency == self.currency:
+            return self.consideration
+
         if use_forex_annotation and (ann := self.forex_annotation_or_none) is not None:
             return ann.get_consideration(currency)
 
         return self.forex_provider.convert_currency(amount=self.consideration, source=self.currency, target=currency, date=self.date)
-
-    # MARK: Consideration
-    @property
-    def unit_consideration(self) -> DecimalCurrency:
-        if self.quantity == 0:
-            msg = "Cannot calculate unit consideration for transaction with zero quantity"
-            raise ValueError(msg)
-
-        return self.consideration / self.quantity
 
     def get_partial_consideration(self, quantity: Decimal, *, currency: Currency | str | None = None) -> DecimalCurrency:
         if self.quantity == 0:
@@ -105,6 +107,31 @@ class TransactionImpl(
                 assert result.currency == currency, f"Currency conversion failed, got {result.currency}."
 
         return result
+
+    def get_unit_consideration(self, *, currency: Currency | str | None = None) -> DecimalCurrency:
+        if self.quantity == 0:
+            msg = "Cannot calculate unit consideration for transaction with zero quantity"
+            raise ValueError(msg)
+
+        return self.get_partial_consideration(self.quantity, currency=currency)
+
+    @property
+    def unit_consideration(self) -> DecimalCurrency:
+        return self.get_unit_consideration()
+
+    def get_fees(self, currency: Currency | str | None) -> DecimalCurrency:
+        if self.fees == 0:
+            return self.decimal.currency(0, currency=currency)
+
+        currency = Currency(currency) if currency is not None else self.fees.currency
+        if currency == self.fees.currency:
+            return self.fees
+        elif currency is None:
+            msg = "Currency should not be None here."
+            raise ValueError(msg)
+        else:
+            rate = self.get_exchange_rate(currency)
+            return self.fees.convert(target=currency, rate=rate)
 
     # MARK: S104
     @property

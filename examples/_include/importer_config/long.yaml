@@ -1,0 +1,39 @@
+package: importers.config
+title: foo
+ledgers:
+- instrument:
+    ticker: APPL
+    type: equity
+    currency: USD
+  transactions:
+    - type: buy
+      date: 2023-01-01
+      quantity: 10000
+      consideration: 100
+    - type: sell
+      date: 2023-01-20
+      quantity: 50
+      consideration: 105
+      fees: 10
+    - type: sell
+      date: 2023-01-25
+      quantity: 7000
+      consideration: 101
+      fees: 5
+    - type: buy
+      date: 2023-02-01
+      quantity: 100
+      consideration: 99
+    - type: sell
+      date: 2023-02-20
+      quantity: 1000
+      consideration: 98
+      fees: 10
+    - type: sell
+      date: 2023-04-01
+      quantity: 1
+      consideration: 80 GBP
+    - type: buy
+      date: 2023-06-10
+      quantity: 100
+      consideration: 102
