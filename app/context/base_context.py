@@ -9,6 +9,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Self
 
 from ..components.providers import ProviderType
+from ..portfolio.models.instrument import Instrument
 from ..util.callguard import callguard_class
 from ..util.helpers.decimal import DecimalFactory
 from ..util.mixins import LoggableHierarchicalNamedMixin
@@ -70,6 +71,23 @@ class Context(LoggableHierarchicalNamedMixin, metaclass=ABCMeta):
     def transactions(self) -> Iterable[Transaction]:
         for ledger in self.portfolio.ledgers:
             yield from ledger.transactions
+
+    def get_instrument(self, isin: str | None = None, ticker: str | None = None) -> Instrument | None:
+        instrument = Instrument.instance(isin=isin, ticker=ticker)
+        if instrument is None:
+            return None
+
+        if instrument not in self.portfolio:
+            return None
+
+        return instrument
+
+    def get_ledger(self, isin: str | None = None, ticker: str | None = None) -> Ledger | None:
+        instrument = self.get_instrument(isin=isin, ticker=ticker)
+        if instrument is None:
+            return None
+
+        return self.portfolio[instrument]
 
     @property
     def session_manager(self) -> SessionManager:

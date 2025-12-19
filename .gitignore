@@ -211,3 +211,6 @@ __marimo__/
 /cache
 /docs/api
 /docs/build
+
+# Examples
+/examples/_personal

@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 
 if TYPE_CHECKING:
+    from ....util.models.uid import Uid
     from ...collections import OrderedViewSet
     from ...journal import Session, SessionManager
-    from ...util import Uid
     from ..instrument import Instrument, InstrumentRecord
     from ..ledger import Ledger
     from .portfolio_journal import PortfolioJournal

@@ -2,10 +2,13 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 
+import decimal
+
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING
 
 from iso4217 import Currency
+from pydantic import Field
 
 from ....util.helpers import classproperty, instance_lru_cache
 from ....util.helpers.decimal_currency import DecimalCurrency
@@ -20,7 +23,7 @@ if TYPE_CHECKING:
 
 # MARK: Provider Base Configuration
 class ForexProviderConfig(ProviderConfig, metaclass=ABCMeta):
-    pass
+    precision: int = Field(description="The number of decimal places for exchange rates", default=6)
 
 
 # MARK: Provider Base class
@@ -48,7 +51,10 @@ class ForexProvider[C: ForexProviderConfig](Provider[C], metaclass=ABCMeta):
     def get_daily_rate(self, *, source: Currency | str, target: Currency | str, date: datetime.date) -> Decimal:
         source = self._validate_currency(source)
         target = self._validate_currency(target)
-        return self._get_daily_exchange_rate(source=source, target=target, date=date)
+        rate = self._get_daily_exchange_rate(source=source, target=target, date=date)
+        if self.config.precision < decimal.getcontext().prec:
+            rate = round(rate, ndigits=self.config.precision)
+        return rate
 
     @component_entrypoint
     def convert_currency(

@@ -4,7 +4,7 @@
 import decimal
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any, Self, override
 
 from pydantic import PositiveInt, field_validator
 from pydantic_core import PydanticUseDefault
@@ -57,6 +57,13 @@ class DecimalSignals(Enum):
     UNDERFLOW = decimal.Underflow
     FLOAT_OP = decimal.FloatOperation
 
+    @staticmethod
+    def default_traps() -> dict[DecimalSignals, bool]:
+        traps = dict.fromkeys(DecimalSignals, True)
+        traps[DecimalSignals.INEXACT] = False
+        traps[DecimalSignals.ROUNDED] = False
+        return traps
+
     @override
     def __repr__(self) -> str:
         return f"{type(self).__name__}.{self.name}"
@@ -64,9 +71,9 @@ class DecimalSignals(Enum):
 
 # MARK: Configuration
 class DecimalConfig(BaseConfigModel):
-    precision: PositiveInt = FieldInherit(32)
+    precision: PositiveInt = FieldInherit(64)
     rounding: DecimalRounding = FieldInherit(DecimalRounding.HALF_DOWN)
-    traps: dict[DecimalSignals, bool] = FieldInherit(dict.fromkeys(DecimalSignals, True))
+    traps: dict[DecimalSignals, bool] = FieldInherit(DecimalSignals.default_traps())
     emin: int | None = FieldInherit(None)
     emax: int | None = FieldInherit(None)
     capitals: bool | None = FieldInherit(None)

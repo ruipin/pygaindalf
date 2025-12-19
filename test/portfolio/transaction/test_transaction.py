@@ -100,6 +100,7 @@ class TestTransactionEntity:
                 "quantity": Decimal(2),
                 "consideration": DecimalCurrency(220, currency="USD"),
                 "fees": DecimalCurrency(0, currency="USD"),
+                "discount": DecimalCurrency(0, currency="USD"),
             }
 
         entry_v2 = log.get_entry_by_version(2)

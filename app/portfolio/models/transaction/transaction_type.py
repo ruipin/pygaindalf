@@ -9,10 +9,12 @@ class TransactionType(StrEnum):
     # TODO: We might want to subclass transaction types for more specific behavior, e.g. AcquisitionTransaction vs DisposalTransaction ?
     # fmt: off
     BUY      = "buy"
+    VEST     = "vest"
     SELL     = "sell"
     DIVIDEND = "dividend"
     INTEREST = "interest"
     FEE      = "fee"
+    SPLIT    = "split"
     # fmt: on
 
     # MARK: Acquisitions
@@ -21,8 +23,12 @@ class TransactionType(StrEnum):
         return self is TransactionType.BUY
 
     @property
+    def vest(self) -> bool:
+        return self is TransactionType.VEST
+
+    @property
     def acquisition(self) -> bool:
-        return self is TransactionType.BUY
+        return self in {TransactionType.BUY, TransactionType.VEST}
 
     # MARK: Disposals
     @property
@@ -55,10 +61,15 @@ class TransactionType(StrEnum):
     def expense(self) -> bool:
         return self is TransactionType.FEE
 
+    # MARK: Stock Splits
+    @property
+    def stock_split(self) -> bool:
+        return self is TransactionType.SPLIT
+
     # MARK: S104
     @property
     def affects_s104_holdings(self) -> bool:
-        return self in {TransactionType.BUY, TransactionType.SELL}
+        return self.acquisition or self.disposal or self.stock_split
 
     # MARK: Utilities
     @override

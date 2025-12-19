@@ -55,8 +55,23 @@ class PortfolioImpl[
     # MARK: Set ABC
     @override
     def __contains__(self, value: object) -> bool:
-        if not isinstance(value, (Ledger, LedgerRecord, Uid)):
+        if isinstance(value, Uid):
+            value = Entity.by_uid_or_none(value)
+            if value is None:
+                return False
+
+        if isinstance(value, (Instrument, InstrumentRecord)):
+            inst = Instrument.narrow_to_instance_or_none(value)
+            if inst is None:
+                return False
+
+            value = Ledger.by_instrument(inst)
+            if value is None:
+                return False
+
+        if not isinstance(value, (Ledger, LedgerRecord)):
             return False
+
         return Ledger.narrow_to_instance(value) in self.ledgers
 
     @override

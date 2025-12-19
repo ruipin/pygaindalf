@@ -130,6 +130,12 @@ class DecimalCurrency(decimal.Decimal):
         converted_value = self.decimal() * rate
         return DecimalCurrency(converted_value, currency=target)
 
+    def round(self, ndigits: int | None = None) -> DecimalCurrency:
+        if ndigits is None:
+            return self
+        rounded_value = round(self, ndigits)
+        return DecimalCurrency(rounded_value, currency=self.currency)
+
     # MARK: Pydantic
     @classmethod
     def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:

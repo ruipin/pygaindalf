@@ -1,0 +1,16 @@
+logging: !include ../_include/logging/runtime_debug.yaml
+
+agents:
+- package: importers.config
+  title: Initialize instruments
+  ledgers:
+  - instrument:
+      ticker: ARM
+      type: equity
+      currency: USD
+
+- package: importers.fidelity_netbenefits
+  title: Fidelity NB Importer
+  glob: $FNB_PATH/**/*.pdf
+
+- !include ../_include/exporter/yaml.yaml

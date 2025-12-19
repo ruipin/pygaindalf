@@ -19,7 +19,11 @@ class TestDecimalFactory:
         assert factory.config.traps is not None
 
         for trap in DecimalSignals:
-            assert factory.config.traps[trap] is True
+            value = factory.config.traps.get(trap)
+            if trap in (DecimalSignals.INEXACT, DecimalSignals.ROUNDED):
+                assert value is False
+            else:
+                assert value is True
 
         assert factory.context.prec == DecimalConfig.model_fields["precision"].default_factory.default  # pyright: ignore[reportFunctionMemberAccess, reportOptionalMemberAccess]
         assert factory.context.rounding == DecimalConfig.model_fields["rounding"].default_factory.default.value  # pyright: ignore[reportFunctionMemberAccess, reportOptionalMemberAccess]

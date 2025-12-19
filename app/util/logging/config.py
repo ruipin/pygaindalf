@@ -16,8 +16,9 @@ from .levels import LoggingLevel
 
 
 DEFAULT_CUSTOM_LEVELS: dict[str, LoggingLevel] = {
-    "^requests_cache": LoggingLevel.INFO,
-    "^urllib3.connectionpool": LoggingLevel.INFO,
+    r"^requests_cache": LoggingLevel.INFO,
+    r"^urllib3\.connectionpool": LoggingLevel.INFO,
+    r"^pdfminer": LoggingLevel.INFO,
 }
 
 

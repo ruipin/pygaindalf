@@ -60,7 +60,7 @@ class ForexAnnotationImpl[
         elif (result := self.considerations.get(currency)) is not None:
             return result
         else:
-            return self.transaction.get_consideration_in_currency(currency, use_forex_annotation=False)
+            return self.transaction.get_consideration(currency, use_forex_annotation=False)
 
 
 # MARK: Journal
