@@ -37,8 +37,8 @@ class TestTransactionForexAnnotation:
             considerations={Currency("EUR"): DecimalCurrency("1650 EUR"), Currency("JPY"): DecimalCurrency("225000 JPY")},
         )
 
-        assert txn.get_consideration(Currency("EUR")) == Decimal(1650)
-        assert txn.get_consideration(Currency("JPY")) == Decimal(225000)
+        assert txn.get_consideration(currency=Currency("EUR")) == Decimal(1650)
+        assert txn.get_consideration(currency=Currency("JPY")) == Decimal(225000)
 
     def test_forex_annotation_fallback_to_provider(self):
         inst = Instrument(ticker="AAPL", type=InstrumentType.EQUITY, currency=Currency("USD"))
@@ -53,4 +53,4 @@ class TestTransactionForexAnnotation:
         _ledger = Ledger(instrument=inst, transactions={txn})
 
         with pytest.raises(RuntimeError, match="No active context found"):
-            txn.get_consideration(Currency("GBP"))
+            txn.get_consideration(currency=Currency("GBP"))

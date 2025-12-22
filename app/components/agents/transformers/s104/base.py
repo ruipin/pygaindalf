@@ -30,6 +30,7 @@ S104_CURRENCY = Currency("GBP")
 # MARK: Configuration
 class S104BaseTransformerConfig(TransformerConfig):
     allow_shorting: bool = Field(default=False, description="Whether to allow shorting of S104 holdings when matching disposals.")
+
     cost_precision: int | None = Field(
         default=2, description="The number of decimal places for S104 cost calculations. If null, relies on the Decimal context default."
     )
@@ -51,9 +52,8 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
     """
 
     def process_ledger(self, ledger: Ledger, *, match: bool = True, s104_holdings: bool = True) -> None:
-        if not ledger.instrument.type.is_stock:
-            # TODO: Handle other types (e.g. options)
-            self.log.info(t"Ledger {ledger} instrument type {type} is not stock, skipping S104 processing.")
+        if not ledger.instrument.type.uk_capital_gains_taxed:
+            self.log.info(t"Ledger {ledger} instrument type {type} is not subject to UK capital gains tax, skipping S104 processing.")
             return
 
         # TODO: Handle resume
@@ -148,7 +148,6 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
 
             # Skip fully matched acquisitions
             if other.s104_fully_matched:
-                self.log.debug(t"Acquisition {other} already fully matched, skipping")
                 continue
 
             # Match the transactions
@@ -177,24 +176,28 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
         return ann.fully_matched
 
     # MARK: S104 Holdings
-    def _handle_s104_acquisition(self, state: S104State, quantity: Decimal, consideration: DecimalCurrency, *, short: bool) -> S104State:
+    def _handle_s104_acquisition(self, txn: Transaction, state: S104State, quantity: Decimal, *, short: bool) -> S104State:
         """Acquisitions: Add any unmatched shares to the S104, increasing cost accordingly.
 
         If shorting, the quantity and consideration are negative.
         """
+        consideration = txn.get_partial_consideration(quantity=quantity, currency=S104_CURRENCY)
+        fees = txn.get_partial_fees(quantity=quantity, currency=S104_CURRENCY)
+        cost = consideration + fees
+
         if short:
             quantity = -quantity
-            consideration = -consideration
+            cost = -cost
             assert state.shares <= 0, "Cannot handle short acquisition when shares are positive"
             assert quantity < 0, "Quantity must be negative for short acquisitions"
-            assert consideration < 0, "Consideration must be negative for short acquisitions"
+            assert cost < 0, "Cost must be negative for short acquisitions"
         else:
             assert state.shares >= 0, "Cannot handle long acquisition when shares are negative"
             assert quantity > 0, "Quantity must be positive for long acquisitions"
-            assert consideration > 0, "Consideration must be positive for long acquisitions"
+            assert cost > 0, "Cost must be positive for long acquisitions"
 
         new_shares = state.shares + quantity
-        new_cost = (state.cost + consideration).round(self.config.cost_precision)
+        new_cost = (state.cost + cost).round(self.config.cost_precision)
 
         return S104State(
             shares=new_shares,
@@ -206,16 +209,19 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
 
         If shorting, the quantity is negative.
         """
-        cost_impact = -(state.cost * quantity / state.shares)
-
         if short:
             quantity = -quantity
             assert state.shares < 0, "Cannot handle short disposal when shares are positive or zero"
             assert quantity < 0, "Quantity must be negative for short disposal"
-            assert cost_impact > 0, "Cost impact must be positive for short disposal"
         else:
             assert state.shares > 0, "Cannot handle long disposal when shares are negative or zero"
             assert quantity > 0, "Quantity must be positive for long disposal"
+
+        cost_impact = -(state.cost * quantity / state.shares)
+
+        if short:
+            assert cost_impact > 0, "Cost impact must be positive for short disposal"
+        else:
             assert cost_impact < 0, "Cost impact must be negative for long disposal"
 
         # Reduce cost proportionally
@@ -247,33 +253,24 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
 
         # Long buy
         if unmatched > 0:
-            state = self._handle_s104_acquisition(
-                state,
-                quantity=unmatched,
-                consideration=txn.get_partial_consideration(unmatched, currency=S104_CURRENCY),
-                short=False,
-            )
+            state = self._handle_s104_acquisition(txn, state, quantity=unmatched, short=False)
 
         return state, unmatched
 
     def _handle_disposal(self, txn: Transaction, state: S104State, unmatched: Decimal) -> tuple[S104State, Decimal]:
         if unmatched > state.shares and not self.config.allow_shorting:
-            msg = f"Cannot dispose {unmatched} shares from S104 holdings with only {state.shares} shares. Please ensure all transactions are accounted for or enable shorting."
+            msg = f"Cannot dispose of {unmatched} shares from S104 holdings with only {state.shares} shares. Please ensure all transactions are accounted for or enable shorting."
             raise ValueError(msg)
 
         # Long sell
         sold = min(state.shares, unmatched)
-        state = self._handle_s104_disposal(state, sold, short=False)
-        unmatched -= sold
+        if sold > 0:
+            state = self._handle_s104_disposal(state, sold, short=False)
+            unmatched -= sold
 
         # Short sell
         if unmatched > 0:
-            state = self._handle_s104_acquisition(
-                state,
-                quantity=unmatched,
-                consideration=txn.get_partial_consideration(unmatched, currency=S104_CURRENCY),
-                short=True,
-            )
+            state = self._handle_s104_acquisition(txn, state, quantity=unmatched, short=True)
 
         return state, unmatched
 

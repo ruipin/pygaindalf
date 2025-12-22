@@ -102,7 +102,7 @@ class Instrument(
         if (identifier := data.get("isin")) is None and (identifier := data.get("ticker")) is None:
             msg = f"{cls.__name__} must have either 'isin' or 'ticker' field in the data to generate a name for the instance."
             raise ValueError(msg)
-        return identifier
+        return identifier.replace(" ", "_").replace(".", "_")
 
 
 InstrumentRecord.register_entity_class(Instrument)

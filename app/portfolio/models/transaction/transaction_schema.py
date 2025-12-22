@@ -21,5 +21,5 @@ class TransactionSchema(EntitySchemaBase, metaclass=ABCMeta):
     quantity       : Decimal         = Field(description="The quantity involved in the transaction.")
     consideration  : DecimalCurrency = Field(description="The consideration amount for the transaction.")
     fees           : DecimalCurrency = Field(default=DecimalCurrency(0), description="The fees associated with the transaction.")
-    discount       : DecimalCurrency = Field(default=DecimalCurrency(0), description="Discount applied to the transaction, if any, for example when purchasing shares through an ESPP. This discount reduces the effective cost basis of the acquired asset but is not included in the tax calculations.")
+    discount       : DecimalCurrency = Field(default=DecimalCurrency(0), description="Discount applied to the transaction, if any, for example when purchasing shares through an ESPP. This discount reduces the effective cost basis of the acquired asset but is not included in the cost basis used for tax calculations.")
     # fmt: on

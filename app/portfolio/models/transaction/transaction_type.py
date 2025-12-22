@@ -11,6 +11,8 @@ class TransactionType(StrEnum):
     BUY      = "buy"
     VEST     = "vest"
     SELL     = "sell"
+    DEPOSIT  = "deposit"
+    WITHDRAW = "withdraw"
     DIVIDEND = "dividend"
     INTEREST = "interest"
     FEE      = "fee"

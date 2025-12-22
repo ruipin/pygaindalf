@@ -40,7 +40,7 @@ class ComponentMeta[C: ComponentConfig](LoggableHierarchicalNamedMixin, metaclas
 
         # If callguard is disabled, manually decorate all public methods with the callguard decorator
         if not CALLGUARD_ENABLED and callable(dec := getattr(cls, "__callguard_decorator__", None)):
-            for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+            for name, method in inspect.getmembers_static(cls, predicate=inspect.isfunction):
                 if not name.startswith("_"):
                     setattr(cls, name, dec(method, method_name=name))
 

@@ -6,7 +6,7 @@ import weakref
 
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterable, Mapping, MutableMapping
-from functools import partialmethod
+from functools import lru_cache, partialmethod
 from typing import TYPE_CHECKING, Any, ClassVar, Self, final, override
 from typing import cast as typing_cast
 
@@ -738,6 +738,7 @@ class EntityBase[
 
     @final
     @classmethod
+    @lru_cache(maxsize=1024)
     def _should_redirect_attribute_to_record(cls, attr: str) -> bool:
         if attr.startswith("_"):
             return False

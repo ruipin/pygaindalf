@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, ClassVar, override
 from iso4217 import Currency
 from pydantic import Field
 
+from ....portfolio.models.ledger import Ledger
 from ....portfolio.models.transaction import Transaction, TransactionType
 from ....util.helpers.pdf_text import PdfText
 from .importer import SchemaImporter, SchemaImporterConfig
@@ -29,6 +30,7 @@ class TransactionKind(StrEnum):
 
 class FidelityNetbenefitsImporterConfig(SchemaImporterConfig):
     glob: str = Field(description="The glob pattern to all Fidelity Netbenefits Trade Confirmation PDF files")
+    create_ledger: bool = Field(default=False, description="Whether to create a new ledger for the imported data if it does not already exist.")
     currency: Currency = Field(default=Currency("USD"), description="The currency of the transactions being imported")
 
 
@@ -95,10 +97,12 @@ class FidelityNetbenefitsImporter(SchemaImporter[FidelityNetbenefitsImporterConf
         raise ValueError(msg)
 
     def _get_ledger(self, symbol: str) -> Ledger:
-        ledger = self.context.get_ledger(ticker=symbol)
+        ledger = self.get_or_create_ledger(ticker=symbol, currency=self.config.currency) if self.config.create_ledger else self.get_ledger(ticker=symbol)
+
         if ledger is None:
             msg = f"Could not find ledger for instrument with ticker symbol: {symbol}"
             raise ValueError(msg)
+
         return ledger
 
     def _parse_espp(self, pdf: PdfText) -> None:
@@ -228,7 +232,7 @@ class FidelityNetbenefitsImporter(SchemaImporter[FidelityNetbenefitsImporterConf
     def _do_run(self) -> None:
         paths = sorted(Path(p) for p in glob.glob(os.path.expandvars(self.config.glob)))  # noqa: PTH207
         if not paths:
-            msg = f"No PDFs matched glob: {self.config.glob}"
+            msg = f"No files matched glob: {self.config.glob}"
             raise FileNotFoundError(msg)
 
         with self.session(f"Fidelity NetBenefits Importer for {self.config.glob}"):

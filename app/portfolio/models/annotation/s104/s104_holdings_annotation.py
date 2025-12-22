@@ -51,22 +51,22 @@ class S104HoldingsAnnotationImpl(
         return self.transaction.get_previous_s104_holdings_or_none()
 
     @property
-    def previous_quantity(self) -> Decimal | None:
-        if (previous := self.previous) is not None:
-            return previous.quantity
-        return None
+    def previous_quantity(self) -> Decimal:
+        if (previous := self.previous) is None:
+            return Decimal(0)
+        return previous.quantity
 
     @property
-    def previous_cumulative_cost(self) -> DecimalCurrency | None:
-        if (previous := self.previous) is not None:
-            return previous.cumulative_cost
-        return None
+    def previous_cumulative_cost(self) -> DecimalCurrency:
+        if (previous := self.previous) is None:
+            return DecimalCurrency(0)
+        return previous.cumulative_cost
 
     @property
-    def previous_cost_basis(self) -> DecimalCurrency | None:
-        if (previous := self.previous) is not None:
-            return previous.cost_basis
-        return None
+    def previous_cost_basis(self) -> DecimalCurrency:
+        if (previous := self.previous) is None:
+            return DecimalCurrency(0)
+        return previous.cost_basis
 
 
 # MARK: Journal

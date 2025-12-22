@@ -258,6 +258,11 @@ class EntityCommon[
             return
 
         if isinstance(obj, BaseModel):
+            from ...journal import Journal
+
+            journal = getattr(obj, "journal_or_none", None) if use_journal else None
+            assert journal is None or isinstance(journal, Journal), f"Expected journal to be Journal or None, got {type(journal).__name__}."
+
             model_fields = type(obj).model_fields if not isinstance(obj, EntityCommon) else obj.get_record_model_fields()
             for field, info in model_fields.items():
                 # Ignore fields
@@ -270,10 +275,6 @@ class EntityCommon[
                     continue
 
                 # Recurse
-                from ...journal import Journal
-
-                journal = getattr(obj, "journal_or_none", None) if use_journal else None
-                assert journal is None or isinstance(journal, Journal), f"Expected journal to be Journal or None, got {type(journal).__name__}."
                 value = getattr(journal if journal is not None and journal.is_field_edited(field) else obj, field, None)
 
                 if value is None or value is self:

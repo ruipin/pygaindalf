@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from ..instrument import Instrument
 
 
+# TODO: Move to some common location e.g. in a S104 extension module
+S104_CURRENCY = Currency("GBP")
+
+
 class TransactionImpl(
     EntityImpl,
     TransactionSchema if TYPE_CHECKING else empty_class(),
@@ -76,10 +80,11 @@ class TransactionImpl(
         return self.forex_provider.get_daily_rate(source=self.currency, target=currency, date=self.date)
 
     # MARK: Consideration
-    def get_consideration(self, currency: Currency | str, *, use_forex_annotation: bool = True) -> DecimalCurrency:
+    # TODO: Allow requesting after fees
+    def get_consideration(self, *, currency: Currency | str | None = None, use_forex_annotation: bool = True) -> DecimalCurrency:
         currency = Currency(currency)
 
-        if currency == self.currency:
+        if currency is None or currency == self.currency:
             return self.consideration
 
         if use_forex_annotation and (ann := self.forex_annotation_or_none) is not None:
@@ -119,7 +124,8 @@ class TransactionImpl(
     def unit_consideration(self) -> DecimalCurrency:
         return self.get_unit_consideration()
 
-    def get_fees(self, currency: Currency | str | None) -> DecimalCurrency:
+    # MARK: Fees
+    def get_fees(self, *, currency: Currency | str | None) -> DecimalCurrency:
         if self.fees == 0:
             return self.decimal.currency(0, currency=currency)
 
@@ -133,7 +139,57 @@ class TransactionImpl(
             rate = self.get_exchange_rate(currency)
             return self.fees.convert(target=currency, rate=rate)
 
+    def get_unit_fees(self, *, currency: Currency | str | None = None) -> DecimalCurrency:
+        if self.quantity == 0:
+            msg = "Cannot calculate unit fees for transaction with zero quantity"
+            raise ValueError(msg)
+
+        total_fees = self.get_fees(currency=currency)
+        return total_fees / self.quantity
+
+    @property
+    def unit_fees(self) -> DecimalCurrency:
+        return self.get_unit_fees()
+
+    def get_partial_fees(self, quantity: Decimal, *, currency: Currency | str | None = None) -> DecimalCurrency:
+        if self.quantity == 0:
+            msg = "Cannot calculate partial fees for transaction with zero quantity"
+            raise ValueError(msg)
+
+        if quantity == self.quantity:
+            return self.get_fees(currency=currency)
+
+        unit_fees = self.get_unit_fees(currency=currency)
+        return unit_fees * quantity
+
+    # MARK: Discount
+    def get_discount(self, *, currency: Currency | str | None = None) -> DecimalCurrency:
+        if currency is None or currency == self.discount.currency:
+            return self.discount
+
+        if self.discount == 0:
+            return self.decimal.currency(0, currency=currency)
+
+        rate = self.get_exchange_rate(currency)
+        return self.discount.convert(target=currency, rate=rate)
+
+    def get_unit_discount(self, *, currency: Currency | str | None = None) -> DecimalCurrency:
+        if self.quantity == 0:
+            msg = "Cannot calculate unit discount for transaction with zero quantity"
+            raise ValueError(msg)
+
+        total_discount = self.get_discount(currency=currency)
+        return total_discount / self.quantity
+
+    def get_partial_discount(self, quantity: Decimal, *, currency: Currency | str | None = None) -> DecimalCurrency:
+        if quantity == self.quantity:
+            return self.get_discount(currency=currency)
+
+        unit_discount = self.get_unit_discount(currency=currency)
+        return unit_discount * quantity
+
     # MARK: S104
+    # TODO: Move to some sort of S104 mixin/extension
     @property
     def s104_pool_annotation_or_none(self) -> S104PoolAnnotation | None:
         from ..annotation.s104 import S104PoolAnnotation
@@ -185,3 +241,66 @@ class TransactionImpl(
     def s104_fully_matched(self) -> bool:
         ann = self.s104_pool_annotation_or_none
         return ann is not None and ann.fully_matched
+
+    def get_s104_total_proceeds(self) -> DecimalCurrency:
+        if not self.type.disposal:
+            return self.decimal.currency(0, currency=S104_CURRENCY)
+
+        if not self.type.affects_s104_holdings:
+            msg = "Cannot calculate S104 capital gains for a disposal transaction that does not affect S104 holdings."
+            raise ValueError(msg)
+
+        total_proceeds = self.decimal.currency(0, currency=S104_CURRENCY)
+        remaining = self.quantity
+
+        # Matched portion
+        pool = self.s104_pool_annotation_or_none
+        if pool is not None:
+            total_proceeds += pool.matched_total_proceeds
+            remaining = pool.quantity_unmatched
+
+        # Unmatched portion
+        if remaining > 0:
+            holdings = self.get_previous_s104_holdings_or_none()
+            if holdings is None:
+                msg = "Cannot calculate S104 capital gains containing unmatched shares without previous S104 holdings."
+                raise ValueError(msg)
+
+            total_proceeds += self.get_partial_consideration(remaining, currency=S104_CURRENCY)
+            total_proceeds -= self.get_partial_fees(remaining, currency=S104_CURRENCY)
+
+        return total_proceeds
+
+    def get_s104_total_cost(self) -> DecimalCurrency:
+        if not self.type.disposal:
+            return self.decimal.currency(0, currency=S104_CURRENCY)
+
+        if not self.type.affects_s104_holdings:
+            msg = "Cannot calculate S104 capital gains for a disposal transaction that does not affect S104 holdings."
+            raise ValueError(msg)
+
+        total_cost = self.decimal.currency(0, currency=S104_CURRENCY)
+        remaining = self.quantity
+
+        # Matched portion
+        pool = self.s104_pool_annotation_or_none
+        if pool is not None:
+            total_cost += pool.matched_total_cost
+            remaining = pool.quantity_unmatched
+
+        # Unmatched portion
+        if remaining > 0:
+            holdings = self.get_previous_s104_holdings_or_none()
+            if holdings is None:
+                msg = "Cannot calculate S104 capital gains containing unmatched shares without previous S104 holdings."
+                raise ValueError(msg)
+
+            unit_cost_basis = holdings.cost_basis
+            total_cost += unit_cost_basis * remaining
+
+        return total_cost
+
+    def get_s104_capital_gain(self) -> DecimalCurrency:
+        total_proceeds = self.get_s104_total_proceeds()
+        total_cost = self.get_s104_total_cost()
+        return total_proceeds - total_cost

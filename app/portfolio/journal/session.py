@@ -5,7 +5,7 @@ import datetime
 import sys
 import weakref
 
-from collections.abc import Callable, Iterable, MutableMapping, MutableSet
+from collections.abc import Callable, Iterable, MutableMapping, MutableSet, Sequence
 from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict, Unpack, override
 
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
@@ -153,32 +153,31 @@ class Session(LoggableHierarchicalModel):
             msg = "Cannot get an entity journal from an ended session."
             raise SupersededError(msg)
 
-        if isinstance(target, UidProtocol):
-            uid = target.uid
-        elif isinstance(target, Uid):
+        if isinstance(target, Uid):
             uid = target
+        elif isinstance(target, UidProtocol):
+            uid = target.uid
         else:
             msg = "Target must be an Entity, EntityRecord or Uid."
             raise TypeError(msg)
 
         entity = Entity.by_uid(uid)
-        record = EntityRecord.by_uid_or_none(uid)
-
-        if record is not None and record.superseded:
-            self.log.warning(t"EntityRecord {record.instance_name} is superseded; cannot create or retrieve journal.")
-            return None
 
         journal = self._journals.get(uid, None)
         if journal is not None:
-            if (existing_record := journal.record_or_none) is not record:
+            if journal.version != entity.version:
                 assert journal.superseded, "Journal must be superseded here"
-                assert existing_record is None or existing_record.superseded, "Existing record must be None or superseded here"
                 if create:
                     del self._journals[uid]
             else:
                 return journal
 
         if create:
+            record = EntityRecord.by_uid_or_none(uid)
+            if record is not None and record.superseded:
+                self.log.warning(t"EntityRecord {record.instance_name} is superseded; cannot create journal.")
+                return None
+
             return self._add_journal(uid, entity, record)
         else:
             return None
@@ -322,14 +321,17 @@ class Session(LoggableHierarchicalModel):
         self.log.debug("Commit concluded.")
 
     def _commit(self) -> None:
-        self._commit_notify()
-        self._commit_apply()
+        flattened = self._commit_notify()
+        self._commit_apply(flattened)
 
-    def _commit_travel_hierarchy(self, iterable: Iterable[Uid], *, condition: Callable[[Entity], bool] | None = None, copy: bool = False) -> Iterable[Journal]:
+    def _commit_travel_hierarchy(self, iterable: Iterable[Uid], *, copy: bool = False) -> Iterable[Journal]:
         if copy:
             iterable = list(iterable)
 
-        yielded = set()
+        visited = set()
+
+        def _condition(entity: Entity) -> bool:
+            return entity.uid not in visited
 
         for uid in iterable:
             journal = self._journals.get(uid, None)
@@ -339,11 +341,11 @@ class Session(LoggableHierarchicalModel):
             assert not journal.superseded, "Journal should not be superseded here."
 
             entity = journal.entity
-            for e in entity.iter_hierarchy(condition=condition, use_journal=True):
-                if (j := self._journals.get(e.uid, None)) is not None and j not in yielded:
+            for e in entity.iter_hierarchy(condition=_condition, use_journal=True):
+                if (j := self._journals.get(e.uid, None)) is not None:
                     assert not j.superseded, "Journal should not be superseded here."
                     yield j
-                    yielded.add(j)
+                visited.add(e.uid)
 
     # MARK: Commit - Notify
     _restart_commit_notify: bool = PrivateAttr(default=False)
@@ -358,18 +360,22 @@ class Session(LoggableHierarchicalModel):
 
         self._restart_commit_notify = True
 
-    def _commit_notify(self) -> None:
+    def _commit_notify(self) -> Sequence[Journal]:
         """Notify all journals of changes in dependency order, allowing them to update their diffs accordingly."""
         self.log.debug("Notifying journals of changes...")
 
+        flattened = []
         pass_count = 0
         while True:
             pass_count += 1
+            flattened.clear()
             self.log.debug(t"Starting notify pass {pass_count}...")
 
             self._restart_commit_notify = False
 
             for j in self._commit_travel_hierarchy(self._journals.keys(), copy=True):
+                flattened.append(j)
+
                 if j.notified_dependents:
                     continue
 
@@ -385,9 +391,10 @@ class Session(LoggableHierarchicalModel):
                 break
 
         assert not self._restart_commit_notify, "Restart flag should be false after notify loop."
-        for j in self._journals.values():
-            if not j.notified_dependents:
-                self.log.error(t"Journal {j.instance_name} did not notify dependents.")
+        if __debug__:
+            for j in self._journals.values():
+                if not j.notified_dependents:
+                    self.log.error(t"Journal {j.instance_name} did not notify dependents.")
         assert all(j.notified_dependents for j in self._journals.values()), "All journals should have notified dependents after notify loop."
 
         # Freeze all journals to prevent further edits
@@ -396,14 +403,15 @@ class Session(LoggableHierarchicalModel):
 
         # Done
         self._after_commit_notify = True
+        return flattened
 
     # MARK: Commit - Apply
-    def _commit_apply(self) -> None:
+    def _commit_apply(self, flattened: Sequence[Journal]) -> None:
         """Iterate through flattened hierarchy, flatten updates and apply them (creating new entity versions, or deleting them as requested)."""
         self.log.debug("Committing journals...")
 
         # Apply all journals in dependency order
-        for j in self._commit_travel_hierarchy(self._journals.keys(), copy=False):
+        for j in flattened:  # for j in self._commit_travel_hierarchy(self._journals.keys(), copy=False):
             j.commit()
             assert j.superseded, "Journal should be marked as superseded after commit."
 

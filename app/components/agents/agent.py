@@ -5,6 +5,8 @@ from abc import ABCMeta
 from typing import TYPE_CHECKING, override
 
 from ...context import ContextConfig
+from ...portfolio.models.instrument import Instrument
+from ...portfolio.models.ledger import Ledger
 from ...util.config import FieldInherit
 from ...util.helpers import classproperty
 from ..component import Component, ComponentConfig, component_entrypoint
@@ -50,8 +52,28 @@ class Agent[C: AgentConfig](Component[C], metaclass=ABCMeta):
         self.log.info(t"{self.instance_hierarchy} finished running.")
 
     # MARK: Session Manager
-    def session(self, reason: str) -> AbstractContextManager[Session]:
-        return self.context.session_manager(actor=self.instance_hierarchy, reason=reason)
+    def session(self, reason: str, *, reuse: bool = False) -> AbstractContextManager[Session]:
+        return self.context.session_manager(actor=self.instance_hierarchy, reason=reason, reuse=reuse)
 
-    def s(self, reason: str) -> AbstractContextManager[Session]:
-        return self.session(reason=reason)
+    def s(self, reason: str, *, reuse: bool = False) -> AbstractContextManager[Session]:
+        return self.session(reason=reason, reuse=reuse)
+
+    # MARK: Ledgers
+    def get_ledger(self, isin: str | None = None, ticker: str | None = None) -> Ledger | None:
+        return self.context.get_ledger(isin=isin, ticker=ticker)
+
+    def get_or_create_ledger(self, isin: str | None = None, ticker: str | None = None, **data) -> Ledger:
+        ledger = self.get_ledger(isin=isin, ticker=ticker)
+        if ledger is not None:
+            return ledger
+
+        name = isin or ticker
+        if name is None:
+            msg = "Cannot create ledger without at least an ISIN or Ticker."
+            raise ValueError(msg)
+
+        with self.session(reason=f"Creating ledger {name}", reuse=True):
+            instrument = Instrument(isin=isin, ticker=ticker, **data)
+            ledger = Ledger(instrument=instrument)
+            self.context.portfolio.journal.ledgers.add(ledger)
+            return ledger

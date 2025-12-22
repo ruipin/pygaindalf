@@ -2,6 +2,7 @@
 # Copyright © 2025 pygaindalf Rui Pinheiro
 
 import annotationlib
+import functools
 import typing
 import warnings
 
@@ -24,6 +25,7 @@ type ResolvedType = type | GenericAlias | typing.ForwardRef
 
 
 # MARK: typing.get_type_hints wrapper
+@functools.lru_cache(maxsize=2048)
 def _get_type_hints(obj: typing.Any, format: annotationlib.Format = annotationlib.Format.FORWARDREF) -> typing.Mapping[str, typing.Any]:  # noqa: A002
     return frozendict(typing.get_type_hints(obj, format=format))
 

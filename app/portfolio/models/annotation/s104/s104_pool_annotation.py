@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .....util.helpers.decimal_currency import DecimalCurrency
 
 
+# TODO: Move to some common location e.g. in a S104 extension module
 S104_CURRENCY = Currency("GBP")
 
 
@@ -55,19 +56,27 @@ class S104Pool(SingleInitializationModel):
 
     @property
     def unit_cost(self) -> DecimalCurrency:
-        return self.acquisition.get_partial_consideration(Decimal(1), currency=S104_CURRENCY)
+        consideration = self.acquisition.get_partial_consideration(Decimal(1), currency=S104_CURRENCY)
+        fees = self.acquisition.get_partial_fees(Decimal(1), currency=S104_CURRENCY)
+        return consideration + fees
 
     @property
     def total_cost(self) -> DecimalCurrency:
-        return self.acquisition.get_partial_consideration(self.quantity, currency=S104_CURRENCY)
+        consideration = self.acquisition.get_partial_consideration(self.quantity, currency=S104_CURRENCY)
+        fees = self.acquisition.get_partial_fees(self.quantity, currency=S104_CURRENCY)
+        return consideration + fees
 
     @property
     def unit_proceeds(self) -> DecimalCurrency:
-        return self.disposal.get_partial_consideration(Decimal(1), currency=S104_CURRENCY)
+        consideration = self.disposal.get_partial_consideration(Decimal(1), currency=S104_CURRENCY)
+        fees = self.disposal.get_partial_fees(Decimal(1), currency=S104_CURRENCY)
+        return consideration - fees
 
     @property
     def total_proceeds(self) -> DecimalCurrency:
-        return self.disposal.get_partial_consideration(self.quantity, currency=S104_CURRENCY)
+        consideration = self.disposal.get_partial_consideration(self.quantity, currency=S104_CURRENCY)
+        fees = self.disposal.get_partial_fees(self.quantity, currency=S104_CURRENCY)
+        return consideration - fees
 
     @property
     def total_gain(self) -> DecimalCurrency:
@@ -121,37 +130,16 @@ class S104PoolAnnotationImpl[
         return self.quantity_unmatched <= 0
 
     @property
-    def unmatched_cost_basis(self) -> DecimalCurrency:
-        if self.transaction.type.acquisition:
-            return self.transaction.get_partial_consideration(Decimal(1), currency=S104_CURRENCY)
-
-        else:
-            s104_holdings = self.transaction.get_previous_s104_holdings_or_none()
-            if s104_holdings is None:
-                msg = "Cannot calculate unmatched cost without previous S104 holdings for disposal transaction."
-                raise ValueError(msg)
-
-            return s104_holdings.cost_basis if s104_holdings is not None else self.decimal.currency(0, currency=S104_CURRENCY)
-
-    @property
-    def unmatched_total_cost(self) -> DecimalCurrency:
-        return self.unmatched_cost_basis * self.quantity_unmatched
-
-    @property
     def matched_total_cost(self) -> DecimalCurrency:
         return sum((pool.total_cost for pool in self.pools), start=self.decimal.currency(0, currency=S104_CURRENCY))
 
     @property
+    def matched_total_proceeds(self) -> DecimalCurrency:
+        return sum((pool.total_proceeds for pool in self.pools), start=self.decimal.currency(0, currency=S104_CURRENCY))
+
+    @property
     def matched_cost_basis(self) -> DecimalCurrency:
         return self.matched_total_cost / self.quantity_matched
-
-    @property
-    def total_cost(self) -> DecimalCurrency:
-        return self.matched_total_cost + self.unmatched_total_cost
-
-    @property
-    def cost_basis(self) -> DecimalCurrency:
-        return self.total_cost / self.transaction.quantity
 
 
 # MARK: Journal

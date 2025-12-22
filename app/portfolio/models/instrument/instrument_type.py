@@ -7,6 +7,7 @@ from typing import override
 
 class InstrumentType(StrEnum):
     # fmt: off
+    CASH   = "cash"
     EQUITY = "equity"
     ETF    = "etf"
     FUND   = "fund"
@@ -20,12 +21,21 @@ class InstrumentType(StrEnum):
 
     # MARK: Stock & Derivatives
     @property
+    def is_cash(self) -> bool:
+        return self in {
+            InstrumentType.CASH,
+            InstrumentType.FOREX,
+        }
+
+    @property
     def is_stock(self) -> bool:
         return self in {
             InstrumentType.EQUITY,
-            InstrumentType.ETF,
-            InstrumentType.FUND,
         }
+
+    @property
+    def is_bond(self) -> bool:
+        return self is InstrumentType.BOND
 
     @property
     def is_fund(self) -> bool:
@@ -40,6 +50,11 @@ class InstrumentType(StrEnum):
             InstrumentType.OPTION,
             InstrumentType.FUTURE,
         }
+
+    # MARK: UK Capital Gains
+    @property
+    def uk_capital_gains_taxed(self) -> bool:
+        return self.is_stock or self.is_bond or self.is_fund or self.is_derivative
 
     # MARK: Utilities
     @override

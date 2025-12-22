@@ -13,7 +13,7 @@ from frozendict import frozendict
 from pydantic import ConfigDict, Field, InstanceOf, PrivateAttr
 
 from ...util.callguard import CallguardClassOptions
-from ...util.helpers import generics
+from ...util.helpers import generics, script_info
 from ...util.models import LoggableHierarchicalModel, NonChild
 from ...util.models.superseded import SupersededError, superseded_check
 from ...util.models.uid import Uid
@@ -217,8 +217,9 @@ class Journal(
         if entity.version != self.version:
             return True
 
-        if (record := self.record_or_none) is not None and record.superseded:  # noqa: SIM103
-            return True
+        if script_info.enable_extra_checks():
+            if (record := self.record_or_none) is not None and record.superseded:
+                return True
 
         return False
 

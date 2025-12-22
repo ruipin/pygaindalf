@@ -228,15 +228,16 @@ runtime-evaluated-base-classes = [
     "app.portfolio.models.annotation.annotation_schema.AnnotationSchema", "app.portfolio.models.annotation.AnnotationSchema" , "app.portfolio.models.AnnotationSchema" ,
 
     # Component configuration pydantic models
-    "app.components.component.ComponentConfig"                           , "app.components.ComponentConfig"                         ,
-    "app.components.agents.agent.AgentConfig"                            , "app.components.agents.AgentConfig"                      ,
-    "app.components.agents.orchestrators.orchestrator.OrchestratorConfig", "app.components.agents.orchestrators.OrchestratorConfig" ,
-    "app.components.agents.importers.importer.ImporterConfig"            , "app.components.agents.importers.ImporterConfig"         ,
-    "app.components.agents.exporters.exporter.ExporterConfig"            , "app.components.agents.exporters.ExporterConfig"         ,
-    "app.components.providers.provider.ProviderConfig"                   , "app.components.providers.ProviderConfig"                ,
-    "app.components.providers.forex.forex.ForexProviderConfig"           , "app.components.providers.forex.ForexProviderConfig"     ,
-    "app.components.agents.transformers.transformer.TransformerConfig"   , "app.components.agents.transformers.TransformerConfig"   ,
-    "app.components.agents.importers.importer.SchemaImporterConfig"      , "app.components.agents.importers.SchemaImporterConfig"   ,
+    "app.components.component.ComponentConfig"                           , "app.components.ComponentConfig"                           ,
+    "app.components.agents.agent.AgentConfig"                            , "app.components.agents.AgentConfig"                        ,
+    "app.components.agents.orchestrators.orchestrator.OrchestratorConfig", "app.components.agents.orchestrators.OrchestratorConfig"   ,
+    "app.components.agents.importers.importer.ImporterConfig"            , "app.components.agents.importers.ImporterConfig"           ,
+    "app.components.agents.exporters.exporter.ExporterConfig"            , "app.components.agents.exporters.ExporterConfig"           ,
+    "app.components.providers.provider.ProviderConfig"                   , "app.components.providers.ProviderConfig"                  ,
+    "app.components.providers.forex.forex.ForexProviderConfig"           , "app.components.providers.forex.ForexProviderConfig"       ,
+    "app.components.agents.transformers.transformer.TransformerConfig"   , "app.components.agents.transformers.TransformerConfig"     ,
+    "app.components.agents.importers.importer.SchemaImporterConfig"      , "app.components.agents.importers.SchemaImporterConfig"     ,
+    "app.components.agents.importers.importer.SpreadsheetImporterConfig" , "app.components.agents.importers.SpreadsheetImporterConfig",
 ]
 
 # Decorators that require their argument/return type hints to be available at runtime

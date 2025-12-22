@@ -4,7 +4,7 @@
 import decimal
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Self, override
+from typing import TYPE_CHECKING, Any, override
 
 from pydantic import PositiveInt, field_validator
 from pydantic_core import PydanticUseDefault

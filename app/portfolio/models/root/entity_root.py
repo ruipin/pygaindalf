@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 from pydantic import ConfigDict, Field, InstanceOf, field_validator
 from requests import Session
 
-from ....util.helpers import generics
+from ....util.helpers import generics, script_info
 from ....util.models import LoggableHierarchicalRootModel
 from ...journal.session_manager import SessionManager
 from ..entity import Entity
@@ -128,7 +128,7 @@ class EntityRoot[E: Entity](LoggableHierarchicalRootModel, metaclass=ABCMeta):
         pass
 
     def on_session_commit(self, session: Session) -> None:  # noqa: ARG002
-        if __debug__:
+        if script_info.enable_extra_checks():
             unreachable_uids = self.entity_store.get_entity_uids() if self.root is None else self.entity_store.get_unreachable_uids(self.root.uid)
             if unreachable_uids:
                 msg = f"Unreachable entities detected in entity store: {unreachable_uids}. This indicates a bug and/or memory leak in the session commit logic."
