@@ -217,7 +217,7 @@ class Journal(
         if entity.version != self.version:
             return True
 
-        if script_info.enable_extra_checks():
+        if script_info.enable_extra_sanity_checks():
             if (record := self.record_or_none) is not None and record.superseded:
                 return True
 

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 from pydantic import ConfigDict, model_validator
 from pydantic.fields import FieldInfo
 
+from ..helpers import script_info
 from ..mixins import HierarchicalMixinMinimal, InstanceParentMutableProtocol, NamedMutableProtocol, ParentType
 from .annotated import is_non_child_type
 from .single_initialization import SingleInitializationModel
@@ -58,7 +59,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             from .hierarchical import HierarchicalModel
 
             if isinstance(obj, HierarchicalModel):
-                if __debug__:
+                if script_info.enable_extra_sanity_checks():
                     fld = getattr(self, fldnm, None)
                     assert fld is not None, "Inconsistent state when propagating parent to child."
                     if fldkey is None:

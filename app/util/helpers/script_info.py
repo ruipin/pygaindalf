@@ -41,8 +41,8 @@ def _is_unit_test() -> bool:
     return env.lower() not in ("false", "0", "no")
 
 
-def enable_extra_checks() -> bool:
-    """Test whether to enable extra checks while running (e.g., in unit tests).
+def enable_extra_sanity_checks() -> bool:
+    """Test whether to enable extra sanity checks while running (e.g., in unit tests).
 
     Returns:
         bool: True if extra checks should be enabled, False otherwise.

@@ -625,7 +625,7 @@ class EntityRecordBase[
 
     @model_validator(mode="after")
     def _validate_valid_fields(self) -> Self:
-        if __debug__:
+        if script_info.enable_extra_sanity_checks():
             from .entity import Entity
 
             for uid in self.entity.iter_field_uids():

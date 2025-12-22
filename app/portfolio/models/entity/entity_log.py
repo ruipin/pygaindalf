@@ -13,6 +13,7 @@ from pydantic import ConfigDict, Field, GetCoreSchemaHandler, PositiveInt, compu
 from pydantic_core import CoreSchema, core_schema
 
 from ....util.callguard import callguard_class
+from ....util.helpers import script_info
 from ....util.helpers.frozendict import FrozenDict
 from ....util.mixins import HierarchicalMixinMinimal, LoggableMixin, NamedMixinMinimal
 from ....util.models import HierarchicalModel, SingleInitializationModel
@@ -90,7 +91,7 @@ class EntityLogEntry(SingleInitializationModel):
 # MARK: EntityRecord Audit Log class
 @callguard_class()
 class EntityLog(Sequence, LoggableMixin, HierarchicalMixinMinimal, NamedMixinMinimal):
-    TRACK_ENTITY_DIFF = True
+    TRACK_ENTITY_DIFF = script_info.enable_extra_sanity_checks()
 
     # MARK: EntityRecord
     _entity_uid: Uid

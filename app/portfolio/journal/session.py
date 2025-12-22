@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict, Unpack,
 from pydantic import ConfigDict, Field, PrivateAttr, computed_field, field_validator
 
 from ...util.callguard import CallguardClassOptions
+from ...util.helpers import script_info
 from ...util.models import LoggableHierarchicalModel
 from ...util.models.superseded import SupersededError, superseded_check
 from ...util.models.uid import UID_SEPARATOR, IncrementingUidFactory, Uid, UidProtocol
@@ -391,7 +392,7 @@ class Session(LoggableHierarchicalModel):
                 break
 
         assert not self._restart_commit_notify, "Restart flag should be false after notify loop."
-        if __debug__:
+        if script_info.enable_extra_sanity_checks():
             for j in self._journals.values():
                 if not j.notified_dependents:
                     self.log.error(t"Journal {j.instance_name} did not notify dependents.")
