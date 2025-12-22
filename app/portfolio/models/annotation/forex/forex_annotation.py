@@ -60,7 +60,7 @@ class ForexAnnotationImpl[
         elif (result := self.considerations.get(currency)) is not None:
             return result
         else:
-            return self.transaction.get_consideration(currency, use_forex_annotation=False)
+            return self.transaction.get_consideration(currency=currency, use_forex_annotation=False)
 
 
 # MARK: Journal
@@ -79,12 +79,12 @@ class ForexAnnotationJournal(
     def _calculate_currency(self, currency: Currency) -> None:
         assert isinstance(currency, Currency), f"Expected Currency instance, got {type(currency).__name__}."
 
-        transaction = self.transaction
+        transaction = self.transaction.journal_or_self
 
         # fmt: off
-        source        = transaction.get_journal_field("currency"     , create=False)
-        date          = transaction.get_journal_field("date"         , create=False)
-        consideration = transaction.get_journal_field("consideration", create=False)
+        source = transaction.currency
+        date = transaction.date
+        consideration = transaction.consideration
         # fmt: on
 
         rate = self.exchange_rates[currency] = self.forex_provider.get_daily_rate(
@@ -110,7 +110,7 @@ class ForexAnnotationJournal(
 
         assert isinstance(currency, Currency), f"Expected Currency instance, got {type(currency).__name__}."
 
-        if currency is self.transaction.get_journal_field("currency", create=False):
+        if currency is self.transaction.journal_or_self.currency:
             return
 
         if currency not in self.exchange_rates:

@@ -9,7 +9,7 @@ from collections.abc import Callable, Generator, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from functools import cached_property
 from string.templatelib import Template
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, Unpack
+from typing import TYPE_CHECKING, Any, NotRequired, Self, TypedDict, Unpack
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -128,6 +128,11 @@ class EntityCommon[
     @property
     def has_journal(self) -> bool:
         return self.journal_or_none is not None
+
+    @property
+    def journal_or_self(self) -> T_Journal | Self:
+        journal = self.journal_or_none
+        return journal if journal is not None else self
 
     def get_journal_or_entity_field(self, field: str, *, edited_only: bool = False) -> Any:
         journal = self.journal_or_none
