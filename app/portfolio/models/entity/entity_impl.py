@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ....components.providers.forex import ForexProvider
     from ....context import Context
     from ....util.helpers.decimal import DecimalFactory
+    from ....util.logging import Logger
     from ..annotation import Annotation, AnnotationRecord
     from ..entity import Entity
 
@@ -31,6 +32,9 @@ class EntityImpl[
     metaclass=ABCMeta,
 ):
     if TYPE_CHECKING:
+
+        @property
+        def log(self) -> Logger: ...
 
         @property
         def entity(self) -> Entity: ...

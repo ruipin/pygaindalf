@@ -11,3 +11,5 @@ agents:
   allow_shorting: true
 
 - !include ../_include/exporter/yaml.yaml
+
+- !include ../_include/exporter/s104_report.yaml

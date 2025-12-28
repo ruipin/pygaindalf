@@ -14,4 +14,12 @@ class InstrumentImpl(
     InstrumentSchema if TYPE_CHECKING else empty_class(),
     metaclass=ABCMeta,
 ):
-    pass
+    @property
+    def symbol(self) -> str:
+        if (ticker := self.ticker) is not None:
+            return ticker
+        elif (isin := self.isin) is not None:
+            return isin
+        else:
+            msg = "Instrument must have either ticker or ISIN."
+            raise ValueError(msg)

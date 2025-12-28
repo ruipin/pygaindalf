@@ -3,11 +3,14 @@
 
 import re
 
+from typing import override
+
 import pytest
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.portfolio.collections.ordered_view import OrderedViewMutableSet, OrderedViewSet
+from app.util.models.hierarchical import HierarchicalModel
 
 
 class _FrozenInts(OrderedViewSet[int]):
@@ -88,3 +91,36 @@ class TestOrderedViewSet:
 
     def test_get_mutable_type_round_trip(self):
         assert _FrozenInts.get_mutable_type() == OrderedViewMutableSet[int]
+
+    def test_hierarchical_model_previous_works_with_ordered_view_set(self):
+        class _Node(HierarchicalModel):
+            model_config = ConfigDict(frozen=True)
+
+            value: int
+
+            @override
+            def __hash__(self) -> int:
+                return hash(self.value)
+
+            def sort_key(self) -> int:
+                return self.value
+
+        class _NodeSet(OrderedViewSet[_Node]):
+            pass
+
+        class _Parent(HierarchicalModel):
+            model_config = ConfigDict(frozen=True)
+
+            children: _NodeSet
+
+        n3 = _Node(value=3)
+        n1 = _Node(value=1)
+        n2 = _Node(value=2)
+
+        # Input order is intentionally unsorted to ensure propagation keys follow the ordered view.
+        parent = _Parent(children=_NodeSet({n3, n1, n2}))
+
+        assert tuple(parent.children) == (n1, n2, n3)
+        assert n1.previous is None
+        assert n2.previous is n1
+        assert n3.previous is n2

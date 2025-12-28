@@ -15,7 +15,7 @@ from pydantic import ConfigDict, PositiveInt, PrivateAttr, ValidationInfo, field
 from ....util.callguard import CallguardClassOptions
 from ....util.helpers import generics, script_info, type_hints
 from ....util.mixins import HierarchicalMixinMinimal, HierarchicalProtocol, NamedMixinMinimal, NamedProtocol
-from ....util.models import LoggableHierarchicalRootModel
+from ....util.models import LoggableHierarchicalModel
 from ....util.models.superseded import superseded_check
 from ....util.models.uid import Uid
 from .dependency_event_handler.base import EntityDependencyEventHandlerBase
@@ -51,7 +51,7 @@ class EntityRecordBase[
 ](
     EntityRecordMeta,
     type_hints.CachedTypeHintsMixin,
-    LoggableHierarchicalRootModel,
+    LoggableHierarchicalModel,
     EntityImpl,
     EntityCommon[T_Journal],
     EntitySchema,
@@ -370,6 +370,13 @@ class EntityRecordBase[
     def call_entity_method(self, name: str, *args, **kwargs) -> Any:
         method = getattr(self.entity, name)
         return method(*args, **kwargs)
+
+    @property
+    @override
+    def previous(self) -> EntityRecordBase | None:
+        if (entity := self.entity.previous) is None:
+            return None
+        return entity.record_or_none
 
     # MARK: Parent
     PROPAGATE_INSTANCE_PARENT_FROM_PARENT_TO_CHILDREN: ClassVar[bool] = True

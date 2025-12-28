@@ -77,6 +77,19 @@ class LedgerImpl[
     def __repr__(self) -> str:
         return super().__repr__().replace(">", f", transactions={self.transactions!r}>")
 
+    # MARK: Instrument
+    @property
+    def ticker(self) -> str | None:
+        return self.instrument.ticker
+
+    @property
+    def isin(self) -> str | None:
+        return self.instrument.isin
+
+    @property
+    def symbol(self) -> str:
+        return self.instrument.symbol
+
     # MARK: S104
     def get_s104_holdings_or_none(self, *, at: datetime.date | Transaction | None = None) -> S104HoldingsAnnotation | None:
         if at is None:

@@ -25,13 +25,16 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
 
     @override
     def __rich_repr__(self) -> rich.repr.Result:
+        inherited = self.inherited if hasattr(self, "inherited") else None
+        defaulted = self.defaulted if hasattr(self, "defaulted") else None
+
         for attr, info in type(self).model_fields.items():
             if info.repr is False or attr in ("instance_name",):
                 continue
 
-            if self.inherited is not None and attr in self.inherited:
+            if inherited is not None and attr in inherited:
                 continue
-            if self.defaulted is not None and attr in self.defaulted:
+            if defaulted is not None and attr in defaulted:
                 continue
 
             value = getattr(self, attr, None)
@@ -44,9 +47,9 @@ class BaseConfigModel(LoggableHierarchicalNamedModel):
             yield attr, value
             continue
 
-        if self.inherited is not None:
+        if inherited is not None:
             yield self.inherited
-        if self.defaulted is not None:
+        if defaulted is not None:
             yield self.defaulted
 
     @model_validator(mode="wrap")

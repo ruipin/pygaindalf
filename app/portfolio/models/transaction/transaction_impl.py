@@ -82,7 +82,7 @@ class TransactionImpl(
     # MARK: Consideration
     # TODO: Allow requesting after fees
     def get_consideration(self, *, currency: Currency | str | None = None, use_forex_annotation: bool = True) -> DecimalCurrency:
-        currency = Currency(currency)
+        currency = Currency(currency) if currency is not None else self.currency
 
         if currency is None or currency == self.currency:
             return self.consideration
@@ -118,7 +118,8 @@ class TransactionImpl(
             msg = "Cannot calculate unit consideration for transaction with zero quantity"
             raise ValueError(msg)
 
-        return self.get_partial_consideration(self.quantity, currency=currency)
+        total_consideration = self.get_consideration(currency=currency)
+        return total_consideration / self.quantity
 
     @property
     def unit_consideration(self) -> DecimalCurrency:
@@ -258,14 +259,11 @@ class TransactionImpl(
         if pool is not None:
             total_proceeds += pool.matched_total_proceeds
             remaining = pool.quantity_unmatched
+            assert remaining >= 0, "Remaining quantity after matched portion should not be negative."
+            assert remaining <= self.quantity, "Remaining quantity after matched portion should not exceed transaction quantity."
 
         # Unmatched portion
         if remaining > 0:
-            holdings = self.get_previous_s104_holdings_or_none()
-            if holdings is None:
-                msg = "Cannot calculate S104 capital gains containing unmatched shares without previous S104 holdings."
-                raise ValueError(msg)
-
             total_proceeds += self.get_partial_consideration(remaining, currency=S104_CURRENCY)
             total_proceeds -= self.get_partial_fees(remaining, currency=S104_CURRENCY)
 
@@ -273,7 +271,8 @@ class TransactionImpl(
 
     def get_s104_total_cost(self) -> DecimalCurrency:
         if not self.type.disposal:
-            return self.decimal.currency(0, currency=S104_CURRENCY)
+            msg = "Cannot calculate S104 total cost for non-disposal transaction."
+            raise ValueError(msg)
 
         if not self.type.affects_s104_holdings:
             msg = "Cannot calculate S104 capital gains for a disposal transaction that does not affect S104 holdings."

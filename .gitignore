@@ -212,5 +212,5 @@ __marimo__/
 /docs/api
 /docs/build
 
-# Examples
-/examples/_personal
+# Personal files
+_personal

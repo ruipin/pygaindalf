@@ -238,6 +238,7 @@ runtime-evaluated-base-classes = [
     "app.components.agents.transformers.transformer.TransformerConfig"   , "app.components.agents.transformers.TransformerConfig"     ,
     "app.components.agents.importers.importer.SchemaImporterConfig"      , "app.components.agents.importers.SchemaImporterConfig"     ,
     "app.components.agents.importers.importer.SpreadsheetImporterConfig" , "app.components.agents.importers.SpreadsheetImporterConfig",
+    "app.components.agents.exporters.exporter.S104ReportExporterConfig"  , "app.components.agents.exporters.S104ReportExporterConfig",
 ]
 
 # Decorators that require their argument/return type hints to be available at runtime

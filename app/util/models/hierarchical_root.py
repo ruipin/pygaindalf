@@ -50,10 +50,10 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
             if not getattr(type(obj), "PROPAGATE_INSTANCE_PARENT_FROM_PARENT", True):
                 return
             propagate_parent = self if not getattr(type(self), "PROPAGATE_INSTANCE_PARENT_FROM_PARENT_TO_CHILDREN", False) else self.instance_parent
-            if obj.instance_parent is propagate_parent:
-                return
-            if (parent := obj.instance_parent) is not None:
-                msg = f"{type(obj).__name__} {obj} already has a parent: {parent}. Cannot overwrite with {propagate_parent}."
+            current = obj.instance_parent
+            already_propagated = current is propagate_parent
+            if current is not None and not already_propagated:
+                msg = f"{type(obj).__name__} {obj} already has a parent: {current}. Cannot overwrite with {propagate_parent}."
                 raise ValueError(msg)
 
             from .hierarchical import HierarchicalModel
@@ -69,12 +69,16 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
                     else:
                         assert fld[fldkey] is obj, "Inconsistent state when propagating parent to child."
 
-                object.__setattr__(obj, "instance_parent_weakref", weakref.ref(propagate_parent))
+                if not already_propagated:
+                    object.__setattr__(obj, "instance_parent_weakref", weakref.ref(propagate_parent))
+                # We still propagate the field/key in case those have changed
                 object.__setattr__(obj, "instance_parent_field_name", fldnm)
                 object.__setattr__(
                     obj, "instance_parent_field_key_weakref", fldkey if fldkey is None or isinstance(fldkey, (int, str)) else weakref.ref(fldkey)
                 )
             else:
+                if already_propagated:
+                    return
                 # If there is no setter, python raises AttributeError
                 with contextlib.suppress(AttributeError):
                     object.__setattr__(obj, "instance_parent", propagate_parent)

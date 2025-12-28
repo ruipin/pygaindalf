@@ -24,7 +24,7 @@ from .protocols import SortKeyProtocol
 
 
 @callguard_class()
-class OrderedViewCollection[T: Hashable](Collection[T], metaclass=ABCMeta):
+class OrderedViewCollection[T: Hashable](Sequence[T], Collection[T], metaclass=ABCMeta):
     get_content_type = generics.GenericIntrospectionMethod[T]()
 
     def __init__(self, data: Iterable[T] | None = None, /) -> None:
@@ -77,6 +77,7 @@ class OrderedViewCollection[T: Hashable](Collection[T], metaclass=ABCMeta):
     def __getitem__(self, index: int) -> T: ...
     @overload
     def __getitem__(self, index: slice) -> Sequence[T]: ...
+    @override
     def __getitem__(self, index: int | slice) -> T | Sequence[T]:
         return self.sorted[index]
 

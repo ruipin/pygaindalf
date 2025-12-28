@@ -29,6 +29,7 @@ from ....util.models import LoggableHierarchicalModel
 from ....util.models.uid import Uid, UidProtocol
 from .entity_common import EntityCommon
 from .entity_dependents import EntityDependents
+from .entity_impl import EntityImpl
 from .entity_log import EntityLog
 from .entity_record import EntityRecord
 
@@ -48,6 +49,7 @@ class EntityBase[
 ](
     type_hints.CachedTypeHintsMixin,
     LoggableHierarchicalModel,
+    # EntityImpl,
     EntityCommon[T_Journal],
     NamedMixinMinimal,
     metaclass=ABCMeta,
