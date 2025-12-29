@@ -3,11 +3,10 @@
 
 import pytest
 
-from iso4217 import Currency
-
 from app.portfolio.models.entity.entity_log import EntityLog, EntityModificationType
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.instrument.instrument_type import InstrumentType
+from app.util.helpers.currency import Currency
 
 
 @pytest.mark.portfolio

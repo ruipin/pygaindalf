@@ -17,8 +17,6 @@ from decimal import Decimal
 
 import pytest
 
-from iso4217 import Currency
-
 from app.portfolio.collections.journalled.set import JournalledSetEdit, JournalledSetEditType
 from app.portfolio.journal.session import Session
 from app.portfolio.journal.session_manager import SessionManager
@@ -27,6 +25,7 @@ from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.root import EntityRoot
 from app.portfolio.models.transaction import Transaction, TransactionType
+from app.util.helpers.currency import Currency
 from app.util.helpers.decimal_currency import DecimalCurrency
 
 

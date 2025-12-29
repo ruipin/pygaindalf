@@ -4,10 +4,10 @@
 
 from typing import override
 
-from iso4217 import Currency
 from pydantic import Field
 
 from ....portfolio.models.annotation.forex import ForexAnnotation
+from ....util.helpers.currency import Currency
 from .transformer import Transformer, TransformerConfig
 
 

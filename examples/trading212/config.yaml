@@ -1,0 +1,9 @@
+logging: !include ../_include/logging/runtime_debug.yaml
+
+agents:
+- package: importers.trading212
+  title: Trading 212 Importer
+  glob: $T212_PATH/*.csv
+  create_ledger: true
+
+- !include ../_include/exporter/yaml.yaml

@@ -1,2 +1,3 @@
 package: exporters.cgtcalculator_com.input
-filepath: $CFG_PATH/export.yaml
+title: CGTCalculator.com Input Exporter
+filepath: $CFG_PATH/export_cgtcalculator.yaml

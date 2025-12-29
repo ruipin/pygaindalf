@@ -3,9 +3,9 @@
 
 from abc import ABCMeta
 
-from iso4217 import Currency
 from pydantic import Field
 
+from ....util.helpers.currency import Currency
 from ..entity import EntitySchemaBase
 from .instrument_type import InstrumentType
 

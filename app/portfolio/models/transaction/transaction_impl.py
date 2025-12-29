@@ -4,8 +4,7 @@
 from abc import ABCMeta
 from typing import TYPE_CHECKING
 
-from iso4217 import Currency
-
+from ....util.helpers.currency import S104_CURRENCY, Currency
 from ....util.helpers.empty_class import empty_class
 from ..entity import EntityImpl
 from .transaction_schema import TransactionSchema
@@ -18,10 +17,6 @@ if TYPE_CHECKING:
     from ..annotation.forex import ForexAnnotation
     from ..annotation.s104 import S104HoldingsAnnotation, S104PoolAnnotation
     from ..instrument import Instrument
-
-
-# TODO: Move to some common location e.g. in a S104 extension module
-S104_CURRENCY = Currency("GBP")
 
 
 class TransactionImpl(
@@ -46,6 +41,10 @@ class TransactionImpl(
             msg = "Transaction's instrument requested but not found. This may indicate data corruption."
             raise ValueError(msg)
         return instrument
+
+    @property
+    def symbol(self) -> str:
+        return self.instrument.symbol
 
     # MARK: Currency
     @property

@@ -66,7 +66,7 @@ class HierarchicalRootModel(SingleInitializationModel, HierarchicalMixinMinimal)
                         assert fld is obj, "Inconsistent state when propagating parent to child."
                     elif isinstance(fld, Mapping):
                         assert fld.get(fldkey, None) is obj, "Inconsistent state when propagating parent to child."
-                    else:
+                    elif isinstance(fld, Sequence):
                         assert fld[fldkey] is obj, "Inconsistent state when propagating parent to child."
 
                 if not already_propagated:

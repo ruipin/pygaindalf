@@ -16,7 +16,7 @@ from . import ForexProvider, ForexProviderConfig
 if TYPE_CHECKING:
     from decimal import Decimal
 
-    from iso4217 import Currency
+    from ....util.helpers.currency import Currency
 
 
 # MARK: Configuration

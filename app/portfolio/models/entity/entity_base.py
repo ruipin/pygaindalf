@@ -29,7 +29,6 @@ from ....util.models import LoggableHierarchicalModel
 from ....util.models.uid import Uid, UidProtocol
 from .entity_common import EntityCommon
 from .entity_dependents import EntityDependents
-from .entity_impl import EntityImpl
 from .entity_log import EntityLog
 from .entity_record import EntityRecord
 
@@ -712,6 +711,20 @@ class EntityBase[
         if self.version != version - 1:
             msg = f"Expected entity log version to be {version - 1} after revert, got {self.version} instead."
             raise RuntimeError(msg)
+
+    # MARK: Copy
+    @override
+    def copy(self) -> Self:  # pyright: ignore[reportIncompatibleMethodOverride]
+        """Return a copy of this entity with a new UID, entity log, instance name, and no instance hierarchy.
+
+        This is done by calling the constructor with the same data as this entity, excluding the UID and instance name.
+        """
+        if not self.exists:
+            msg = f"Cannot copy entity {self} because it does not exist."
+            raise RuntimeError(msg)
+
+        data = self.record.get_schema_field_values(skip={"uid", "version"})
+        return self.__class__(**data)
 
     # MARK: Fields
     @final

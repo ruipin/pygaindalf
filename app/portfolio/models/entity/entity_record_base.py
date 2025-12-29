@@ -191,7 +191,7 @@ class EntityRecordBase[
 
         self.entity.on_delete_record()
 
-        self.log.info(t"Entity record {self} has been deleted.")
+        self.log.debug(t"Entity record {self} has been deleted.")
 
     # MARK: Revertion
     _reverted: bool = PrivateAttr(default=False)

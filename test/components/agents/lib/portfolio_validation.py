@@ -9,12 +9,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any
 
-from iso4217 import Currency
-
 from app.components.agents.importers.importer.schema import SchemaImporter
 from app.portfolio.models.annotation.forex import ForexAnnotation
 from app.portfolio.models.entity import Entity
 from app.portfolio.models.transaction import Transaction
+from app.util.helpers.currency import Currency
 from app.util.helpers.decimal_currency import DecimalCurrency
 
 

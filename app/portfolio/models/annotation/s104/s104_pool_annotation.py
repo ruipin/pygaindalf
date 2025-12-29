@@ -6,11 +6,11 @@ from collections.abc import MutableSequence, Sequence
 from decimal import Decimal
 from typing import TYPE_CHECKING, override
 
-from iso4217 import Currency
 from pydantic import Field, field_validator
 
 from app.util.models import SingleInitializationModel
 
+from .....util.helpers.currency import S104_CURRENCY
 from .....util.helpers.empty_class import empty_class
 from .....util.models import NonChild
 from ...transaction import Transaction
@@ -21,10 +21,6 @@ from .s104_dependency_handler import S104AnnotationDependencyHandler
 
 if TYPE_CHECKING:
     from .....util.helpers.decimal_currency import DecimalCurrency
-
-
-# TODO: Move to some common location e.g. in a S104 extension module
-S104_CURRENCY = Currency("GBP")
 
 
 # MARK: S104 Pool

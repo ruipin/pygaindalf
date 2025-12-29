@@ -16,6 +16,9 @@ class TransactionType(StrEnum):
     DIVIDEND = "dividend"
     INTEREST = "interest"
     FEE      = "fee"
+
+    # TODO: Implement automatic stock split importing/fetching
+    # TODO: Maybe this should be handled by a 'StockSplitTransaction' type, or something? So we can have a 'ratio' field, and omit the 'consideration' field.
     SPLIT    = "split"
     # fmt: on
 
@@ -40,6 +43,11 @@ class TransactionType(StrEnum):
     @property
     def disposal(self) -> bool:
         return self is TransactionType.SELL
+
+    # MARK: Trade
+    @property
+    def trade(self) -> bool:
+        return self.acquisition or self.disposal
 
     # MARK: Income
     @property
@@ -71,7 +79,7 @@ class TransactionType(StrEnum):
     # MARK: S104
     @property
     def affects_s104_holdings(self) -> bool:
-        return self.acquisition or self.disposal or self.stock_split
+        return self.trade or self.stock_split
 
     # MARK: Utilities
     @override

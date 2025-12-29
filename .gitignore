@@ -214,3 +214,5 @@ __marimo__/
 
 # Personal files
 _personal
+/.env
+/env

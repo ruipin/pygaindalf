@@ -9,10 +9,10 @@ from abc import ABCMeta
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, NamedTuple
 
-from iso4217 import Currency
 from pydantic import Field
 
 from .....portfolio.models.annotation.s104 import S104HoldingsAnnotation, S104PoolAnnotation
+from .....util.helpers.currency import S104_CURRENCY
 from .....util.helpers.decimal_currency import DecimalCurrency
 from ..transformer import Transformer, TransformerConfig
 
@@ -22,9 +22,6 @@ if TYPE_CHECKING:
 
     from .....portfolio.models.ledger import Ledger
     from .....portfolio.models.transaction import Transaction
-
-
-S104_CURRENCY = Currency("GBP")
 
 
 # MARK: Configuration
@@ -113,8 +110,6 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
         2. Acquisitions within 30 days ("bed and breakfast rule")
 
         More information: https://www.gov.uk/hmrc-internal-manuals/capital-gains-manual/cg51555
-
-        TODO: Handle stock splits
         """
         # We only process disposal transactions
         if not txn.type.disposal:
@@ -126,6 +121,7 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
             return
 
         timedelta_30d = datetime.timedelta(days=30)
+        split_ratio = self.decimal(1)
         for other in others:
             assert other.date >= txn.date, "Other transaction must be on or after disposal transaction date"
 
@@ -139,8 +135,8 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
 
             # Stock splits
             if other.type.stock_split:
-                msg = "S104 matching with stock splits is not yet implemented"
-                raise NotImplementedError(msg)
+                split_ratio *= other.quantity  # TODO: Dedicated stock split transaction type?
+                continue
 
             # Only match against acquisitions
             if not other.type.acquisition:
@@ -151,6 +147,9 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
                 continue
 
             # Match the transactions
+            if split_ratio != 1:
+                msg = f"Cannot match disposal {txn} with acquisition {other} after stock split adjustment (split ratio {split_ratio}) is not implemented"
+                raise NotImplementedError(msg)
             fully_matched = self.match_disposal_with_acquisition(txn, other)
             if fully_matched:
                 self.log.debug(t"Disposal {txn} fully matched after processing acquisition {other}")
@@ -228,6 +227,10 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
         new_shares = state.shares - quantity
         new_cost = (state.cost + cost_impact).round(self.config.cost_precision)
 
+        # Normalize zero shares
+        if new_shares == 0:
+            new_shares = self.decimal(0)
+
         # Ensure cost is zero when shares are zero
         if new_shares == 0 and new_cost != 0:
             new_cost = round(new_cost, ndigits=2)
@@ -259,7 +262,7 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
 
     def _handle_disposal(self, txn: Transaction, state: S104State, unmatched: Decimal) -> tuple[S104State, Decimal]:
         if unmatched > state.shares and not self.config.allow_shorting:
-            msg = f"Cannot dispose of {unmatched} shares from S104 holdings with only {state.shares} shares. Please ensure all transactions are accounted for or enable shorting."
+            msg = f"Cannot dispose of {unmatched} shares from S104 holdings of instrument {txn.instrument.symbol} with only {state.shares} shares. Please ensure all transactions are accounted for or enable shorting."
             raise ValueError(msg)
 
         # Long sell
@@ -273,6 +276,15 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
             state = self._handle_s104_acquisition(txn, state, quantity=unmatched, short=True)
 
         return state, unmatched
+
+    def _handle_stock_split(self, txn: Transaction, state: S104State) -> S104State:
+        # Simply multiple the number of shares by the ratio
+        ratio = txn.quantity  # TODO: This should maybe be handled by a separate Entity type?
+
+        return S104State(
+            shares=state.shares * ratio,
+            cost=state.cost,
+        )
 
     def annotate_s104_holdings(self, txn: Transaction, current_s104_holdings: S104HoldingsAnnotation | None) -> S104HoldingsAnnotation:
         """Annotate the given transaction with the updated S104 holdings after it was executed.
@@ -304,8 +316,7 @@ class S104BaseTransformer[C: S104BaseTransformerConfig](Transformer[C], metaclas
 
             # Stock splits
             elif txn.type.stock_split:
-                msg = "S104 holdings annotation with stock splits is not yet implemented"
-                raise NotImplementedError(msg)
+                state = self._handle_stock_split(txn, state)
 
             # Unhandled types
             else:

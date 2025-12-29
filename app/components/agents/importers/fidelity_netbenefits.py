@@ -9,11 +9,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, override
 
-from iso4217 import Currency
 from pydantic import Field
 
 from ....portfolio.models.ledger import Ledger
 from ....portfolio.models.transaction import Transaction, TransactionType
+from ....util.helpers.currency import Currency
 from ....util.helpers.pdf_text import PdfText
 from .importer import SchemaImporter, SchemaImporterConfig
 

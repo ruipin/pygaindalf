@@ -19,8 +19,6 @@ from decimal import Decimal
 
 import pytest
 
-from iso4217 import Currency
-
 from app.portfolio.collections.journalled.mapping import JournalledMapping  # noqa: F401 (documentation/reference)
 from app.portfolio.collections.journalled.sequence import JournalledSequence  # noqa: F401 (documentation/reference)
 from app.portfolio.models.instrument import Instrument
@@ -29,6 +27,7 @@ from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.portfolio import Portfolio
 from app.portfolio.models.root.portfolio_root import PortfolioRoot
 from app.portfolio.models.transaction import Transaction, TransactionType
+from app.util.helpers.currency import Currency
 from app.util.helpers.decimal_currency import DecimalCurrency
 
 

@@ -10,9 +10,10 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Self, override
 
-from iso4217 import Currency
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
+
+from .currency import Currency
 
 
 class DecimalCurrency(decimal.Decimal):

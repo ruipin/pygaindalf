@@ -44,4 +44,4 @@ class TransactionRecord(
     # MARK: Utilities
     @override
     def sort_key(self) -> SupportsRichComparison:
-        return (self.date, self.uid)
+        return (self.date, 0 if self.type.trade else 1, self.uid)

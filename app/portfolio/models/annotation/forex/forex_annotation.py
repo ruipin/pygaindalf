@@ -7,9 +7,9 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Self, override
 
 from frozendict import frozendict
-from iso4217 import Currency
 from pydantic import Field, field_validator, model_validator
 
+from .....util.helpers.currency import Currency
 from .....util.helpers.decimal_currency import DecimalCurrency
 from .....util.helpers.empty_class import empty_class
 from .....util.helpers.frozendict import FrozenDict

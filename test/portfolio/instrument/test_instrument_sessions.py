@@ -3,14 +3,13 @@
 
 import pytest
 
-from iso4217 import Currency
-
 from app.portfolio.journal.session import Session
 from app.portfolio.journal.session_manager import SessionManager
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.instrument.instrument_journal import InstrumentJournal
 from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.root import EntityRoot
+from app.util.helpers.currency import Currency
 
 
 # --- Fixtures --------------------------------------------------------------------

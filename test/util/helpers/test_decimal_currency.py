@@ -5,9 +5,9 @@ import decimal
 
 import pytest
 
-from iso4217 import Currency
 from pydantic import BaseModel
 
+from app.util.helpers.currency import Currency
 from app.util.helpers.decimal_currency import DecimalCurrency
 
 

@@ -7,13 +7,12 @@ from decimal import Decimal
 
 import pytest
 
-from iso4217 import Currency
-
 from app.portfolio.models.entity.entity_log import EntityLog, EntityModificationType
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.transaction import Transaction, TransactionType
+from app.util.helpers.currency import Currency
 from app.util.helpers.decimal_currency import DecimalCurrency
 
 

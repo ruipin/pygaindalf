@@ -6,10 +6,10 @@ from collections.abc import Generator, Mapping, MutableMapping, Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple, override
 
 from frozendict import frozendict
-from iso4217 import Currency
 from pydantic import Field
 
 from .....portfolio.models.transaction import Transaction
+from .....util.helpers.currency import Currency
 from .importer import Importer, ImporterConfig
 
 
@@ -91,7 +91,7 @@ class SpreadsheetImporter[C: SpreadsheetImporterConfig](Importer[C]):
             instrument_data = self._extract_instrument_data(data)
             return self.get_or_create_ledger(ticker=ticker, isin=isin, **instrument_data)
 
-        msg = f"Could not find or create ledger for instrument with {ticker=}, {isin=}."
+        msg = f"Could not find {'or create ' if self.config.create_ledger else ''}ledger for instrument with {ticker=}, {isin=}."
         raise ValueError(msg)
 
     def _get_row(self, row: int) -> Sequence[str] | None:
@@ -139,6 +139,9 @@ class SpreadsheetImporter[C: SpreadsheetImporterConfig](Importer[C]):
         msg = f"Could not find cell with value '{skip_until}'."
         raise ValueError(msg)
 
+    def _allow_missing_column(self, column: str) -> bool:  # noqa: ARG002
+        return False
+
     def _get_column_mappings(self) -> Mapping[int, str]:
         result = {}
         mappings = self._header_mappings
@@ -157,6 +160,8 @@ class SpreadsheetImporter[C: SpreadsheetImporterConfig](Importer[C]):
                 try:
                     column_i = header.index(key)
                 except ValueError:
+                    if self._allow_missing_column(key):
+                        continue
                     msg = f"Could not find header column with name '{key}'."
                     raise ValueError(msg) from None
 

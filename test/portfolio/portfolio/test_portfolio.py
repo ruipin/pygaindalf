@@ -3,12 +3,11 @@
 
 import pytest
 
-from iso4217 import Currency
-
 from app.portfolio.models.instrument import Instrument
 from app.portfolio.models.instrument.instrument_type import InstrumentType
 from app.portfolio.models.ledger import Ledger
 from app.portfolio.models.portfolio import Portfolio
+from app.util.helpers.currency import Currency
 
 
 @pytest.mark.portfolio

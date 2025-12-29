@@ -17,7 +17,7 @@ from .decimal_currency import DecimalCurrency
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
 
-    from iso4217 import Currency
+    from .currency import Currency
 
 
 # MARK: Enumerations

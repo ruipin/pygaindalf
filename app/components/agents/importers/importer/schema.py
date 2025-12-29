@@ -25,9 +25,8 @@ from .importer import Importer, ImporterConfig
 
 
 if TYPE_CHECKING:
-    from iso4217 import Currency
-
     from .....portfolio.models.entity import Entity
+    from .....util.helpers.currency import Currency
 
 
 # MARK: Schema Classes

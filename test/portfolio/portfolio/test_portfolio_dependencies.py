@@ -9,8 +9,6 @@ from typing import Any, NamedTuple, override
 
 import pytest
 
-from iso4217 import Currency
-
 from app.portfolio.models.entity import EntityRecord
 from app.portfolio.models.entity.dependency_event_handler import EntityDependencyEventType
 from app.portfolio.models.entity.dependency_event_handler.impl import EntityDependencyEventHandlerImpl
@@ -21,6 +19,7 @@ from app.portfolio.models.ledger import Ledger, LedgerRecord
 from app.portfolio.models.portfolio.portfolio import Portfolio
 from app.portfolio.models.root.portfolio_root import PortfolioRoot
 from app.portfolio.models.transaction import Transaction, TransactionRecord, TransactionType
+from app.util.helpers.currency import Currency
 from app.util.helpers.decimal_currency import DecimalCurrency
 from app.util.models.uid import Uid
 

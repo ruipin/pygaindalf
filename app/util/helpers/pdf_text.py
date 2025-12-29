@@ -5,12 +5,15 @@ import decimal
 import re
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pdfplumber
 
-from iso4217 import Currency
-
 from .decimal_currency import DecimalCurrency
+
+
+if TYPE_CHECKING:
+    from .currency import Currency
 
 
 class PdfText:
